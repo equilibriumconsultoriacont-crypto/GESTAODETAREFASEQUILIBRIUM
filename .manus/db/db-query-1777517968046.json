@@ -1,0 +1,13 @@
+{
+  "query": "SELECT id FROM clients WHERE cnpj = '62.384.424/0001-54'",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway06.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 41kE3TZTBgpvajt.root --database o3dK6TSSURVRc58h75f5Gy --execute SELECT id FROM clients WHERE cnpj = '62.384.424/0001-54'",
+  "rows": [
+    {
+      "id": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\n1\n",
+  "stderr": "",
+  "execution_time_ms": 583
+}

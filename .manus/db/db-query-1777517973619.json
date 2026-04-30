@@ -1,0 +1,9 @@
+{
+  "query": "INSERT INTO recurring_tasks (clientId, title, description, taskType, dueDayOfMonth, active) VALUES (1, 'DAS Simples Nacional', 'Guia de Arrecadação do Simples Nacional', 'DAS', 20, true), (1, 'Emissão de Nota Fiscal de Serviço', 'Emissão mensal de NFS conforme serviços prestados', 'NFS', 20, true)",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway06.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 41kE3TZTBgpvajt.root --database o3dK6TSSURVRc58h75f5Gy --execute INSERT INTO recurring_tasks (clientId, title, description, taskType, dueDayOfMonth, active) VALUES (1, 'DAS Simples Nacional', 'Guia de Arrecadação do Simples Nacional', 'DAS', 20, true), (1, 'Emissão de Nota Fiscal de Serviço', 'Emissão mensal de NFS conforme serviços prestados', 'NFS', 20, true)",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 595
+}
