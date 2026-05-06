@@ -5,26 +5,33 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
+  addClientTaskTemplate,
   createClient,
   createEmailLog,
   createRecurringTask,
   createTask,
   createTaskFile,
+  createTaskTemplate,
   getDashboardStats,
   getClientById,
+  getMonthlyPanel,
   getTaskById,
   getTaskFileById,
   getTasksDueSoon,
+  listClientTaskTemplates,
   listClients,
   listEmailLogs,
   listRecurringTasks,
   listTaskFiles,
+  listTaskTemplates,
   listTasks,
   markOverdueTasks,
+  removeClientTaskTemplate,
   taskExistsByRecurringAndCompetencia,
   updateClient,
   updateRecurringTask,
   updateTask,
+  updateTaskTemplate,
 } from "./db";
 import { buildAlertEmailHtml, buildGuiaEmailHtml, sendEmail } from "./email";
 import { storagePut } from "./storage";
@@ -525,6 +532,92 @@ const autoSendRouter = router({
   }),
 });
 
+
+// ─── Task Templates Router ────────────────────────────────────────────────────
+const taskTemplatesRouter = router({
+  list: protectedProcedure
+    .input(z.object({ activeOnly: z.boolean().default(true) }))
+    .query(({ input }) => listTaskTemplates(input.activeOnly)),
+
+  create: protectedProcedure
+    .input(z.object({
+      title: z.string().min(2),
+      description: z.string().optional(),
+      taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS"]),
+      dueDayOfMonth: z.number().min(1).max(31),
+      ocrKeywords: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const id = await createTaskTemplate({ ...input, active: true });
+      return { id };
+    }),
+
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).optional(),
+      dueDayOfMonth: z.number().min(1).max(31).optional(),
+      ocrKeywords: z.string().optional(),
+      active: z.boolean().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await updateTaskTemplate(id, data);
+      return { success: true };
+    }),
+
+  toggle: protectedProcedure
+    .input(z.object({ id: z.number(), active: z.boolean() }))
+    .mutation(async ({ input }) => {
+      await updateTaskTemplate(input.id, { active: input.active });
+      return { success: true };
+    }),
+});
+
+// ─── Client Task Templates Router ─────────────────────────────────────────────
+const clientTemplatesRouter = router({
+  listByClient: protectedProcedure
+    .input(z.object({ clientId: z.number() }))
+    .query(({ input }) => listClientTaskTemplates(input.clientId)),
+
+  add: protectedProcedure
+    .input(z.object({ clientId: z.number(), taskTemplateId: z.number() }))
+    .mutation(async ({ input }) => {
+      const id = await addClientTaskTemplate({ ...input, active: true });
+      // Também cria recurringTask para esse cliente com os dados do template
+      const templates = await listTaskTemplates(false);
+      const template = templates.find((t) => t.id === input.taskTemplateId);
+      if (template) {
+        await createRecurringTask({
+          clientId: input.clientId,
+          taskTemplateId: input.taskTemplateId,
+          title: template.title,
+          description: template.description ?? undefined,
+          taskType: template.taskType,
+          dueDayOfMonth: template.dueDayOfMonth,
+          active: true,
+        });
+      }
+      return { id };
+    }),
+
+  remove: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await removeClientTaskTemplate(input.id);
+      return { success: true };
+    }),
+});
+
+// ─── Monthly Panel Router ─────────────────────────────────────────────────────
+const monthlyPanelRouter = router({
+  get: protectedProcedure
+    .input(z.object({ month: z.number().min(1).max(12), year: z.number().min(2020) }))
+    .query(({ input }) => getMonthlyPanel(input.month, input.year)),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -568,6 +661,9 @@ export const appRouter = router({
   files: filesRouter,
   email: emailRouter,
   autoSend: autoSendRouter,
+  taskTemplates: taskTemplatesRouter,
+  clientTemplates: clientTemplatesRouter,
+  monthlyPanel: monthlyPanelRouter,
 });
 
 export type AppRouter = typeof appRouter;

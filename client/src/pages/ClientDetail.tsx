@@ -1,20 +1,56 @@
 import AppLayout from "@/components/AppLayout";
 import { StatusBadge, TaskTypeBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
-import { ArrowLeft, Building2, Mail, Phone, RefreshCw } from "lucide-react";
+import { ArrowLeft, BookOpen, Building2, Mail, Phone, PlusCircle, RefreshCw, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 import { Link, useParams } from "wouter";
 
 export default function ClientDetail() {
   const params = useParams<{ id: string }>();
   const clientId = Number(params.id);
+  const [addTemplateOpen, setAddTemplateOpen] = useState(false);
 
   const { data: clients = [] } = trpc.clients.list.useQuery({ includeInactive: true });
   const { data: tasks = [], isLoading } = trpc.tasks.list.useQuery({ clientId });
   const { data: emailLogs = [] } = trpc.email.logs.useQuery({ clientId });
   const { data: recurring = [] } = trpc.recurringTasks.list.useQuery({ clientId });
+  const { data: clientTemplates = [] } = trpc.clientTemplates.listByClient.useQuery({ clientId });
+  const { data: allTemplates = [] } = trpc.taskTemplates.list.useQuery({ activeOnly: true });
+
+  const addTemplateMutation = trpc.clientTemplates.add.useMutation();
+  const removeTemplateMutation = trpc.clientTemplates.remove.useMutation();
+  const utils = trpc.useUtils();
 
   const client = clients.find((c) => c.id === clientId);
+  const assignedTemplateIds = new Set(clientTemplates.map((ct) => ct.taskTemplateId));
+  const availableTemplates = allTemplates.filter((t) => !assignedTemplateIds.has(t.id));
+  const templateMap = new Map(allTemplates.map((t) => [t.id, t]));
+
+  const handleAddTemplate = async (templateId: number) => {
+    try {
+      await addTemplateMutation.mutateAsync({ clientId, taskTemplateId: templateId });
+      toast.success("Tarefa adicionada ao cliente!");
+      utils.clientTemplates.listByClient.invalidate();
+      utils.recurringTasks.list.invalidate();
+      setAddTemplateOpen(false);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao adicionar tarefa");
+    }
+  };
+
+  const handleRemoveTemplate = async (id: number) => {
+    try {
+      await removeTemplateMutation.mutateAsync({ id });
+      toast.success("Tarefa removida do cliente");
+      utils.clientTemplates.listByClient.invalidate();
+      utils.recurringTasks.list.invalidate();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao remover");
+    }
+  };
 
   if (!client) {
     return (
@@ -22,7 +58,9 @@ export default function ClientDetail() {
         <div className="text-center py-16">
           <Building2 size={36} className="mx-auto mb-3" style={{ color: "#52525b" }} />
           <p style={{ color: "#a1a1aa" }}>Cliente não encontrado</p>
-          <Link href="/clientes"><span className="text-xs cursor-pointer hover:underline mt-2 block" style={{ color: "#9fd4dc" }}>← Voltar</span></Link>
+          <Link href="/clientes">
+            <span className="text-xs cursor-pointer hover:underline mt-2 block" style={{ color: "#9fd4dc" }}>← Voltar</span>
+          </Link>
         </div>
       </AppLayout>
     );
@@ -74,8 +112,6 @@ export default function ClientDetail() {
               )}
             </div>
           </div>
-
-          {/* Stats */}
           <div className="grid grid-cols-4 gap-3 mt-5 pt-5" style={{ borderTop: "1px solid #1e4f5c" }}>
             {[
               { label: "Total", value: stats.total, color: "#9fd4dc" },
@@ -91,12 +127,85 @@ export default function ClientDetail() {
           </div>
         </div>
 
-        {/* Recurring tasks */}
+        {/* Obrigações do Cliente */}
+        <div className="rounded-xl border" style={{ background: "#111", borderColor: "#1e4f5c" }}>
+          <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid #1e4f5c" }}>
+            <div className="flex items-center gap-2">
+              <BookOpen size={15} style={{ color: "#9fd4dc" }} />
+              <span className="text-sm font-medium" style={{ color: "#e5e5e5" }}>
+                Obrigações do Cliente ({clientTemplates.length})
+              </span>
+            </div>
+            {availableTemplates.length > 0 && (
+              <Button
+                onClick={() => setAddTemplateOpen(true)}
+                className="gap-1.5 text-xs h-7 px-3"
+                style={{ background: "rgba(36,100,108,0.2)", color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)" }}
+              >
+                <PlusCircle size={12} /> Adicionar
+              </Button>
+            )}
+          </div>
+          {clientTemplates.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-sm" style={{ color: "#a1a1aa" }}>Nenhuma obrigação vinculada</p>
+              <p className="text-xs mt-1 mb-3" style={{ color: "#52525b" }}>
+                Adicione as tarefas que este cliente possui
+              </p>
+              {availableTemplates.length > 0 && (
+                <Button
+                  onClick={() => setAddTemplateOpen(true)}
+                  className="gap-2 text-xs"
+                  style={{ background: "#24646c", color: "#fff" }}
+                >
+                  <PlusCircle size={12} /> Adicionar obrigação
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="divide-y" style={{ borderColor: "rgba(30,79,92,0.3)" }}>
+              {clientTemplates.map((ct) => {
+                const tmpl = templateMap.get(ct.taskTemplateId ?? 0);
+                return (
+                  <div key={ct.id} className="flex items-center justify-between px-5 py-3">
+                    <div className="flex items-center gap-3">
+                      {tmpl && <TaskTypeBadge type={tmpl.taskType} />}
+                      <div>
+                        <p className="text-sm" style={{ color: "#e5e5e5" }}>{tmpl?.title ?? `Template #${ct.taskTemplateId}`}</p>
+                        {tmpl && <p className="text-xs mt-0.5" style={{ color: "#52525b" }}>Vence dia {tmpl.dueDayOfMonth}</p>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="text-xs px-2 py-0.5 rounded"
+                        style={ct.active
+                          ? { background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)" }
+                          : { background: "rgba(82,82,91,0.2)", color: "#a1a1aa", border: "1px solid rgba(82,82,91,0.4)" }}
+                      >
+                        {ct.active ? "Ativa" : "Inativa"}
+                      </span>
+                      <button
+                        onClick={() => handleRemoveTemplate(ct.id)}
+                        className="p-1.5 rounded hover:bg-white/5 transition-colors"
+                        style={{ color: "#f87171" }}
+                        title="Remover"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Recorrentes geradas */}
         {recurring.length > 0 && (
           <div className="rounded-xl border" style={{ background: "#111", borderColor: "#1e4f5c" }}>
             <div className="flex items-center gap-2 px-5 py-4" style={{ borderBottom: "1px solid #1e4f5c" }}>
               <RefreshCw size={15} style={{ color: "#9fd4dc" }} />
-              <span className="text-sm font-medium" style={{ color: "#e5e5e5" }}>Obrigações Recorrentes ({recurring.length})</span>
+              <span className="text-sm font-medium" style={{ color: "#e5e5e5" }}>Recorrentes Geradas ({recurring.length})</span>
             </div>
             <div className="divide-y" style={{ borderColor: "rgba(30,79,92,0.4)" }}>
               {recurring.map((rt) => (
@@ -122,7 +231,7 @@ export default function ClientDetail() {
           </div>
         )}
 
-        {/* Tasks history */}
+        {/* Histórico de Tarefas */}
         <div className="rounded-xl border" style={{ background: "#111", borderColor: "#1e4f5c" }}>
           <div className="px-5 py-4" style={{ borderBottom: "1px solid #1e4f5c" }}>
             <span className="text-sm font-medium" style={{ color: "#e5e5e5" }}>Histórico de Tarefas</span>
@@ -160,9 +269,7 @@ export default function ClientDetail() {
                     <td className="px-5 py-3 hidden md:table-cell text-xs" style={{ color: "#a1a1aa" }}>
                       {new Date(task.dueDate).toLocaleDateString("pt-BR")}
                     </td>
-                    <td className="px-5 py-3">
-                      <StatusBadge status={task.status} />
-                    </td>
+                    <td className="px-5 py-3"><StatusBadge status={task.status} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -201,6 +308,41 @@ export default function ClientDetail() {
           </div>
         )}
       </div>
+
+      {/* Add Template Dialog */}
+      <Dialog open={addTemplateOpen} onOpenChange={setAddTemplateOpen}>
+        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+          <DialogHeader>
+            <DialogTitle style={{ color: "#e5e5e5" }}>Adicionar Obrigação ao Cliente</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 mt-2 max-h-96 overflow-y-auto">
+            {availableTemplates.length === 0 ? (
+              <p className="text-sm text-center py-6" style={{ color: "#a1a1aa" }}>
+                Todos os templates já foram adicionados a este cliente.
+              </p>
+            ) : (
+              availableTemplates.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => handleAddTemplate(t.id)}
+                  disabled={addTemplateMutation.isPending}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-left hover:bg-white/5 transition-colors"
+                  style={{ border: "1px solid rgba(30,79,92,0.5)" }}
+                >
+                  <div className="flex items-center gap-3">
+                    <TaskTypeBadge type={t.taskType} />
+                    <div>
+                      <p className="text-sm font-medium" style={{ color: "#e5e5e5" }}>{t.title}</p>
+                      {t.description && <p className="text-xs" style={{ color: "#52525b" }}>{t.description}</p>}
+                    </div>
+                  </div>
+                  <span className="text-xs shrink-0" style={{ color: "#9fd4dc" }}>Dia {t.dueDayOfMonth}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

@@ -41,10 +41,40 @@ export const clients = mysqlTable("clients", {
 export type Client = typeof clients.$inferSelect;
 export type InsertClient = typeof clients.$inferInsert;
 
+
+// ─── Task Templates (catálogo global de tarefas, sem cliente) ────────────────
+export const taskTemplates = mysqlTable("task_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).notNull(),
+  dueDayOfMonth: int("dueDayOfMonth").notNull(), // dia do mês que vence
+  ocrKeywords: text("ocrKeywords"), // palavras-chave para reconhecimento de documento
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TaskTemplate = typeof taskTemplates.$inferSelect;
+export type InsertTaskTemplate = typeof taskTemplates.$inferInsert;
+
+// ─── Client Task Templates (vínculo cliente ↔ template) ─────────────────────
+export const clientTaskTemplates = mysqlTable("client_task_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  clientId: int("clientId").notNull(),
+  taskTemplateId: int("taskTemplateId").notNull(),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ClientTaskTemplate = typeof clientTaskTemplates.$inferSelect;
+export type InsertClientTaskTemplate = typeof clientTaskTemplates.$inferInsert;
+
 // ─── Recurring Task Templates ────────────────────────────────────────────────
 export const recurringTasks = mysqlTable("recurring_tasks", {
   id: int("id").autoincrement().primaryKey(),
   clientId: int("clientId").notNull(),
+  taskTemplateId: int("taskTemplateId"), // referência ao template global (opcional)
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
   taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).notNull(),

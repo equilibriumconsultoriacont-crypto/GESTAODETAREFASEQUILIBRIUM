@@ -2,7 +2,9 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import {
   BarChart3,
+  BookOpen,
   Building2,
+  CalendarDays,
   CheckSquare,
   ChevronRight,
   ClipboardList,
@@ -18,6 +20,8 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: BarChart3 },
   { href: "/clientes", label: "Clientes", icon: Building2 },
   { href: "/tarefas", label: "Tarefas", icon: CheckSquare },
+  { href: "/catalogo", label: "Catálogo", icon: BookOpen },
+  { href: "/painel-mensal", label: "Painel Mensal", icon: CalendarDays },
   { href: "/recorrentes", label: "Recorrentes", icon: RefreshCw },
 ];
 

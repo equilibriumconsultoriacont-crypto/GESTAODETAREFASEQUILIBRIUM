@@ -9,6 +9,8 @@ import Clients from "./pages/Clients";
 import Tasks from "./pages/Tasks";
 import TaskDetail from "./pages/TaskDetail";
 import RecurringTasksPage from "./pages/RecurringTasks";
+import TaskTemplatesPage from "./pages/TaskTemplates";
+import MonthlyPanelPage from "./pages/MonthlyPanel";
 import ClientDetail from "./pages/ClientDetail";
 import Login from "./pages/Login";
 import { useAuth } from "./_core/hooks/useAuth";
@@ -44,6 +46,8 @@ function Router() {
       <Route path="/tarefas" component={Tasks} />
       <Route path="/tarefas/:id" component={TaskDetail} />
       <Route path="/recorrentes" component={RecurringTasksPage} />
+      <Route path="/catalogo" component={TaskTemplatesPage} />
+      <Route path="/painel-mensal" component={MonthlyPanelPage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

@@ -2,20 +2,26 @@ import { eq, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   Client,
+  ClientTaskTemplate,
   EmailLog,
   InsertClient,
+  InsertClientTaskTemplate,
   InsertEmailLog,
   InsertRecurringTask,
   InsertTask,
   InsertTaskFile,
+  InsertTaskTemplate,
   InsertUser,
   RecurringTask,
   Task,
   TaskFile,
+  TaskTemplate,
+  clientTaskTemplates,
   clients,
   emailLogs,
   recurringTasks,
   taskFiles,
+  taskTemplates,
   tasks,
   users,
 } from "../drizzle/schema";
@@ -273,4 +279,79 @@ export async function createEmailLog(data: InsertEmailLog): Promise<number> {
   if (!db) throw new Error("Database not available");
   const result = await db.insert(emailLogs).values(data);
   return result[0].insertId;
+}
+
+// ─── Task Templates ───────────────────────────────────────────────────────────
+export async function listTaskTemplates(activeOnly = true): Promise<TaskTemplate[]> {
+  const db = await getDb();
+  if (!db) return [];
+  if (activeOnly) return db.select().from(taskTemplates).where(eq(taskTemplates.active, true)).orderBy(taskTemplates.title);
+  return db.select().from(taskTemplates).orderBy(taskTemplates.title);
+}
+
+export async function getTaskTemplateById(id: number): Promise<TaskTemplate | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(taskTemplates).where(eq(taskTemplates.id, id)).limit(1);
+  return result[0];
+}
+
+export async function createTaskTemplate(data: InsertTaskTemplate): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(taskTemplates).values(data);
+  return result[0].insertId;
+}
+
+export async function updateTaskTemplate(id: number, data: Partial<InsertTaskTemplate>): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(taskTemplates).set(data).where(eq(taskTemplates.id, id));
+}
+
+// ─── Client Task Templates ────────────────────────────────────────────────────
+export async function listClientTaskTemplates(clientId: number): Promise<ClientTaskTemplate[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(clientTaskTemplates).where(eq(clientTaskTemplates.clientId, clientId));
+}
+
+export async function addClientTaskTemplate(data: InsertClientTaskTemplate): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(clientTaskTemplates).values(data);
+  return result[0].insertId;
+}
+
+export async function removeClientTaskTemplate(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(clientTaskTemplates).set({ active: false }).where(eq(clientTaskTemplates.id, id));
+}
+
+export async function getMonthlyPanel(month: number, year: number): Promise<{
+  clientId: number;
+  clientName: string;
+  tasks: { taskId: number; title: string; taskType: string; status: string; dueDate: Date; competencia: string }[];
+}[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const competencia = `${String(month).padStart(2, "0")}/${year}`;
+  const allClients = await listClients(false);
+  const allTasks = await db.select().from(tasks).where(eq(tasks.competencia, competencia));
+
+  return allClients.map((client) => ({
+    clientId: client.id,
+    clientName: client.name,
+    tasks: allTasks
+      .filter((t) => t.clientId === client.id)
+      .map((t) => ({
+        taskId: t.id,
+        title: t.title,
+        taskType: t.taskType,
+        status: t.status,
+        dueDate: t.dueDate,
+        competencia: t.competencia,
+      })),
+  })).filter((c) => c.tasks.length > 0);
 }
