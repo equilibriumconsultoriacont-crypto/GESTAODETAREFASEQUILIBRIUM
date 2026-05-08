@@ -30,6 +30,8 @@ export const clients = mysqlTable("clients", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   cnpj: varchar("cnpj", { length: 18 }).notNull().unique(),
+  cpf: varchar("cpf", { length: 14 }),
+  documentType: mysqlEnum("documentType", ["CNPJ", "CPF"]).default("CNPJ").notNull(),
   email: varchar("email", { length: 320 }).notNull(),
   phone: varchar("phone", { length: 20 }),
   notes: text("notes"),

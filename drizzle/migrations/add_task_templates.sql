@@ -23,3 +23,8 @@ CREATE TABLE IF NOT EXISTS `client_task_templates` (
 
 ALTER TABLE `recurring_tasks`
   ADD COLUMN IF NOT EXISTS `taskTemplateId` int DEFAULT NULL;
+
+-- Migration 2: add CPF and documentType to clients table
+ALTER TABLE `clients`
+  ADD COLUMN IF NOT EXISTS `cpf` varchar(14) DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS `documentType` enum('CNPJ','CPF') NOT NULL DEFAULT 'CNPJ';

@@ -50,6 +50,8 @@ const clientsRouter = router({
       z.object({
         name: z.string().min(2),
         cnpj: z.string().min(14),
+        cpf: z.string().optional(),
+        documentType: z.enum(["CNPJ", "CPF"]).default("CNPJ"),
         email: z.string().email(),
         phone: z.string().optional(),
         notes: z.string().optional(),
@@ -66,6 +68,8 @@ const clientsRouter = router({
         id: z.number(),
         name: z.string().min(2).optional(),
         cnpj: z.string().optional(),
+        cpf: z.string().optional(),
+        documentType: z.enum(["CNPJ", "CPF"]).optional(),
         email: z.string().email().optional(),
         phone: z.string().optional(),
         notes: z.string().optional(),
@@ -533,6 +537,215 @@ const autoSendRouter = router({
 });
 
 
+
+// ─── Smart Upload Router ──────────────────────────────────────────────────────
+// Reconhece PDF de guia DAS/DAS MEI, aloca na tarefa certa e notifica cliente
+const smartUploadRouter = router({
+  process: protectedProcedure
+    .input(z.object({
+      filename: z.string(),
+      mimeType: z.string().optional(),
+      base64: z.string(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      // 1. Salvar arquivo temporariamente no storage
+      const fileKey = `smart-upload/${Date.now()}-${input.filename}`;
+      const buffer = Buffer.from(input.base64, "base64");
+      const { url } = await storagePut(fileKey, buffer, input.mimeType || "application/pdf");
+
+      // 2. Reconhecer documento via OCR
+      const { recognizeDocument } = await import("./ocr");
+      const recognition = await recognizeDocument(url, input.mimeType || "application/pdf");
+
+      // 3. Validar: só aceita DAS e DAS_MEI por enquanto
+      const supportedTypes = ["DAS", "DAS_MEI"];
+      if (!supportedTypes.includes(recognition.documentType)) {
+        return {
+          success: false,
+          error: `Tipo de documento não suportado: ${recognition.documentType}. Por enquanto só DAS e DAS MEI são aceitos.`,
+          recognition,
+        };
+      }
+
+      if (recognition.confidence < 50) {
+        return {
+          success: false,
+          error: `Confiança muito baixa (${recognition.confidence}%). Verifique se o PDF é uma guia DAS ou DAS MEI.`,
+          recognition,
+        };
+      }
+
+      // 4. Localizar cliente pelo CNPJ ou CPF extraído
+      const allClients = await listClients(false);
+      let matchedClient = null;
+
+      if (recognition.cnpj) {
+        const cleanCnpj = recognition.cnpj.replace(/\D/g, "");
+        matchedClient = allClients.find((c) => c.cnpj.replace(/\D/g, "") === cleanCnpj);
+      }
+      if (!matchedClient && recognition.cpf) {
+        const cleanCpf = recognition.cpf.replace(/\D/g, "");
+        matchedClient = allClients.find((c) => c.cpf && c.cpf.replace(/\D/g, "") === cleanCpf);
+      }
+
+      if (!matchedClient) {
+        return {
+          success: false,
+          error: `Cliente não encontrado para o documento ${recognition.cnpj || recognition.cpf || "sem CNPJ/CPF"}. Verifique se o cliente está cadastrado.`,
+          recognition,
+        };
+      }
+
+      if (!recognition.competencia) {
+        return {
+          success: false,
+          error: "Não foi possível extrair a competência do documento.",
+          recognition,
+          clientFound: { id: matchedClient.id, name: matchedClient.name },
+        };
+      }
+
+      // 5. Localizar a tarefa DAS/DAS_MEI do cliente para a competência
+      const clientTasks = await listTasks({ clientId: matchedClient.id });
+      const taskTypeSearch = recognition.documentType === "DAS_MEI" ? "MEI" : "DAS";
+      let matchedTask = clientTasks.find(
+        (t) =>
+          t.competencia === recognition.competencia &&
+          t.taskType === "DAS" &&
+          t.title.toUpperCase().includes(taskTypeSearch)
+      );
+
+      // Se não encontrar tarefa existente, buscar a mais recente do tipo
+      if (!matchedTask) {
+        matchedTask = clientTasks.find(
+          (t) => t.taskType === "DAS" && t.title.toUpperCase().includes(taskTypeSearch)
+        );
+      }
+
+      if (!matchedTask) {
+        return {
+          success: false,
+          error: `Nenhuma tarefa DAS encontrada para ${matchedClient.name} na competência ${recognition.competencia}. Gere as tarefas do mês primeiro.`,
+          recognition,
+          clientFound: { id: matchedClient.id, name: matchedClient.name },
+        };
+      }
+
+      // 6. Salvar arquivo vinculado à tarefa
+      const finalFileKey = `tasks/${matchedTask.id}/${Date.now()}-${input.filename}`;
+      const { url: finalUrl } = await storagePut(finalFileKey, buffer, input.mimeType || "application/pdf");
+
+      const fileId = await createTaskFile({
+        taskId: matchedTask.id,
+        clientId: matchedClient.id,
+        filename: input.filename,
+        fileKey: finalFileKey,
+        fileUrl: finalUrl,
+        mimeType: input.mimeType,
+        fileSize: buffer.length,
+        uploadedBy: ctx.user?.id,
+      });
+
+      // 7. Atualizar status da tarefa para EM_ANDAMENTO se ainda PENDENTE
+      if (matchedTask.status === "PENDENTE") {
+        await updateTask(matchedTask.id, { status: "EM_ANDAMENTO" });
+      }
+
+      // 8. Enviar e-mail ao cliente com a guia em anexo
+      let emailSent = false;
+      let emailWarning: string | undefined;
+      try {
+        const { buildGuiaEmailHtml } = await import("./email");
+        const subject = `Guia ${recognition.documentType === "DAS_MEI" ? "DAS MEI" : "DAS"} — Competência ${recognition.competencia} | Equilibrium Consultoria`;
+        const html = buildGuiaEmailHtml({
+          clientName: matchedClient.name,
+          taskTitle: matchedTask.title,
+          competencia: recognition.competencia,
+          dueDate: new Date(matchedTask.dueDate),
+          notes: recognition.valorPrincipal ? `Valor: R$ ${recognition.valorPrincipal}` : undefined,
+        });
+
+        // Buscar buffer para anexo via presigned URL
+        const forgeApiUrl = process.env.BUILT_IN_FORGE_API_URL ?? "";
+        const forgeApiKey = process.env.BUILT_IN_FORGE_API_KEY ?? "";
+        const attachments: any[] = [];
+
+        if (forgeApiUrl && forgeApiKey) {
+          const presignResp = await fetch(
+            `${forgeApiUrl.replace(/\/+$/, "")}/v1/storage/presign/get?path=${encodeURIComponent(finalFileKey)}`,
+            { headers: { Authorization: `Bearer ${forgeApiKey}` } }
+          );
+          if (presignResp.ok) {
+            const { url: signedUrl } = await presignResp.json() as { url: string };
+            const fileResp = await fetch(signedUrl);
+            if (fileResp.ok) {
+              attachments.push({
+                filename: input.filename,
+                content: Buffer.from(await fileResp.arrayBuffer()),
+                contentType: input.mimeType || "application/pdf",
+              });
+            }
+          }
+        }
+
+        await sendEmail({ to: matchedClient.email, subject, html, attachments });
+        emailSent = true;
+
+        // Log do envio
+        await createEmailLog({
+          taskId: matchedTask.id,
+          clientId: matchedClient.id,
+          taskFileId: fileId,
+          recipientEmail: matchedClient.email,
+          subject,
+          body: html,
+          status: "ENVIADO",
+          sentBy: ctx.user?.id,
+        });
+      } catch (emailErr) {
+        emailWarning = `E-mail não enviado: ${emailErr instanceof Error ? emailErr.message : String(emailErr)}`;
+        console.warn("[SmartUpload] Email failed:", emailErr);
+        await createEmailLog({
+          taskId: matchedTask.id,
+          clientId: matchedClient.id,
+          taskFileId: fileId,
+          recipientEmail: matchedClient.email,
+          subject: `Guia DAS — ${recognition.competencia}`,
+          body: "",
+          status: "FALHOU",
+          errorMessage: emailWarning,
+          sentBy: ctx.user?.id,
+        });
+      }
+
+      // 9. Enviar WhatsApp (não bloqueia)
+      let whatsappSent = false;
+      try {
+        if (matchedClient.phone) {
+          const wppResult = await sendGuiaConfirmationWhatsApp(
+            matchedClient.phone,
+            matchedTask.title,
+            matchedClient.name
+          );
+          whatsappSent = wppResult.success;
+        }
+      } catch (wppErr) {
+        console.warn("[SmartUpload] WhatsApp failed:", wppErr);
+      }
+
+      return {
+        success: true,
+        recognition,
+        client: { id: matchedClient.id, name: matchedClient.name },
+        task: { id: matchedTask.id, title: matchedTask.title, competencia: matchedTask.competencia },
+        fileId,
+        emailSent,
+        emailWarning,
+        whatsappSent,
+      };
+    }),
+});
+
 // ─── Task Templates Router ────────────────────────────────────────────────────
 const taskTemplatesRouter = router({
   list: protectedProcedure
@@ -664,6 +877,7 @@ export const appRouter = router({
   taskTemplates: taskTemplatesRouter,
   clientTemplates: clientTemplatesRouter,
   monthlyPanel: monthlyPanelRouter,
+  smartUpload: smartUploadRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -11,6 +11,7 @@ import TaskDetail from "./pages/TaskDetail";
 import RecurringTasksPage from "./pages/RecurringTasks";
 import TaskTemplatesPage from "./pages/TaskTemplates";
 import MonthlyPanelPage from "./pages/MonthlyPanel";
+import SmartUploadPage from "./pages/SmartUpload";
 import ClientDetail from "./pages/ClientDetail";
 import Login from "./pages/Login";
 import { useAuth } from "./_core/hooks/useAuth";
@@ -48,6 +49,7 @@ function Router() {
       <Route path="/recorrentes" component={RecurringTasksPage} />
       <Route path="/catalogo" component={TaskTemplatesPage} />
       <Route path="/painel-mensal" component={MonthlyPanelPage} />
+      <Route path="/upload-inteligente" component={SmartUploadPage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

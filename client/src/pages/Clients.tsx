@@ -4,14 +4,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
-import { Building2, Edit2, PlusCircle, Search, ToggleLeft, ToggleRight } from "lucide-react";
+import { Building2, Edit2, PlusCircle, Search, ToggleLeft, ToggleRight, User } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 
 function formatCNPJ(v: string) {
-  return v
-    .replace(/\D/g, "")
+  return v.replace(/\D/g, "")
     .replace(/^(\d{2})(\d)/, "$1.$2")
     .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
     .replace(/\.(\d{3})(\d)/, ".$1/$2")
@@ -19,14 +18,24 @@ function formatCNPJ(v: string) {
     .slice(0, 18);
 }
 
+function formatCPF(v: string) {
+  return v.replace(/\D/g, "")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/(\d{3})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3-$4")
+    .slice(0, 14);
+}
+
+const emptyForm = { name: "", cnpj: "", cpf: "", documentType: "CNPJ" as "CNPJ" | "CPF", email: "", phone: "", notes: "" };
+
 export default function Clients() {
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editClient, setEditClient] = useState<null | { id: number; name: string; cnpj: string; email: string; phone?: string | null; notes?: string | null }>(null);
-  const [form, setForm] = useState({ name: "", cnpj: "", email: "", phone: "", notes: "" });
+  const [editClient, setEditClient] = useState<null | { id: number; name: string; cnpj: string; cpf?: string | null; documentType?: string | null; email: string; phone?: string | null; notes?: string | null }>(null);
+  const [form, setForm] = useState(emptyForm);
 
-  const { data: clients = [], isLoading, refetch } = trpc.clients.list.useQuery({ includeInactive: showInactive });
+  const { data: clients = [], isLoading } = trpc.clients.list.useQuery({ includeInactive: showInactive });
   const createMutation = trpc.clients.create.useMutation();
   const updateMutation = trpc.clients.update.useMutation();
   const utils = trpc.useUtils();
@@ -40,24 +49,41 @@ export default function Clients() {
 
   const openCreate = () => {
     setEditClient(null);
-    setForm({ name: "", cnpj: "", email: "", phone: "", notes: "" });
+    setForm(emptyForm);
     setDialogOpen(true);
   };
 
   const openEdit = (c: typeof clients[0]) => {
-    setEditClient(c);
-    setForm({ name: c.name, cnpj: c.cnpj, email: c.email, phone: c.phone ?? "", notes: c.notes ?? "" });
+    setEditClient(c as any);
+    setForm({
+      name: c.name,
+      cnpj: c.cnpj,
+      cpf: (c as any).cpf ?? "",
+      documentType: ((c as any).documentType as "CNPJ" | "CPF") ?? "CNPJ",
+      email: c.email,
+      phone: c.phone ?? "",
+      notes: c.notes ?? "",
+    });
     setDialogOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = {
+        name: form.name,
+        cnpj: form.documentType === "CNPJ" ? form.cnpj : (form.cnpj || "00.000.000/0000-00"),
+        cpf: form.documentType === "CPF" ? form.cpf : undefined,
+        documentType: form.documentType,
+        email: form.email,
+        phone: form.phone || undefined,
+        notes: form.notes || undefined,
+      };
       if (editClient) {
-        await updateMutation.mutateAsync({ id: editClient.id, ...form });
+        await updateMutation.mutateAsync({ id: editClient.id, ...payload });
         toast.success("Cliente atualizado com sucesso");
       } else {
-        await createMutation.mutateAsync(form);
+        await createMutation.mutateAsync(payload);
         toast.success("Cliente cadastrado com sucesso");
       }
       setDialogOpen(false);
@@ -83,8 +109,7 @@ export default function Clients() {
             <p className="text-sm mt-0.5" style={{ color: "#a1a1aa" }}>{clients.length} cliente{clients.length !== 1 ? "s" : ""} cadastrado{clients.length !== 1 ? "s" : ""}</p>
           </div>
           <Button onClick={openCreate} className="gap-2" style={{ background: "#24646c", color: "#fff" }}>
-            <PlusCircle size={15} />
-            Novo Cliente
+            <PlusCircle size={15} /> Novo Cliente
           </Button>
         </div>
 
@@ -93,7 +118,7 @@ export default function Clients() {
           <div className="relative flex-1 min-w-48">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#52525b" }} />
             <Input
-              placeholder="Buscar por nome, CNPJ ou e-mail..."
+              placeholder="Buscar por nome, CNPJ/CPF ou e-mail..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 text-sm"
@@ -103,7 +128,9 @@ export default function Clients() {
           <button
             onClick={() => setShowInactive(!showInactive)}
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all"
-            style={showInactive ? { background: "rgba(36,100,108,0.2)", color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.4)" } : { background: "#111", color: "#a1a1aa", border: "1px solid #1e4f5c" }}
+            style={showInactive
+              ? { background: "rgba(36,100,108,0.2)", color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.4)" }
+              : { background: "#111", color: "#a1a1aa", border: "1px solid #1e4f5c" }}
           >
             {showInactive ? <ToggleRight size={15} /> : <ToggleLeft size={15} />}
             Mostrar inativos
@@ -113,9 +140,7 @@ export default function Clients() {
         {/* Table */}
         {isLoading ? (
           <div className="space-y-2">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-16 rounded-lg animate-pulse" style={{ background: "#1a1a1a" }} />
-            ))}
+            {[...Array(4)].map((_, i) => <div key={i} className="h-16 rounded-lg animate-pulse" style={{ background: "#1a1a1a" }} />)}
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-16 rounded-xl border" style={{ borderColor: "#1e4f5c", background: "#111" }}>
@@ -131,7 +156,7 @@ export default function Clients() {
               <thead>
                 <tr style={{ borderBottom: "1px solid #1e4f5c" }}>
                   <th className="text-left px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa" }}>Cliente</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium hidden md:table-cell" style={{ color: "#a1a1aa" }}>CNPJ</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium hidden md:table-cell" style={{ color: "#a1a1aa" }}>CNPJ / CPF</th>
                   <th className="text-left px-4 py-3 text-xs font-medium hidden lg:table-cell" style={{ color: "#a1a1aa" }}>E-mail</th>
                   <th className="text-left px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa" }}>Status</th>
                   <th className="text-right px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa" }}>Ações</th>
@@ -142,10 +167,28 @@ export default function Clients() {
                   <tr key={client.id} style={{ borderBottom: idx < filtered.length - 1 ? "1px solid rgba(30,79,92,0.4)" : "none" }}>
                     <td className="px-4 py-3">
                       <Link href={`/clientes/${client.id}`}>
-                        <span className="font-medium cursor-pointer hover:underline" style={{ color: "#e5e5e5" }}>{client.name}</span>
+                        <div className="flex items-center gap-2 cursor-pointer">
+                          {(client as any).documentType === "CPF"
+                            ? <User size={13} style={{ color: "#9fd4dc" }} />
+                            : <Building2 size={13} style={{ color: "#9fd4dc" }} />
+                          }
+                          <span className="font-medium hover:underline" style={{ color: "#e5e5e5" }}>{client.name}</span>
+                        </div>
                       </Link>
                     </td>
-                    <td className="px-4 py-3 hidden md:table-cell font-mono text-xs" style={{ color: "#a1a1aa" }}>{client.cnpj}</td>
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      <div>
+                        <span className="text-xs font-mono" style={{ color: "#a1a1aa" }}>
+                          {(client as any).documentType === "CPF" ? (client as any).cpf || "—" : client.cnpj}
+                        </span>
+                        <span
+                          className="ml-2 text-xs px-1.5 py-0.5 rounded"
+                          style={{ background: "rgba(36,100,108,0.15)", color: "#9fd4dc" }}
+                        >
+                          {(client as any).documentType ?? "CNPJ"}
+                        </span>
+                      </div>
+                    </td>
                     <td className="px-4 py-3 hidden lg:table-cell text-xs" style={{ color: "#a1a1aa" }}>{client.email}</td>
                     <td className="px-4 py-3">
                       <span
@@ -191,23 +234,58 @@ export default function Clients() {
               <Label style={{ color: "#a1a1aa" }}>Nome / Razão Social *</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }} />
             </div>
+
+            {/* Document type toggle */}
             <div className="space-y-1.5">
-              <Label style={{ color: "#a1a1aa" }}>CNPJ *</Label>
-              <Input
-                value={form.cnpj}
-                onChange={(e) => setForm({ ...form, cnpj: formatCNPJ(e.target.value) })}
-                placeholder="00.000.000/0000-00"
-                required
-                style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }}
-              />
+              <Label style={{ color: "#a1a1aa" }}>Tipo de documento *</Label>
+              <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "#1e4f5c" }}>
+                {(["CNPJ", "CPF"] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setForm({ ...form, documentType: type })}
+                    className="flex-1 py-2 text-sm font-medium transition-all"
+                    style={form.documentType === type
+                      ? { background: "#24646c", color: "#fff" }
+                      : { background: "#0d1f22", color: "#a1a1aa" }}
+                  >
+                    {type === "CNPJ" ? "🏢 CNPJ" : "👤 CPF"}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {form.documentType === "CNPJ" ? (
+              <div className="space-y-1.5">
+                <Label style={{ color: "#a1a1aa" }}>CNPJ *</Label>
+                <Input
+                  value={form.cnpj}
+                  onChange={(e) => setForm({ ...form, cnpj: formatCNPJ(e.target.value) })}
+                  placeholder="00.000.000/0000-00"
+                  required
+                  style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }}
+                />
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label style={{ color: "#a1a1aa" }}>CPF *</Label>
+                <Input
+                  value={form.cpf}
+                  onChange={(e) => setForm({ ...form, cpf: formatCPF(e.target.value) })}
+                  placeholder="000.000.000-00"
+                  required
+                  style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }}
+                />
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <Label style={{ color: "#a1a1aa" }}>E-mail *</Label>
               <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }} />
             </div>
             <div className="space-y-1.5">
-              <Label style={{ color: "#a1a1aa" }}>Telefone</Label>
-              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }} />
+              <Label style={{ color: "#a1a1aa" }}>Telefone / WhatsApp</Label>
+              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="(19) 99999-0000" style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }} />
             </div>
             <div className="space-y-1.5">
               <Label style={{ color: "#a1a1aa" }}>Observações</Label>
