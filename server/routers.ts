@@ -12,12 +12,15 @@ import {
   createTask,
   createTaskFile,
   createTaskTemplate,
+  createPasswordResetToken,
+  deleteTaskFile,
   getDashboardStats,
   getClientById,
   getMonthlyPanel,
   getTaskById,
   getTaskFileById,
   getTasksDueSoon,
+  getUserByResetToken,
   listClientTaskTemplates,
   listClients,
   listEmailLogs,
@@ -27,6 +30,7 @@ import {
   listTasks,
   markOverdueTasks,
   removeClientTaskTemplate,
+  resetUserPassword,
   taskExistsByRecurringAndCompetencia,
   updateClient,
   updateRecurringTask,
@@ -34,7 +38,7 @@ import {
   updateTaskTemplate,
 } from "./db";
 import { buildAlertEmailHtml, buildGuiaEmailHtml, sendEmail } from "./email";
-import { storagePut } from "./storage";
+import { storagePut, storageDelete } from "./storage";
 import { sendGuiaConfirmationWhatsApp } from "./whatsapp";
 import { getDb, getUserByEmail, upsertUser } from "./db";
 import bcryptjs from "bcryptjs";
@@ -272,6 +276,20 @@ const filesRouter = router({
   listByTask: protectedProcedure
     .input(z.object({ taskId: z.number() }))
     .query(({ input }) => listTaskFiles(input.taskId)),
+
+  delete: protectedProcedure
+    .input(z.object({ fileId: z.number() }))
+    .mutation(async ({ input }) => {
+      const file = await deleteTaskFile(input.fileId);
+      if (!file) throw new TRPCError({ code: "NOT_FOUND" });
+      // Tentar deletar do storage (não bloqueia se falhar)
+      try {
+        await storageDelete(file.fileKey);
+      } catch (err) {
+        console.warn("[Files] Storage delete failed:", err);
+      }
+      return { success: true };
+    }),
 
   upload: protectedProcedure
     .input(
@@ -989,6 +1007,34 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+
+    forgotPassword: publicProcedure
+      .input(z.object({ email: z.string().email() }))
+      .mutation(async ({ input }) => {
+        const user = await getUserByEmail(input.email);
+        if (!user) return { success: true }; // Não revelar se e-mail existe
+        const token = crypto.randomUUID().replace(/-/g, "");
+        const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hora
+        await createPasswordResetToken(user.id, token, expiresAt);
+        const resetUrl = `${process.env.OAUTH_SERVER_URL || "http://localhost:8080"}/reset-senha?token=${token}`;
+        await sendEmail({
+          to: input.email,
+          subject: "Redefinição de senha — Equilibrium",
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto"><h2 style="color:#24646c">Redefinição de senha</h2><p>Recebemos uma solicitação para redefinir a senha da sua conta no sistema Equilibrium.</p><p>Clique no botão abaixo para criar uma nova senha. O link é válido por <strong>1 hora</strong>.</p><a href="${resetUrl}" style="display:inline-block;background:#24646c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin:16px 0">Redefinir senha</a><p style="color:#999;font-size:12px">Se você não solicitou a redefinição, ignore este e-mail.</p></div>`,
+          attachments: [],
+        });
+        return { success: true };
+      }),
+
+    resetPassword: publicProcedure
+      .input(z.object({ token: z.string(), newPassword: z.string().min(6) }))
+      .mutation(async ({ input }) => {
+        const user = await getUserByResetToken(input.token);
+        if (!user) throw new TRPCError({ code: "BAD_REQUEST", message: "Token inválido ou expirado" });
+        const passwordHash = await bcryptjs.hash(input.newPassword, 10);
+        await resetUserPassword(user.id, passwordHash);
+        return { success: true };
+      }),
   }),
   clients: clientsRouter,
   recurringTasks: recurringTasksRouter,

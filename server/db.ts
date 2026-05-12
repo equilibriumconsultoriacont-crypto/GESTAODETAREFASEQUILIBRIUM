@@ -355,3 +355,47 @@ export async function getMonthlyPanel(month: number, year: number): Promise<{
       })),
   })).filter((c) => c.tasks.length > 0);
 }
+
+// ─── Password Reset ───────────────────────────────────────────────────────────
+export async function createPasswordResetToken(userId: number, token: string, expiresAt: Date): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  // Armazena token como JSON na tabela users (campo openId temporariamente)
+  // Para não criar nova tabela, usamos um prefixo especial
+  await db.update(users)
+    .set({ openId: `reset:${token}:${expiresAt.getTime()}` })
+    .where(eq(users.id, userId));
+}
+
+export async function getUserByResetToken(token: string): Promise<User | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users)
+    .where(sql`${users.openId} LIKE ${`reset:${token}:%`}`)
+    .limit(1);
+  if (!result[0]) return undefined;
+  // Verificar se não expirou
+  const parts = result[0].openId?.split(":");
+  if (!parts || parts.length < 3) return undefined;
+  const expiresAt = Number(parts[2]);
+  if (Date.now() > expiresAt) return undefined;
+  return result[0];
+}
+
+export async function resetUserPassword(userId: number, passwordHash: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users)
+    .set({ passwordHash, openId: null })
+    .where(eq(users.id, userId));
+}
+
+// ─── Delete Task File ─────────────────────────────────────────────────────────
+export async function deleteTaskFile(fileId: number): Promise<TaskFile | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(taskFiles).where(eq(taskFiles.id, fileId)).limit(1);
+  if (!result[0]) return undefined;
+  await db.delete(taskFiles).where(eq(taskFiles.id, fileId));
+  return result[0];
+}

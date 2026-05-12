@@ -15,6 +15,7 @@ import SmartUploadPage from "./pages/SmartUpload";
 import ClientDetail from "./pages/ClientDetail";
 import ClientPortal from "./pages/ClientPortal";
 import ClientLoginsPage from "./pages/ClientLogins";
+import ResetPassword from "./pages/ResetPassword";
 import Login from "./pages/Login";
 import { useAuth } from "./_core/hooks/useAuth";
 
@@ -35,6 +36,7 @@ function Router() {
   if (!user) {
     return (
       <Switch>
+        <Route path="/reset-senha" component={ResetPassword} />
         <Route path="/" component={Login} />
         <Route component={Login} />
       </Switch>
@@ -64,6 +66,7 @@ function Router() {
       <Route path="/painel-mensal" component={MonthlyPanelPage} />
       <Route path="/upload-inteligente" component={SmartUploadPage} />
       <Route path="/acessos-clientes" component={ClientLoginsPage} />
+      <Route path="/reset-senha" component={ResetPassword} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

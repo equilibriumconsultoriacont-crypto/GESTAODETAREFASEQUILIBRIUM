@@ -13,6 +13,7 @@ import {
   Download,
   FileText,
   Mail,
+  Trash2,
   Paperclip,
   Send,
   Upload,
@@ -39,6 +40,18 @@ export default function TaskDetail() {
   const { data: clients = [] } = trpc.clients.list.useQuery({ includeInactive: true });
 
   const uploadMutation = trpc.files.upload.useMutation();
+  const deleteFileMutation = trpc.files.delete.useMutation();
+
+  const handleDeleteFile = async (fileId: number, filename: string) => {
+    if (!confirm(`Remover o arquivo "${filename}"? Esta ação não pode ser desfeita.`)) return;
+    try {
+      await deleteFileMutation.mutateAsync({ fileId });
+      toast.success("Arquivo removido com sucesso");
+      refetchFiles();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao remover arquivo");
+    }
+  };
   const sendEmailMutation = trpc.email.sendGuia.useMutation();
   const updateStatusMutation = trpc.tasks.updateStatus.useMutation();
   const utils = trpc.useUtils();
@@ -256,6 +269,14 @@ export default function TaskDetail() {
                       title="Enviar por e-mail"
                     >
                       <Mail size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteFile(file.id, file.filename)}
+                      className="p-1.5 rounded hover:bg-white/5 transition-colors"
+                      style={{ color: "#f87171" }}
+                      title="Remover arquivo"
+                    >
+                      <Trash2 size={14} />
                     </button>
                     <a href={file.fileUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded hover:bg-white/5 transition-colors" style={{ color: "#a1a1aa" }} title="Baixar">
                       <Download size={14} />
