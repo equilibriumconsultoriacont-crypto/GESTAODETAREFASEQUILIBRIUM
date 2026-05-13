@@ -1,4 +1,4 @@
-import { useAuth } from "@/_core/hooks/useAuth";
+
 import { getLoginUrl } from "@/const";
 import {
   BarChart3,
@@ -30,7 +30,7 @@ const navItems = [
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, isAuthenticated, logout } = useAuth();
+
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
