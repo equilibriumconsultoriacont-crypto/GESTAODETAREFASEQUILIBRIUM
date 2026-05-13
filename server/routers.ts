@@ -986,10 +986,13 @@ export const appRouter = router({
         if (!isValidPassword) {
           throw new Error("Credenciais inválidas");
         }
-        await upsertUser({
-          email: user.email,
-          lastSignedIn: new Date(),
-        });
+        // Atualiza lastSignedIn sem tocar no passwordHash
+        const db = await getDb();
+        if (db) {
+          const { users: usersTable } = await import("../drizzle/schema");
+          const { eq } = await import("drizzle-orm");
+          await db.update(usersTable).set({ lastSignedIn: new Date() }).where(eq(usersTable.id, user.id));
+        }
         const { sdk } = await import("./_core/sdk");
         const sessionToken = await sdk.createSessionToken(user.id.toString(), {
           name: user.name || user.email,
