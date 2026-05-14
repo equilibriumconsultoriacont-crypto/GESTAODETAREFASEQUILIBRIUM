@@ -1,62 +1,38 @@
-import { cn } from "@/lib/utils";
-import { AlertTriangle, RotateCcw } from "lucide-react";
-import { Component, ReactNode } from "react";
+import React from "react";
 
-interface Props {
-  children: ReactNode;
-}
+interface State { hasError: boolean; error?: Error }
 
-interface State {
-  hasError: boolean;
-  error: Error | null;
-}
-
-class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
+export default class ErrorBoundary extends React.Component<{ children: React.ReactNode }, State> {
+  constructor(props: any) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false };
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error) {
     return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error("[ErrorBoundary]", error);
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex items-center justify-center min-h-screen p-8 bg-background">
-          <div className="flex flex-col items-center w-full max-w-2xl p-8">
-            <AlertTriangle
-              size={48}
-              className="text-destructive mb-6 flex-shrink-0"
-            />
-
-            <h2 className="text-xl mb-4">An unexpected error occurred.</h2>
-
-            <div className="p-4 w-full rounded bg-muted overflow-auto mb-6">
-              <pre className="text-sm text-muted-foreground whitespace-break-spaces">
-                {this.state.error?.stack}
-              </pre>
-            </div>
-
+        <div style={{ minHeight: "100vh", background: "#0a0a0a", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div style={{ background: "#111", border: "1px solid #1e4f5c", borderRadius: 16, padding: 32, maxWidth: 400, textAlign: "center" }}>
+            <p style={{ color: "#f87171", fontWeight: "bold", marginBottom: 8 }}>Algo deu errado</p>
+            <p style={{ color: "#a1a1aa", fontSize: 13, marginBottom: 24 }}>{this.state.error?.message}</p>
             <button
-              onClick={() => window.location.reload()}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg",
-                "bg-primary text-primary-foreground",
-                "hover:opacity-90 cursor-pointer"
-              )}
+              onClick={() => { this.setState({ hasError: false }); window.location.href = "/"; }}
+              style={{ background: "#24646c", color: "#fff", border: "none", borderRadius: 8, padding: "10px 24px", cursor: "pointer" }}
             >
-              <RotateCcw size={16} />
-              Reload Page
+              Voltar ao início
             </button>
           </div>
         </div>
       );
     }
-
     return this.props.children;
   }
 }
-
-export default ErrorBoundary;
