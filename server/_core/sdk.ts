@@ -6,6 +6,7 @@ import type { Request } from "express";
 import { SignJWT, jwtVerify } from "jose";
 import type { User } from "../../drizzle/schema";
 import * as db from "../db";
+import { getUserById } from "../db";
 import { ENV } from "./env";
 import type {
   ExchangeTokenRequest,
@@ -257,7 +258,6 @@ class SDKServer {
   }
 
   async authenticateRequest(req: Request): Promise<User> {
-    // Regular authentication flow
     const cookies = this.parseCookies(req.headers.cookie);
     const sessionCookie = cookies.get(COOKIE_NAME);
     const session = await this.verifySession(sessionCookie);
@@ -266,12 +266,21 @@ class SDKServer {
       throw ForbiddenError("Invalid session cookie");
     }
 
-    const sessionUserId = session.openId;
+    const sessionUserId = session.openId; // Can be numeric ID (local auth) or openId (OAuth)
     const signedInAt = new Date();
+
+    // Try numeric ID first (local auth — Railway)
+    const numericId = parseInt(sessionUserId, 10);
+    if (!isNaN(numericId)) {
+      const user = await getUserById(numericId);
+      if (user) return user;
+    }
+
+    // Try by openId (OAuth — Manus)
     let user = await db.getUserByOpenId(sessionUserId);
 
-    // If user not in DB, sync from OAuth server automatically
-    if (!user) {
+    // If user not in DB, try to sync from OAuth server
+    if (!user && ENV.oAuthServerUrl) {
       try {
         const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
         await db.upsertUser({
@@ -284,19 +293,12 @@ class SDKServer {
         user = await db.getUserByOpenId(userInfo.openId);
       } catch (error) {
         console.error("[Auth] Failed to sync user from OAuth:", error);
-        throw ForbiddenError("Failed to sync user info");
       }
     }
 
     if (!user) {
       throw ForbiddenError("User not found");
     }
-
-    await db.upsertUser({
-      email: user.email || `oauth-${user.openId}@local`,
-      openId: user.openId,
-      lastSignedIn: signedInAt,
-    });
 
     return user;
   }

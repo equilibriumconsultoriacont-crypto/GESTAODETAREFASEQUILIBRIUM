@@ -947,22 +947,18 @@ const clientPortalRouter = router({
       const file = await getTaskFileById(input.fileId);
       if (!file) throw new TRPCError({ code: "NOT_FOUND" });
 
-      const forgeApiUrl = process.env.BUILT_IN_FORGE_API_URL ?? "";
-      const forgeApiKey = process.env.BUILT_IN_FORGE_API_KEY ?? "";
-      if (!forgeApiUrl || !forgeApiKey) {
+      // fileUrl can be a data URL (Railway) or a manus-storage path (Manus)
+      // For data URLs, return directly. For manus paths, get signed URL.
+      if (file.fileUrl.startsWith("data:") || file.fileUrl.startsWith("http")) {
         return { url: file.fileUrl };
       }
       try {
-        const resp = await fetch(
-          `${forgeApiUrl.replace(/\/+$/, "")}/v1/storage/presign/get?path=${encodeURIComponent(file.fileKey)}`,
-          { headers: { Authorization: `Bearer ${forgeApiKey}` } }
-        );
-        if (resp.ok) {
-          const { url } = await resp.json() as { url: string };
-          return { url };
-        }
-      } catch {}
-      return { url: file.fileUrl };
+        const { storageGetSignedUrl } = await import("./storage");
+        const url = await storageGetSignedUrl(file.fileKey);
+        return { url: url || file.fileUrl };
+      } catch {
+        return { url: file.fileUrl };
+      }
     }),
 });
 
