@@ -33,6 +33,7 @@ import {
   listEmailLogs,
   listRecurringTasks,
   listTaskFiles,
+  getTaskTemplateById,
   listTaskTemplates,
   listTasks,
   markOverdueTasks,
@@ -372,7 +373,7 @@ const emailRouter = router({
         clientName: input.clientName,
         taskTitle: task.title,
         competencia: task.competencia,
-        dueDate: task.dueDate,
+        dueDate: new Date(task.dueDate),
         notes: task.notes ?? undefined,
       });
 
@@ -879,10 +880,17 @@ const clientTemplatesRouter = router({
   add: protectedProcedure
     .input(z.object({ clientId: z.number(), taskTemplateId: z.number() }))
     .mutation(async ({ input }) => {
+      // Verificar se já existe
+      const existing = await listClientTaskTemplates(input.clientId);
+      const alreadyLinked = existing.find((e) => e.taskTemplateId === input.taskTemplateId);
+      if (alreadyLinked) {
+        return { id: alreadyLinked.id };
+      }
+
       const id = await addClientTaskTemplate({ ...input, active: true });
-      // Também cria recurringTask para esse cliente com os dados do template
-      const templates = await listTaskTemplates(false);
-      const template = templates.find((t) => t.id === input.taskTemplateId);
+
+      // Criar recurringTask para gerar instâncias mensais
+      const template = await getTaskTemplateById(input.taskTemplateId);
       if (template) {
         await createRecurringTask({
           clientId: input.clientId,
