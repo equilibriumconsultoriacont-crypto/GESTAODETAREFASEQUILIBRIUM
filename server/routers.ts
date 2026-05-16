@@ -1038,9 +1038,17 @@ export const appRouter = router({
         if (!user || !user.passwordHash) {
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Credenciais inválidas" });
         }
+        // Detectar hash legado do Manus (não-bcrypt, 44 chars base64)
+        const isBcryptHash = user.passwordHash.startsWith("$2b$") || user.passwordHash.startsWith("$2a$");
+        if (!isBcryptHash) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "Senha incompatível com o novo sistema. Contate o administrador para redefinir sua senha.",
+          });
+        }
         const isValidPassword = await bcryptjs.compare(input.password, user.passwordHash);
         if (!isValidPassword) {
-          throw new Error("Credenciais inválidas");
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Credenciais inválidas" });
         }
         // Atualiza lastSignedIn sem tocar no passwordHash
         const db = await getDb();
