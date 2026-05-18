@@ -2,10 +2,12 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
+  ActivityLog,
   CatalogTemplate,
   Client,
   ClientTaskTemplate,
   EmailLog,
+  InsertActivityLog,
   InsertCatalogTemplate,
   InsertClient,
   InsertClientTaskTemplate,
@@ -21,6 +23,9 @@ import {
   TaskCatalog,
   TaskFile,
   TaskTemplate,
+  ActivityLog,
+  InsertActivityLog,
+  activityLogs,
   catalogTemplates,
   clientTaskTemplates,
   clients,
@@ -314,6 +319,46 @@ export async function listEmailLogs(taskId?: number, clientId?: number): Promise
   return db.select().from(emailLogs)
     .where(conditions.length === 1 ? conditions[0] : and(...conditions))
     .orderBy(desc(emailLogs.sentAt));
+}
+
+
+// ─── Activity Logs ────────────────────────────────────────────────────────────
+export async function logActivity(data: InsertActivityLog): Promise<void> {
+  try {
+    const db = await getDb();
+    if (!db) return;
+    await db.insert(activityLogs).values(data);
+  } catch {
+    // Logging should never break the main flow
+  }
+}
+
+export async function getActivityLogs(entityType: string, entityId: number): Promise<ActivityLog[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(activityLogs)
+    .where(and(eq(activityLogs.entityType, entityType), eq(activityLogs.entityId, entityId)))
+    .orderBy(desc(activityLogs.createdAt))
+    .limit(50);
+}
+
+export async function getOperationalQueue(filters?: {
+  department?: string;
+  status?: string;
+  assignedTo?: number;
+  urgent?: boolean;
+}): Promise<Task[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filters?.department) conditions.push(eq(tasks.department as any, filters.department));
+  if (filters?.status) conditions.push(eq(tasks.status, filters.status as any));
+  if (filters?.assignedTo) conditions.push(eq(tasks.assignedTo as any, filters.assignedTo));
+  if (filters?.urgent) conditions.push(eq(tasks.priority as any, "URGENTE"));
+
+  let q = db.select().from(tasks);
+  if (conditions.length > 0) q = (q as any).where(conditions.length === 1 ? conditions[0] : and(...conditions));
+  return (q as any).orderBy(tasks.dueDate);
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────

@@ -78,6 +78,7 @@ export const taskTemplates = mysqlTable("task_templates", {
   taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).notNull(),
   dueDayOfMonth: int("dueDayOfMonth").notNull(), // dia do mês que vence
   ocrKeywords: text("ocrKeywords"), // palavras-chave para reconhecimento de documento
+  department: mysqlEnum("department", ["FISCAL", "CONTABIL", "DP", "SOCIETARIO", "FINANCEIRO", "GERAL"]).default("GERAL").notNull(),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -126,9 +127,21 @@ export const tasks = mysqlTable("tasks", {
   taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).notNull(),
   competencia: varchar("competencia", { length: 7 }).notNull(), // MM/YYYY
   dueDate: timestamp("dueDate").notNull(),
-  status: mysqlEnum("status", ["PENDENTE", "EM_ANDAMENTO", "CONCLUIDA", "VENCIDA"])
-    .default("PENDENTE")
-    .notNull(),
+  status: mysqlEnum("status", [
+    "PENDENTE",
+    "EM_ANDAMENTO",
+    "AGUARDANDO_CLIENTE",
+    "EM_REVISAO",
+    "CONCLUIDA",
+    "CANCELADA",
+    "VENCIDA",
+  ]).default("PENDENTE").notNull(),
+  priority: mysqlEnum("priority", ["BAIXA", "NORMAL", "ALTA", "URGENTE"]).default("NORMAL").notNull(),
+  department: mysqlEnum("department", ["FISCAL", "CONTABIL", "DP", "SOCIETARIO", "FINANCEIRO", "GERAL"]).default("GERAL").notNull(),
+  assignedTo: int("assignedTo"), // FK users.id
+  internalDeadline: timestamp("internalDeadline"), // prazo interno (antes do vencimento fiscal)
+  waitingSince: timestamp("waitingSince"), // quando entrou em AGUARDANDO_CLIENTE
+  startedAt: timestamp("startedAt"), // quando iniciou EM_ANDAMENTO
   notes: text("notes"),
   completedAt: timestamp("completedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -154,6 +167,22 @@ export const taskFiles = mysqlTable("task_files", {
 
 export type TaskFile = typeof taskFiles.$inferSelect;
 export type InsertTaskFile = typeof taskFiles.$inferInsert;
+
+
+// ─── Activity Logs (auditoria completa) ──────────────────────────────────────
+export const activityLogs = mysqlTable("activity_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  entityType: varchar("entityType", { length: 50 }).notNull(), // task, client, email_log
+  entityId: int("entityId").notNull(),
+  action: varchar("action", { length: 100 }).notNull(), // status_changed, file_uploaded, email_sent
+  before: text("before"), // JSON snapshot antes
+  after: text("after"),   // JSON snapshot depois
+  userId: int("userId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ActivityLog = typeof activityLogs.$inferSelect;
+export type InsertActivityLog = typeof activityLogs.$inferInsert;
 
 // ─── Email Logs ──────────────────────────────────────────────────────────────
 export const emailLogs = mysqlTable("email_logs", {

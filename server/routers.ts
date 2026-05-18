@@ -7,6 +7,9 @@ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   addClientTaskTemplate,
   applyCatalogToClient,
+  logActivity,
+  getActivityLogs,
+  getOperationalQueue,
   createTaskCatalog,
   getCatalogTemplates,
   addCatalogTemplate,
@@ -148,7 +151,7 @@ const tasksRouter = router({
     .input(
       z.object({
         clientId: z.number().optional(),
-        status: z.enum(["PENDENTE", "EM_ANDAMENTO", "CONCLUIDA", "VENCIDA"]).optional(),
+        status: z.enum(["PENDENTE","EM_ANDAMENTO","AGUARDANDO_CLIENTE","EM_REVISAO","CONCLUIDA","CANCELADA","VENCIDA"]).optional(),
         competencia: z.string().optional(),
       })
     )
@@ -187,17 +190,27 @@ const tasksRouter = router({
   updateStatus: protectedProcedure
     .input(
       z.object({
-        id: z.number(),
-        status: z.enum(["PENDENTE", "EM_ANDAMENTO", "CONCLUIDA", "VENCIDA"]),
-        notes: z.string().optional(),
+        id: z.number().positive(),
+        status: z.enum(["PENDENTE","EM_ANDAMENTO","AGUARDANDO_CLIENTE","EM_REVISAO","CONCLUIDA","CANCELADA","VENCIDA"]),
+        notes: z.string().max(2000).optional(),
       })
     )
-    .mutation(async ({ input }) => {
-      const completedAt = input.status === "CONCLUIDA" ? new Date() : undefined;
-      await updateTask(input.id, {
-        status: input.status,
-        notes: input.notes,
-        ...(completedAt ? { completedAt } : {}),
+    .mutation(async ({ input, ctx }) => {
+      const { logActivity } = await import("./db");
+      const before = await getTaskById(input.id);
+      const now = new Date();
+      const extra: Record<string, any> = {};
+      if (input.status === "CONCLUIDA") extra.completedAt = now;
+      if (input.status === "EM_ANDAMENTO" && before?.status === "PENDENTE") extra.startedAt = now;
+      if (input.status === "AGUARDANDO_CLIENTE") extra.waitingSince = now;
+      await updateTask(input.id, { status: input.status, notes: input.notes, ...extra });
+      await logActivity({
+        entityType: "task",
+        entityId: input.id,
+        action: "status_changed",
+        before: JSON.stringify({ status: before?.status }),
+        after: JSON.stringify({ status: input.status }),
+        userId: ctx.user?.id,
       });
       return { success: true };
     }),
@@ -801,6 +814,45 @@ const taskCatalogsRouter = router({
     }),
 });
 
+
+// ─── Operational Queue Router ──────────────────────────────────────────────────
+const operationalRouter = router({
+  queue: protectedProcedure
+    .input(z.object({
+      department: z.enum(["FISCAL","CONTABIL","DP","SOCIETARIO","FINANCEIRO","GERAL"]).optional(),
+      status: z.enum(["PENDENTE","EM_ANDAMENTO","AGUARDANDO_CLIENTE","EM_REVISAO","CONCLUIDA","CANCELADA","VENCIDA"]).optional(),
+      urgent: z.boolean().optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const { getOperationalQueue } = await import("./db");
+      return getOperationalQueue(input ?? {});
+    }),
+
+  activityLog: protectedProcedure
+    .input(z.object({ entityType: z.string(), entityId: z.number() }))
+    .query(async ({ input }) => {
+      const { getActivityLogs } = await import("./db");
+      return getActivityLogs(input.entityType, input.entityId);
+    }),
+
+  stats: protectedProcedure.query(async () => {
+    const all = await listTasks();
+    const today = new Date();
+    const todayStr = today.toDateString();
+    return {
+      total: all.length,
+      pendentes: all.filter((t) => t.status === "PENDENTE").length,
+      emAndamento: all.filter((t) => t.status === "EM_ANDAMENTO").length,
+      aguardandoCliente: all.filter((t) => t.status === "AGUARDANDO_CLIENTE").length,
+      emRevisao: all.filter((t) => t.status === "EM_REVISAO").length,
+      concluidas: all.filter((t) => t.status === "CONCLUIDA").length,
+      vencidas: all.filter((t) => t.status === "VENCIDA").length,
+      vencendoHoje: all.filter((t) => new Date(t.dueDate).toDateString() === todayStr && t.status !== "CONCLUIDA").length,
+      urgentes: all.filter((t) => (t as any).priority === "URGENTE" && t.status !== "CONCLUIDA").length,
+    };
+  }),
+});
+
 // ─── Task Templates Router ────────────────────────────────────────────────────
 const taskTemplatesRouter = router({
   list: protectedProcedure
@@ -1136,6 +1188,7 @@ export const appRouter = router({
   email: emailRouter,
   autoSend: autoSendRouter,
   health: healthRouter,
+  operational: operationalRouter,
   taskTemplates: taskTemplatesRouter,
   taskCatalogs: taskCatalogsRouter,
   clientTemplates: clientTemplatesRouter,
