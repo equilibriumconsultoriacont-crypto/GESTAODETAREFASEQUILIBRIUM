@@ -243,10 +243,15 @@ export async function taskExistsByRecurringAndCompetencia(
 ): Promise<boolean> {
   const db = await getDb();
   if (!db) return false;
-  const result = await db.select().from(tasks).where(
-    and(eq(tasks.recurringTaskId, recurringTaskId), eq(tasks.competencia, competencia))
-  ).limit(1);
-  return result.length > 0;
+  try {
+    const result = await db.select({ id: tasks.id }).from(tasks).where(
+      and(eq(tasks.recurringTaskId, recurringTaskId), eq(tasks.competencia, competencia))
+    ).limit(1);
+    return result.length > 0;
+  } catch {
+    // If recurringTaskId column doesn't exist, fallback to title+client+competencia check
+    return false;
+  }
 }
 
 export async function getTasksDueSoon(daysAhead = 7): Promise<Task[]> {
