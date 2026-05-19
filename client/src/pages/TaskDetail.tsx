@@ -201,21 +201,25 @@ export default function TaskDetail() {
         <div className="rounded-xl p-4 border" style={{ background: "#111", borderColor: "#1e4f5c" }}>
           <p className="text-xs font-medium mb-3" style={{ color: "#a1a1aa" }}>ALTERAR STATUS</p>
           <div className="flex gap-2 flex-wrap">
-            {(["PENDENTE", "EM_ANDAMENTO", "CONCLUIDA", "VENCIDA"] as const).map((s) => (
+            {([
+              { value: "PENDENTE",           label: "⏳ Pendente" },
+              { value: "EM_ANDAMENTO",       label: "🔄 Em Andamento" },
+              { value: "AGUARDANDO_CLIENTE", label: "🕐 Aguard. Cliente" },
+              { value: "EM_REVISAO",         label: "🔍 Em Revisão" },
+              { value: "CONCLUIDA",          label: "✅ Concluída" },
+              { value: "CANCELADA",          label: "🚫 Cancelada" },
+              { value: "VENCIDA",            label: "🚨 Vencida" },
+            ] as const).map((s) => (
               <button
-                key={s}
-                onClick={() => handleStatusChange(s)}
-                disabled={task.status === s || updateStatusMutation.isPending}
+                key={s.value}
+                onClick={() => handleStatusChange(s.value as any)}
+                disabled={task.status === s.value || updateStatusMutation.isPending}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-40"
-                style={task.status === s
+                style={task.status === s.value
                   ? { background: "rgba(36,100,108,0.3)", color: "#9fd4dc", border: "1px solid #24646c" }
                   : { background: "rgba(255,255,255,0.04)", color: "#a1a1aa", border: "1px solid #1e4f5c" }}
               >
-                {s === "PENDENTE" && <Clock size={11} className="inline mr-1" />}
-                {s === "EM_ANDAMENTO" && <RefreshCwIcon size={11} />}
-                {s === "CONCLUIDA" && <CheckCircle2 size={11} className="inline mr-1" />}
-                {s === "VENCIDA" && <XCircle size={11} className="inline mr-1" />}
-                {s === "PENDENTE" ? "Pendente" : s === "EM_ANDAMENTO" ? "Em Andamento" : s === "CONCLUIDA" ? "Concluída" : "Vencida"}
+                {s.label}
               </button>
             ))}
           </div>

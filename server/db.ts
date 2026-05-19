@@ -364,7 +364,7 @@ export async function getOperationalQueue(filters?: {
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export async function getDashboardStats() {
   const db = await getDb();
-  if (!db) return { total: 0, pendentes: 0, emAndamento: 0, concluidas: 0, vencidas: 0, clientesAtivos: 0 };
+  if (!db) return { total: 0, pendentes: 0, emAndamento: 0, aguardandoCliente: 0, emRevisao: 0, concluidas: 0, vencidas: 0, clientesAtivos: 0 };
   const [allTasks, allClients] = await Promise.all([
     db.select().from(tasks),
     db.select().from(clients).where(eq(clients.active, true)),
@@ -373,6 +373,8 @@ export async function getDashboardStats() {
     total: allTasks.length,
     pendentes: allTasks.filter((t) => t.status === "PENDENTE").length,
     emAndamento: allTasks.filter((t) => t.status === "EM_ANDAMENTO").length,
+    aguardandoCliente: allTasks.filter((t) => t.status === "AGUARDANDO_CLIENTE").length,
+    emRevisao: allTasks.filter((t) => t.status === "EM_REVISAO").length,
     concluidas: allTasks.filter((t) => t.status === "CONCLUIDA").length,
     vencidas: allTasks.filter((t) => t.status === "VENCIDA").length,
     clientesAtivos: allClients.length,
