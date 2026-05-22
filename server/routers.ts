@@ -47,11 +47,13 @@ import {
   updateRecurringTask,
   updateTask,
   updateTaskTemplate,
+  getDb,
+  upsertUser,
 } from "./db";
 import { buildAlertEmailHtml, buildGuiaEmailHtml, sendEmail } from "./email";
 import { storagePut, storageDelete, storageGetBuffer } from "./storage";
 import { sendGuiaConfirmationWhatsApp } from "./whatsapp";
-import { getDb, getUserByEmail, upsertUser } from "./db";
+// getUserByEmail, upsertUser already imported above
 import bcryptjs from "bcryptjs";
 
 // ─── Clients Router ───────────────────────────────────────────────────────────
@@ -274,9 +276,16 @@ const tasksRouter = router({
           skipped++;
           continue;
         }
-        // Build due date: day rt.dueDayOfMonth of the NEXT month after competencia
+        // Extra check: avoid duplicates by title+client+competencia
+        const existsByTitle = (await listTasks({ clientId: rt.clientId, competencia }))
+          .some((t) => t.title === rt.title);
+        if (existsByTitle) {
+          skipped++;
+          continue;
+        }
+        // Build due date: day rt.dueDayOfMonth of the competencia month
         const [mm, yyyy] = competencia.split("/").map(Number);
-        const dueDate = new Date(yyyy!, mm!, rt.dueDayOfMonth); // month is 1-based, Date uses 0-based so mm = next month
+        const dueDate = new Date(yyyy!, mm! - 1, rt.dueDayOfMonth); // mm-1 because JS Date months are 0-based
         await createTask({
           clientId: rt.clientId,
           recurringTaskId: rt.id,
@@ -831,7 +840,6 @@ const operationalRouter = router({
   activityLog: protectedProcedure
     .input(z.object({ entityType: z.string(), entityId: z.number() }))
     .query(async ({ input }) => {
-      const { getActivityLogs } = await import("./db");
       return getActivityLogs(input.entityType, input.entityId);
     }),
 

@@ -23,8 +23,6 @@ import {
   TaskCatalog,
   TaskFile,
   TaskTemplate,
-  ActivityLog,
-  InsertActivityLog,
   activityLogs,
   catalogTemplates,
   clientTaskTemplates,
