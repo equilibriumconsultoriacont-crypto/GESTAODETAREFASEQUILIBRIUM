@@ -1,8 +1,9 @@
 import AppLayout from "@/components/AppLayout";
 import { StatusBadge, TaskTypeBadge } from "@/components/StatusBadge";
 import { trpc } from "@/lib/trpc";
-import { AlertTriangle, CheckCircle2, Clock, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, Building2, CheckCircle2, Clock, RefreshCw, XCircle, Zap } from "lucide-react";
 import { Link } from "wouter";
+import { toast } from "sonner";
 
 function StatCard({
   label,
@@ -34,16 +35,26 @@ function StatCard({
 }
 
 export default function Dashboard() {
-  const { data: stats, isLoading: statsLoading } = trpc.tasks.dashboard.useQuery();
+  const now = new Date();
+  const { data: stats, isLoading: statsLoading, error: statsError } = trpc.tasks.dashboard.useQuery();
   const { data: dueSoon, isLoading: dueSoonLoading } = trpc.tasks.dueSoon.useQuery({ days: 3 });
   const { data: allTasks, isLoading: tasksLoading } = trpc.tasks.list.useQuery({});
   const markOverdue = trpc.tasks.markOverdue.useMutation();
+  const generateMonthly = trpc.tasks.generateMonthly.useMutation();
   const utils = trpc.useUtils();
 
   const recentTasks = allTasks?.slice(0, 8) ?? [];
 
   const handleMarkOverdue = async () => {
-    await markOverdue.mutateAsync();
+    const result = await markOverdue.mutateAsync();
+    toast.success(`${result.updated} tarefa(s) marcada(s) como vencida`);
+    utils.tasks.dashboard.invalidate();
+    utils.tasks.list.invalidate();
+  };
+
+  const handleGenerateMonth = async () => {
+    const result = await generateMonthly.mutateAsync({ month: now.getMonth() + 1, year: now.getFullYear() });
+    toast.success(`${result.created} tarefa(s) gerada(s) para este mês`);
     utils.tasks.dashboard.invalidate();
     utils.tasks.list.invalidate();
   };
@@ -52,36 +63,52 @@ export default function Dashboard() {
     <AppLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-xl font-bold" style={{ color: "#e5e5e5" }}>Dashboard</h1>
             <p className="text-sm mt-0.5" style={{ color: "#a1a1aa" }}>Visão geral das obrigações fiscais</p>
           </div>
-          <button
-            onClick={handleMarkOverdue}
-            disabled={markOverdue.isPending}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-opacity hover:opacity-80"
-            style={{ background: "rgba(36,100,108,0.2)", color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)" }}
-          >
-            <RefreshCw size={13} className={markOverdue.isPending ? "animate-spin" : ""} />
-            Atualizar vencidas
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={handleGenerateMonth}
+              disabled={generateMonthly.isPending}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-opacity hover:opacity-80"
+              style={{ background: "rgba(36,100,108,0.2)", color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)" }}
+            >
+              <Zap size={13} className={generateMonthly.isPending ? "animate-pulse" : ""} />
+              Gerar tarefas do mês
+            </button>
+            <button
+              onClick={handleMarkOverdue}
+              disabled={markOverdue.isPending}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-opacity hover:opacity-80"
+              style={{ background: "rgba(36,100,108,0.2)", color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)" }}
+            >
+              <RefreshCw size={13} className={markOverdue.isPending ? "animate-spin" : ""} />
+              Atualizar vencidas
+            </button>
+          </div>
         </div>
 
         {/* Stats */}
         {statsLoading ? (
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-            {[...Array(4)].map((_, i) => (
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+            {[...Array(6)].map((_, i) => (
               <div key={i} className="h-20 rounded-xl animate-pulse" style={{ background: "#1a1a1a" }} />
             ))}
           </div>
+        ) : statsError ? (
+          <div className="rounded-xl p-4 border text-sm" style={{ borderColor: "#f87171", background: "rgba(239,68,68,0.08)", color: "#f87171" }}>
+            Erro ao carregar estatísticas. Verifique a conexão com o banco.
+          </div>
         ) : (
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+            <StatCard label="Clientes Ativos" value={stats?.clientesAtivos ?? 0} icon={Building2} color="#9fd4dc" bg="rgba(36,100,108,0.2)" />
             <StatCard label="Pendentes" value={stats?.pendentes ?? 0} icon={Clock} color="#facc15" bg="rgba(234,179,8,0.12)" />
             <StatCard label="Em Andamento" value={stats?.emAndamento ?? 0} icon={RefreshCw} color="#60a5fa" bg="rgba(59,130,246,0.12)" />
+            <StatCard label="Aguard. Cliente" value={stats?.aguardandoCliente ?? 0} icon={Clock} color="#fb923c" bg="rgba(251,146,60,0.12)" />
             <StatCard label="Concluídas" value={stats?.concluidas ?? 0} icon={CheckCircle2} color="#4ade80" bg="rgba(34,197,94,0.12)" />
             <StatCard label="Vencidas" value={stats?.vencidas ?? 0} icon={XCircle} color="#f87171" bg="rgba(239,68,68,0.12)" />
-            <StatCard label="Aguard. Cliente" value={stats?.aguardandoCliente ?? 0} icon={Clock} color="#fb923c" bg="rgba(251,146,60,0.12)" />
           </div>
         )}
 

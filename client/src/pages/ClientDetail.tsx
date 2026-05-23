@@ -49,7 +49,17 @@ export default function ClientDetail() {
   );
 
   // Mutations
+  const generateMutation = trpc.tasks.generateMonthly.useMutation();
   const addTemplateMutation = trpc.clientTemplates.add.useMutation();
+
+  const handleGenerateTasks = async () => {
+    const now = new Date();
+    try {
+      const result = await generateMutation.mutateAsync({ month: now.getMonth() + 1, year: now.getFullYear() });
+      toast.success(`${result.created} tarefa(s) gerada(s) para este mês!`);
+      utils.tasks.list.invalidate({ clientId });
+    } catch (err: any) { toast.error(err?.message ?? "Erro ao gerar tarefas"); }
+  };
   const removeTemplateMutation = trpc.clientTemplates.remove.useMutation();
   const applyCatalogMutation = trpc.taskCatalogs.applyToClient.useMutation();
   const uploadMutation = trpc.files.upload.useMutation();
@@ -296,9 +306,15 @@ export default function ClientDetail() {
             <span className="text-sm font-medium" style={{ color: "#e5e5e5" }}>
               Tarefas ({tasks.length})
             </span>
-            {tasks.length === 0 && (
-              <span className="text-xs" style={{ color: "#52525b" }}>Use o Painel Mensal → Gerar tarefas</span>
-            )}
+            <button
+              onClick={handleGenerateTasks}
+              disabled={generateMutation.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium hover:opacity-80 transition-opacity"
+              style={{ background: "rgba(36,100,108,0.2)", color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)" }}
+            >
+              <RefreshCw size={12} className={generateMutation.isPending ? "animate-spin" : ""} />
+              {generateMutation.isPending ? "Gerando..." : "Gerar tarefas do mês"}
+            </button>
           </div>
 
           {tasksLoading ? (

@@ -269,8 +269,13 @@ export default function Tasks() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label style={{ color: "#a1a1aa" }}>Competência *</Label>
-                <Input value={form.competencia} onChange={(e) => setForm({ ...form, competencia: e.target.value })}
-                  placeholder="MM/YYYY" required className="mt-1"
+                <Input value={form.competencia}
+                  onChange={(e) => {
+                    let v = e.target.value.replace(/\D/g, "");
+                    if (v.length >= 3) v = v.slice(0, 2) + "/" + v.slice(2, 6);
+                    setForm({ ...form, competencia: v });
+                  }}
+                  placeholder="MM/YYYY" maxLength={7} required className="mt-1"
                   style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }} />
               </div>
               <div>

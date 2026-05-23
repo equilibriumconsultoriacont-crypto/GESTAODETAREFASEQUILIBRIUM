@@ -211,35 +211,31 @@ export async function listTasks(filters?: {
     if (filters?.taskType) conditions.push(eq(tasks.taskType, filters.taskType as any));
     if (filters?.competencia) conditions.push(eq(tasks.competencia, filters.competencia));
     if (conditions.length > 0) {
-      return (query as any).where(conditions.length === 1 ? conditions[0] : and(...conditions)).orderBy(desc(tasks.dueDate));
+      return await (query as any).where(conditions.length === 1 ? conditions[0] : and(...conditions)).orderBy(desc(tasks.dueDate));
     }
-    return (query as any).orderBy(desc(tasks.dueDate));
+    return await (query as any).orderBy(desc(tasks.dueDate));
   } catch (err: any) {
-    // Se falhar (ex: coluna faltando), tenta query mínima com apenas campos originais
-    console.error("[DB] listTasks full query failed, trying minimal:", err?.message);
+    // Fallback: raw SQL usando o pool diretamente (não depende do schema Drizzle)
+    console.error("[DB] listTasks drizzle failed, using raw SQL:", err?.message);
     try {
-      const pool = (db as any).session?.client ?? null;
-      if (!pool) return [];
-      let sql = "SELECT id, clientId, recurringTaskId, title, description, taskType, competencia, dueDate, status, notes, completedAt, createdAt, updatedAt FROM tasks";
+      const pool = getPool();
+      let rawSql = `SELECT id, clientId, recurringTaskId, title, description, taskType,
+        competencia, dueDate, status, notes, completedAt, createdAt, updatedAt,
+        COALESCE(priority, 'NORMAL') as priority,
+        COALESCE(department, 'GERAL') as department,
+        assignedTo, internalDeadline, waitingSince, startedAt
+        FROM tasks`;
       const params: any[] = [];
       const wheres: string[] = [];
       if (filters?.clientId !== undefined) { wheres.push("clientId = ?"); params.push(filters.clientId); }
       if (filters?.status) { wheres.push("status = ?"); params.push(filters.status); }
       if (filters?.competencia) { wheres.push("competencia = ?"); params.push(filters.competencia); }
-      if (wheres.length > 0) sql += " WHERE " + wheres.join(" AND ");
-      sql += " ORDER BY dueDate DESC";
-      const [rows] = await pool.query(sql, params);
-      return (rows as any[]).map(r => ({
-        ...r,
-        priority: r.priority ?? "NORMAL",
-        department: r.department ?? "GERAL",
-        assignedTo: r.assignedTo ?? null,
-        internalDeadline: r.internalDeadline ?? null,
-        waitingSince: r.waitingSince ?? null,
-        startedAt: r.startedAt ?? null,
-      }));
+      if (wheres.length > 0) rawSql += " WHERE " + wheres.join(" AND ");
+      rawSql += " ORDER BY dueDate DESC";
+      const [rows] = await pool.query(rawSql, params);
+      return rows as Task[];
     } catch (fallbackErr: any) {
-      console.error("[DB] listTasks fallback also failed:", fallbackErr?.message);
+      console.error("[DB] listTasks raw SQL also failed:", fallbackErr?.message);
       return [];
     }
   }
@@ -311,23 +307,34 @@ export async function taskExistsByRecurringAndCompetencia(
 }
 
 export async function getTasksDueSoon(daysAhead = 7): Promise<Task[]> {
-  const db = await getDb();
-  if (!db) return [];
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() + daysAhead);
-  return db.select().from(tasks).where(
-    and(eq(tasks.status, "PENDENTE"), sql`${tasks.dueDate} <= ${cutoff}`)
-  );
+  try {
+    const pool = getPool();
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() + daysAhead);
+    const [rows] = await pool.query(
+      `SELECT * FROM tasks WHERE status = 'PENDENTE' AND dueDate <= ? ORDER BY dueDate ASC`,
+      [cutoff]
+    ) as [any[], any];
+    return rows as Task[];
+  } catch (err) {
+    console.error("[DB] getTasksDueSoon error:", err);
+    return [];
+  }
 }
 
 export async function markOverdueTasks(): Promise<number> {
-  const db = await getDb();
-  if (!db) return 0;
-  const now = new Date();
-  const result = await db.update(tasks).set({ status: "VENCIDA" }).where(
-    and(eq(tasks.status, "PENDENTE"), sql`${tasks.dueDate} < ${now}`)
-  );
-  return (result[0] as any).affectedRows ?? 0;
+  try {
+    const pool = getPool();
+    const now = new Date();
+    const [result] = await pool.query(
+      `UPDATE tasks SET status = 'VENCIDA' WHERE status = 'PENDENTE' AND dueDate < ?`,
+      [now]
+    ) as [any, any];
+    return result.affectedRows ?? 0;
+  } catch (err) {
+    console.error("[DB] markOverdueTasks error:", err);
+    return 0;
+  }
 }
 
 // ─── Task Files ───────────────────────────────────────────────────────────────
@@ -425,25 +432,22 @@ export async function getOperationalQueue(filters?: {
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export async function getDashboardStats() {
   const empty = { total: 0, pendentes: 0, emAndamento: 0, aguardandoCliente: 0, emRevisao: 0, concluidas: 0, vencidas: 0, clientesAtivos: 0 };
-  const db = await getDb();
-  if (!db) return empty;
   try {
-    const [allTasks, allClients] = await Promise.all([
-      db.select({
-        id: tasks.id,
-        status: tasks.status,
-      }).from(tasks),
-      db.select({ id: clients.id }).from(clients).where(eq(clients.active, true)),
+    const pool = getPool();
+    const [[taskRows], [clientRows]] = await Promise.all([
+      pool.query("SELECT status FROM tasks") as Promise<[any[], any]>,
+      pool.query("SELECT id FROM clients WHERE active = 1") as Promise<[any[], any]>,
     ]);
+    const allTasks = taskRows as { status: string }[];
     return {
       total: allTasks.length,
-      pendentes: allTasks.filter((t) => t.status === "PENDENTE").length,
-      emAndamento: allTasks.filter((t) => t.status === "EM_ANDAMENTO").length,
-      aguardandoCliente: allTasks.filter((t) => t.status === "AGUARDANDO_CLIENTE").length,
-      emRevisao: allTasks.filter((t) => t.status === "EM_REVISAO").length,
-      concluidas: allTasks.filter((t) => t.status === "CONCLUIDA").length,
-      vencidas: allTasks.filter((t) => t.status === "VENCIDA").length,
-      clientesAtivos: allClients.length,
+      pendentes: allTasks.filter(t => t.status === "PENDENTE").length,
+      emAndamento: allTasks.filter(t => t.status === "EM_ANDAMENTO").length,
+      aguardandoCliente: allTasks.filter(t => t.status === "AGUARDANDO_CLIENTE").length,
+      emRevisao: allTasks.filter(t => t.status === "EM_REVISAO").length,
+      concluidas: allTasks.filter(t => t.status === "CONCLUIDA").length,
+      vencidas: allTasks.filter(t => t.status === "VENCIDA").length,
+      clientesAtivos: (clientRows as any[]).length,
     };
   } catch (err) {
     console.error("[DB] getDashboardStats error:", err);
@@ -607,27 +611,33 @@ export async function applyCatalogToClient(clientId: number, catalogId: number):
 
 // ─── Monthly Panel ────────────────────────────────────────────────────────────
 export async function getMonthlyPanel(month: number, year: number) {
-  const db = await getDb();
-  if (!db) return [];
-  const competencia = `${String(month).padStart(2, "0")}/${year}`;
-  const [allClients, allTasks] = await Promise.all([
-    listClients(false),
-    db.select().from(tasks).where(eq(tasks.competencia, competencia)),
-  ]);
-  return allClients
-    .map((client) => ({
-      clientId: client.id,
-      clientName: client.name,
-      tasks: allTasks
-        .filter((t) => t.clientId === client.id)
-        .map((t) => ({
-          taskId: t.id,
-          title: t.title,
-          taskType: t.taskType,
-          status: t.status,
-          dueDate: t.dueDate,
-          competencia: t.competencia,
-        })),
-    }))
-    .filter((c) => c.tasks.length > 0);
+  try {
+    const pool = getPool();
+    const competencia = `${String(month).padStart(2, "0")}/${year}`;
+    const [[clientRows], [taskRows]] = await Promise.all([
+      pool.query("SELECT id, name FROM clients WHERE active = 1 ORDER BY name") as Promise<[any[], any]>,
+      pool.query("SELECT id, clientId, title, taskType, status, dueDate, competencia FROM tasks WHERE competencia = ?", [competencia]) as Promise<[any[], any]>,
+    ]);
+    const allClients = clientRows as { id: number; name: string }[];
+    const allTasks = taskRows as any[];
+    return allClients
+      .map((client) => ({
+        clientId: client.id,
+        clientName: client.name,
+        tasks: allTasks
+          .filter((t) => t.clientId === client.id)
+          .map((t) => ({
+            taskId: t.id,
+            title: t.title,
+            taskType: t.taskType,
+            status: t.status,
+            dueDate: t.dueDate,
+            competencia: t.competencia,
+          })),
+      }))
+      .filter((c) => c.tasks.length > 0);
+  } catch (err) {
+    console.error("[DB] getMonthlyPanel error:", err);
+    return [];
+  }
 }
