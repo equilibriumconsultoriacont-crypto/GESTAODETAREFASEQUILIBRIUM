@@ -32,25 +32,39 @@ async function createTransporter() {
     throw new Error("SMTP credentials not configured. Set SMTP_USER and SMTP_PASS.");
   }
 
-  // Resolve hostname para IPv4 explicitamente (Railway usa IPv6 por padrão)
+  // Resolver IPv4 explicitamente (Railway resolve para IPv6 por padrão)
   const ipv4Host = await resolveIPv4(host);
   console.log(`[SMTP] Conectando: ${host} → ${ipv4Host}:${port}`);
 
   const secure = port === 465;
 
-  return nodemailer.createTransport({
-    host: ipv4Host,
-    port,
-    secure,
-    auth: { user, pass },
-    tls: {
-      rejectUnauthorized: false,
-      servername: host, // SNI usa o hostname original
-    },
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000,
-  });
+  // Tenta portas em ordem: a configurada, depois fallbacks
+  const portsToTry = [port];
+  if (port === 465) portsToTry.push(587, 25);
+  else if (port === 587) portsToTry.push(465, 25);
+
+  let lastError: Error | null = null;
+  for (const tryPort of portsToTry) {
+    try {
+      const transport = nodemailer.createTransport({
+        host: ipv4Host,
+        port: tryPort,
+        secure: tryPort === 465,
+        auth: { user, pass },
+        tls: { rejectUnauthorized: false, servername: host },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
+      });
+      await transport.verify();
+      console.log(`[SMTP] Conectado com sucesso na porta ${tryPort}`);
+      return transport;
+    } catch (err: any) {
+      console.warn(`[SMTP] Porta ${tryPort} falhou: ${err.message}`);
+      lastError = err;
+    }
+  }
+  throw lastError ?? new Error("SMTP: todas as portas falharam");
 }
 
 export async function sendEmail(options: SendEmailOptions): Promise<void> {
