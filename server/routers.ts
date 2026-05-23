@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { randomUUID } from "crypto"; // Node 18 não tem crypto global
 import { COOKIE_NAME, SESSION_DURATION_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -1172,7 +1173,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const user = await getUserByEmail(input.email.trim().toLowerCase());
         if (!user) return { success: true }; // Não revelar se e-mail existe
-        const token = crypto.randomUUID().replace(/-/g, "");
+        const token = randomUUID().replace(/-/g, "");
         const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hora
         await createPasswordResetToken(user.id, token, expiresAt);
         const resetUrl = `${process.env.OAUTH_SERVER_URL || "http://localhost:8080"}/reset-senha?token=${token}`;

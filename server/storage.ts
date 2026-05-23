@@ -3,6 +3,7 @@
  * No Railway sem BUILT_IN_FORGE_API_URL, os arquivos ficam como data URLs no fileUrl
  */
 
+import { randomUUID } from "crypto";
 import { ENV } from "./_core/env";
 
 function getForgeConfig(): { forgeUrl: string; forgeKey: string } | null {
@@ -17,7 +18,7 @@ function normalizeKey(relKey: string): string {
 }
 
 function appendHashSuffix(relKey: string): string {
-  const hash = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  const hash = randomUUID().replace(/-/g, "").slice(0, 8);
   const lastDot = relKey.lastIndexOf(".");
   if (lastDot === -1) return `${relKey}_${hash}`;
   return `${relKey.slice(0, lastDot)}_${hash}${relKey.slice(lastDot)}`;
