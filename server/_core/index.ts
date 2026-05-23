@@ -30,7 +30,8 @@ async function startServer() {
       try { user = await sdk.authenticateRequest(req); } catch {}
       if (!user) return res.status(401).json({ error: "Não autenticado" });
 
-      const busboy = (await import("busboy")).default;
+      const busboyModule = await import("busboy");
+      const busboy = busboyModule.default ?? busboyModule;
       const bb = busboy({ headers: req.headers, limits: { fileSize: 20 * 1024 * 1024 } });
 
       const fields: Record<string, string> = {};
@@ -190,4 +191,3 @@ startServer().catch((err) => {
   console.error("[Fatal] Server failed to start:", err);
   process.exit(1);
 });
-// Deploy forced at 20260523025133
