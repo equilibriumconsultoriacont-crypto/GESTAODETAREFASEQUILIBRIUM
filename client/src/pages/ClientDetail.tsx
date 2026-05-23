@@ -26,6 +26,7 @@ export default function ClientDetail() {
   const [emailSubject, setEmailSubject] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: clients = [] } = trpc.clients.list.useQuery({ includeInactive: true });
@@ -43,7 +44,6 @@ export default function ClientDetail() {
   const addTemplateMutation = trpc.clientTemplates.add.useMutation();
   const removeTemplateMutation = trpc.clientTemplates.remove.useMutation();
   const applyCatalogMutation = trpc.taskCatalogs.applyToClient.useMutation();
-  const uploadMutation = trpc.files.upload.useMutation();
   const sendEmailMutation = trpc.email.sendGuia.useMutation();
   const generateMonthly = trpc.tasks.generateMonthly.useMutation();
   const utils = trpc.useUtils();
@@ -100,26 +100,33 @@ export default function ClientDetail() {
 
   const handleUpload = async () => {
     if (!selectedFile || !selectedTaskId) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = (reader.result as string).split(",")[1];
-      try {
-        await uploadMutation.mutateAsync({
-          taskId: selectedTaskId,
-          clientId,
-          filename: selectedFile.name,
-          mimeType: selectedFile.type || "application/pdf",
-          fileSize: selectedFile.size,
-          base64: base64!,
-        });
-        toast.success("Arquivo anexado com sucesso!");
-        setUploadDialogOpen(false);
-        setSelectedFile(null);
-        refetchTaskFiles();
-        utils.files.listByTask.invalidate({ taskId: selectedTaskId });
-      } catch (err: any) { toast.error(err?.message ?? "Erro ao fazer upload"); }
-    };
-    reader.readAsDataURL(selectedFile);
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("taskId", String(selectedTaskId));
+      formData.append("clientId", String(clientId));
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro no upload");
+
+      toast.success("Arquivo anexado com sucesso!");
+      setUploadDialogOpen(false);
+      setSelectedFile(null);
+      refetchTaskFiles();
+      utils.files.listByTask.invalidate({ taskId: selectedTaskId });
+      refetchTasks();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao fazer upload");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const openEmail = (taskId: number) => {
@@ -477,9 +484,9 @@ export default function ClientDetail() {
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => { setUploadDialogOpen(false); setSelectedFile(null); }} className="flex-1"
                 style={{ borderColor: "#1e4f5c", color: "#a1a1aa" }}>Cancelar</Button>
-              <Button onClick={handleUpload} disabled={!selectedFile || uploadMutation.isPending} className="flex-1 gap-2"
+              <Button onClick={handleUpload} disabled={!selectedFile || isUploading} className="flex-1 gap-2"
                 style={{ background: "#24646c", color: "#fff" }}>
-                <Upload size={13} />{uploadMutation.isPending ? "Enviando..." : "Fazer Upload"}
+                <Upload size={13} />{isUploading ? "Enviando..." : "Fazer Upload"}
               </Button>
             </div>
           </div>

@@ -85,6 +85,58 @@ async function startServer() {
     }
   });
 
+  // ── Upload de arquivos via multipart (mais eficiente que base64 em JSON) ──
+  app.post("/api/upload", async (req, res) => {
+    try {
+      // Verificar autenticação via cookie
+      const { sdk } = await import("./sdk");
+      let user: any = null;
+      try { user = await sdk.authenticateRequest(req); } catch { /* noop */ }
+      if (!user) return res.status(401).json({ error: "Não autenticado" });
+
+      const multer = (await import("multer")).default;
+      const storage = multer.memoryStorage();
+      const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } }); // 20MB
+
+      upload.single("file")(req, res, async (err) => {
+        if (err) return res.status(400).json({ error: err.message });
+        if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
+
+        const taskId = Number(req.body.taskId);
+        const clientId = Number(req.body.clientId);
+        if (!taskId || !clientId) return res.status(400).json({ error: "taskId e clientId são obrigatórios" });
+
+        try {
+          const { storagePut } = await import("../storage");
+          const { createTaskFile } = await import("../db");
+
+          const filename = req.file.originalname.replace(/[^a-zA-Z0-9._\-]/g, "_").slice(0, 255);
+          const fileKey = `tasks/${taskId}/${Date.now()}-${filename}`;
+          const { url } = await storagePut(fileKey, req.file.buffer, req.file.mimetype || "application/pdf");
+
+          const id = await createTaskFile({
+            taskId,
+            clientId,
+            filename,
+            fileKey,
+            fileUrl: url,
+            mimeType: req.file.mimetype,
+            fileSize: req.file.size,
+            uploadedBy: user.id,
+          });
+
+          return res.json({ success: true, id, fileKey, fileUrl: url, filename });
+        } catch (dbErr: any) {
+          console.error("[Upload] DB error:", dbErr);
+          return res.status(500).json({ error: dbErr?.message ?? "Erro ao salvar arquivo" });
+        }
+      });
+    } catch (e: any) {
+      console.error("[Upload] Error:", e);
+      return res.status(500).json({ error: e?.message ?? "Erro interno" });
+    }
+  });
+
   // ── Manus integrations (gracefully disabled if not configured) ─────────────
   try { registerStorageProxy(app); } catch {}
   try { registerOAuthRoutes(app); } catch {}

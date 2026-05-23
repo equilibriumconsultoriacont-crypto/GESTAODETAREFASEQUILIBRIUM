@@ -39,8 +39,9 @@ export default function TaskDetail() {
   const { data: emailLogs = [] } = trpc.email.logs.useQuery({ taskId });
   const { data: clients = [] } = trpc.clients.list.useQuery({ includeInactive: true });
 
-  const uploadMutation = trpc.files.upload.useMutation();
+  const uploadMutation = trpc.files.upload.useMutation(); // kept for type compat
   const deleteFileMutation = trpc.files.delete.useMutation();
+  const [isUploading, setIsUploading] = useState(false);
 
   const handleDeleteFile = async (fileId: number, filename: string) => {
     if (!confirm(`Remover o arquivo "${filename}"? Esta ação não pode ser desfeita.`)) return;
@@ -65,27 +66,31 @@ export default function TaskDetail() {
 
   const handleUpload = async () => {
     if (!selectedFile || !task) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = (reader.result as string).split(",")[1];
-      try {
-        await uploadMutation.mutateAsync({
-          taskId: task.id,
-          clientId: task.clientId,
-          filename: selectedFile.name,
-          mimeType: selectedFile.type,
-          fileSize: selectedFile.size,
-          base64: base64!,
-        });
-        toast.success("Arquivo enviado com sucesso");
-        setUploadDialogOpen(false);
-        setSelectedFile(null);
-        refetchFiles();
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Erro ao fazer upload");
-      }
-    };
-    reader.readAsDataURL(selectedFile);
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("taskId", String(task.id));
+      formData.append("clientId", String(task.clientId));
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro no upload");
+
+      toast.success("Arquivo enviado com sucesso");
+      setUploadDialogOpen(false);
+      setSelectedFile(null);
+      refetchFiles();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao fazer upload");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleSendEmail = async (e: React.FormEvent) => {
@@ -356,8 +361,8 @@ export default function TaskDetail() {
             </div>
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setUploadDialogOpen(false)} className="flex-1" style={{ borderColor: "#1e4f5c", color: "#a1a1aa" }}>Cancelar</Button>
-              <Button onClick={handleUpload} disabled={!selectedFile || uploadMutation.isPending} className="flex-1" style={{ background: "#24646c", color: "#fff" }}>
-                {uploadMutation.isPending ? "Enviando..." : "Fazer Upload"}
+              <Button onClick={handleUpload} disabled={!selectedFile || isUploading} className="flex-1" style={{ background: "#24646c", color: "#fff" }}>
+                {isUploading ? "Enviando..." : "Fazer Upload"}
               </Button>
             </div>
           </div>
