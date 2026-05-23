@@ -1,3 +1,9 @@
+// Polyfill crypto para Node 18 (jose e outras libs esperam globalThis.crypto)
+import { webcrypto } from "crypto";
+if (!globalThis.crypto) {
+  (globalThis as any).crypto = webcrypto;
+}
+
 import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
