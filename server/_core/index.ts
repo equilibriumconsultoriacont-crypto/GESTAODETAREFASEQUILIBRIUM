@@ -11,10 +11,9 @@ import { serveStatic, setupVite } from "./vite";
 async function startServer() {
   const app = express();
 
-  // ── Trust Railway's proxy ──────────────────────────────────────────────────
   app.set("trust proxy", 1);
 
-  // ── Security headers ───────────────────────────────────────────────────────
+  // ── Security headers ──────────────────────────────────────────────────────
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
@@ -23,18 +22,71 @@ async function startServer() {
     next();
   });
 
-  // ── Body parser ────────────────────────────────────────────────────────────
+  // ── Upload ANTES do body parser (busboy precisa do stream raw) ────────────
+  app.post("/api/upload", async (req, res) => {
+    try {
+      const { sdk } = await import("./sdk");
+      let user: any = null;
+      try { user = await sdk.authenticateRequest(req); } catch {}
+      if (!user) return res.status(401).json({ error: "Não autenticado" });
+
+      const busboy = (await import("busboy")).default;
+      const bb = busboy({ headers: req.headers, limits: { fileSize: 20 * 1024 * 1024 } });
+
+      const fields: Record<string, string> = {};
+      let fileBuffer: Buffer | null = null;
+      let fileOriginalname = "arquivo";
+      let fileMimetype = "application/pdf";
+      let fileSize = 0;
+
+      await new Promise<void>((resolve, reject) => {
+        bb.on("field", (name, val) => { fields[name] = val; });
+        bb.on("file", (_fieldname, stream, info) => {
+          fileOriginalname = info.filename || "arquivo";
+          fileMimetype = info.mimeType || "application/pdf";
+          const chunks: Buffer[] = [];
+          stream.on("data", (chunk: Buffer) => { chunks.push(chunk); fileSize += chunk.length; });
+          stream.on("end", () => { fileBuffer = Buffer.concat(chunks); });
+          stream.on("error", reject);
+        });
+        bb.on("finish", resolve);
+        bb.on("error", reject);
+        req.pipe(bb);
+      });
+
+      if (!fileBuffer) return res.status(400).json({ error: "Nenhum arquivo enviado" });
+
+      const taskId = Number(fields.taskId);
+      const clientId = Number(fields.clientId);
+      if (!taskId || !clientId) return res.status(400).json({ error: "taskId e clientId são obrigatórios" });
+
+      const { storagePut } = await import("../storage");
+      const { createTaskFile } = await import("../db");
+
+      const filename = fileOriginalname.replace(/[^a-zA-Z0-9._\-]/g, "_").slice(0, 255);
+      const fileKey = `tasks/${taskId}/${Date.now()}-${filename}`;
+      const { url } = await storagePut(fileKey, fileBuffer, fileMimetype);
+
+      const id = await createTaskFile({
+        taskId, clientId, filename, fileKey, fileUrl: url,
+        mimeType: fileMimetype, fileSize, uploadedBy: user.id,
+      });
+
+      console.log(`[Upload] OK: task=${taskId} file=${filename} size=${fileSize}`);
+      return res.json({ success: true, id, fileKey, fileUrl: url, filename });
+    } catch (e: any) {
+      console.error("[Upload] Error:", e);
+      return res.status(500).json({ error: e?.message ?? "Erro interno no upload" });
+    }
+  });
+
+  // ── Body parser (DEPOIS do upload route) ─────────────────────────────────
   app.use(express.json({ limit: "25mb" }));
   app.use(express.urlencoded({ limit: "25mb", extended: true }));
 
-  // ── Health endpoints (no auth needed) ─────────────────────────────────────
+  // ── Health ────────────────────────────────────────────────────────────────
   app.get("/health", (_req, res) => {
-    res.json({
-      status: "ok",
-      uptime: process.uptime(),
-      memory: process.memoryUsage().heapUsed,
-      timestamp: new Date().toISOString(),
-    });
+    res.json({ status: "ok", uptime: process.uptime(), memory: process.memoryUsage().heapUsed, timestamp: new Date().toISOString() });
   });
 
   app.get("/health/db", async (_req, res) => {
@@ -47,13 +99,10 @@ async function startServer() {
     }
   });
 
-  // ── Migration endpoint (protegido por MIGRATE_SECRET) ─────────────────────
+  // ── Migration endpoint ────────────────────────────────────────────────────
   app.post("/admin/migrate", async (req, res) => {
     const secret = process.env.MIGRATE_SECRET || "equilibrium-migrate-2024";
-    const authHeader = req.headers["x-migrate-secret"];
-    if (authHeader !== secret) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
+    if (req.headers["x-migrate-secret"] !== secret) return res.status(403).json({ error: "Forbidden" });
     try {
       const mysql = await import("mysql2/promise");
       const { readFileSync } = await import("fs");
@@ -61,21 +110,13 @@ async function startServer() {
       const conn = await mysql.default.createConnection({ uri: process.env.DATABASE_URL! });
       const sqlPath = join(process.cwd(), "drizzle/migrations/fix_all_missing_columns.sql");
       const sql = readFileSync(sqlPath, "utf-8");
-      const statements = sql
-        .split(/;\s*\n/)
-        .map((s: string) => s.replace(/^--.*$/gm, "").trim())
-        .filter((s: string) => s.length > 5);
+      const statements = sql.split(/;\s*\n/).map((s: string) => s.replace(/^--.*$/gm, "").trim()).filter((s: string) => s.length > 5);
       const results: string[] = [];
       for (const stmt of statements) {
-        try {
-          await conn.query(stmt);
-          results.push(`✓ OK`);
-        } catch (err: any) {
-          if (err.code === "ER_DUP_FIELDNAME" || err.code === "ER_TABLE_EXISTS_ERROR" || (err.message || "").includes("Duplicate column")) {
-            results.push(`⚠ Já existe (ok)`);
-          } else {
-            results.push(`✗ ${err.message?.slice(0, 100)}`);
-          }
+        try { await conn.query(stmt); results.push("✓ OK"); }
+        catch (err: any) {
+          if (err.code === "ER_DUP_FIELDNAME" || err.code === "ER_TABLE_EXISTS_ERROR" || (err.message||"").includes("Duplicate column")) results.push("⚠ Já existe");
+          else results.push(`✗ ${err.message?.slice(0, 100)}`);
         }
       }
       await conn.end();
@@ -85,63 +126,11 @@ async function startServer() {
     }
   });
 
-  // ── Upload de arquivos via multipart (mais eficiente que base64 em JSON) ──
-  app.post("/api/upload", async (req, res) => {
-    try {
-      // Verificar autenticação via cookie
-      const { sdk } = await import("./sdk");
-      let user: any = null;
-      try { user = await sdk.authenticateRequest(req); } catch { /* noop */ }
-      if (!user) return res.status(401).json({ error: "Não autenticado" });
-
-      const multer = (await import("multer")).default;
-      const storage = multer.memoryStorage();
-      const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } }); // 20MB
-
-      upload.single("file")(req, res, async (err) => {
-        if (err) return res.status(400).json({ error: err.message });
-        if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
-
-        const taskId = Number(req.body.taskId);
-        const clientId = Number(req.body.clientId);
-        if (!taskId || !clientId) return res.status(400).json({ error: "taskId e clientId são obrigatórios" });
-
-        try {
-          const { storagePut } = await import("../storage");
-          const { createTaskFile } = await import("../db");
-
-          const filename = req.file.originalname.replace(/[^a-zA-Z0-9._\-]/g, "_").slice(0, 255);
-          const fileKey = `tasks/${taskId}/${Date.now()}-${filename}`;
-          const { url } = await storagePut(fileKey, req.file.buffer, req.file.mimetype || "application/pdf");
-
-          const id = await createTaskFile({
-            taskId,
-            clientId,
-            filename,
-            fileKey,
-            fileUrl: url,
-            mimeType: req.file.mimetype,
-            fileSize: req.file.size,
-            uploadedBy: user.id,
-          });
-
-          return res.json({ success: true, id, fileKey, fileUrl: url, filename });
-        } catch (dbErr: any) {
-          console.error("[Upload] DB error:", dbErr);
-          return res.status(500).json({ error: dbErr?.message ?? "Erro ao salvar arquivo" });
-        }
-      });
-    } catch (e: any) {
-      console.error("[Upload] Error:", e);
-      return res.status(500).json({ error: e?.message ?? "Erro interno" });
-    }
-  });
-
-  // ── Manus integrations (gracefully disabled if not configured) ─────────────
+  // ── Manus integrations ────────────────────────────────────────────────────
   try { registerStorageProxy(app); } catch {}
   try { registerOAuthRoutes(app); } catch {}
 
-  // ── tRPC ───────────────────────────────────────────────────────────────────
+  // ── tRPC ──────────────────────────────────────────────────────────────────
   app.use(
     "/api/trpc",
     createExpressMiddleware({
@@ -155,7 +144,7 @@ async function startServer() {
     })
   );
 
-  // ── Static / Vite ──────────────────────────────────────────────────────────
+  // ── Static / Vite ─────────────────────────────────────────────────────────
   if (process.env.NODE_ENV === "development") {
     const server = createServer(app);
     await setupVite(app, server);

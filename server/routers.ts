@@ -258,39 +258,29 @@ const tasksRouter = router({
       z.object({
         month: z.number().min(1).max(12),
         year: z.number().min(2020),
+        clientId: z.number().optional(), // se informado, gera só para este cliente
       })
     )
     .mutation(async ({ input }) => {
       const { month, year } = input;
       const competencia = `${String(month).padStart(2, "0")}/${year}`;
       const allRecurring = await listRecurringTasks();
-      const activeRecurring = allRecurring.filter((rt) => rt.active);
-      const clients = await listClients(false); // only active
+      const activeRecurring = allRecurring.filter((rt) => rt.active && (input.clientId ? rt.clientId === input.clientId : true));
+      const clients = await listClients(false);
       const activeClientIds = new Set(clients.map((c) => c.id));
 
       let created = 0;
       let skipped = 0;
 
       for (const rt of activeRecurring) {
-        if (!activeClientIds.has(rt.clientId)) {
-          skipped++;
-          continue;
-        }
+        if (!activeClientIds.has(rt.clientId)) { skipped++; continue; }
         const exists = await taskExistsByRecurringAndCompetencia(rt.id, competencia);
-        if (exists) {
-          skipped++;
-          continue;
-        }
-        // Extra check: avoid duplicates by title+client+competencia
+        if (exists) { skipped++; continue; }
         const existsByTitle = (await listTasks({ clientId: rt.clientId, competencia }))
           .some((t) => t.title === rt.title);
-        if (existsByTitle) {
-          skipped++;
-          continue;
-        }
-        // Build due date: day rt.dueDayOfMonth of the competencia month
+        if (existsByTitle) { skipped++; continue; }
         const [mm, yyyy] = competencia.split("/").map(Number);
-        const dueDate = new Date(yyyy!, mm! - 1, rt.dueDayOfMonth); // mm-1 because JS Date months are 0-based
+        const dueDate = new Date(yyyy!, mm! - 1, rt.dueDayOfMonth);
         await createTask({
           clientId: rt.clientId,
           recurringTaskId: rt.id,
