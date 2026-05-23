@@ -203,36 +203,94 @@ export async function listTasks(filters?: {
 }): Promise<Task[]> {
   const db = await getDb();
   if (!db) return [];
-  let query = db.select().from(tasks);
-  const conditions: any[] = [];
-  if (filters?.clientId !== undefined) conditions.push(eq(tasks.clientId, filters.clientId));
-  if (filters?.status) conditions.push(eq(tasks.status, filters.status as any));
-  if (filters?.taskType) conditions.push(eq(tasks.taskType, filters.taskType as any));
-  if (filters?.competencia) conditions.push(eq(tasks.competencia, filters.competencia));
-  if (conditions.length > 0) {
-    return (query as any).where(conditions.length === 1 ? conditions[0] : and(...conditions)).orderBy(desc(tasks.dueDate));
+  try {
+    let query = db.select().from(tasks);
+    const conditions: any[] = [];
+    if (filters?.clientId !== undefined) conditions.push(eq(tasks.clientId, filters.clientId));
+    if (filters?.status) conditions.push(eq(tasks.status, filters.status as any));
+    if (filters?.taskType) conditions.push(eq(tasks.taskType, filters.taskType as any));
+    if (filters?.competencia) conditions.push(eq(tasks.competencia, filters.competencia));
+    if (conditions.length > 0) {
+      return (query as any).where(conditions.length === 1 ? conditions[0] : and(...conditions)).orderBy(desc(tasks.dueDate));
+    }
+    return (query as any).orderBy(desc(tasks.dueDate));
+  } catch (err: any) {
+    // Se falhar (ex: coluna faltando), tenta query mínima com apenas campos originais
+    console.error("[DB] listTasks full query failed, trying minimal:", err?.message);
+    try {
+      const pool = (db as any).session?.client ?? null;
+      if (!pool) return [];
+      let sql = "SELECT id, clientId, recurringTaskId, title, description, taskType, competencia, dueDate, status, notes, completedAt, createdAt, updatedAt FROM tasks";
+      const params: any[] = [];
+      const wheres: string[] = [];
+      if (filters?.clientId !== undefined) { wheres.push("clientId = ?"); params.push(filters.clientId); }
+      if (filters?.status) { wheres.push("status = ?"); params.push(filters.status); }
+      if (filters?.competencia) { wheres.push("competencia = ?"); params.push(filters.competencia); }
+      if (wheres.length > 0) sql += " WHERE " + wheres.join(" AND ");
+      sql += " ORDER BY dueDate DESC";
+      const [rows] = await pool.query(sql, params);
+      return (rows as any[]).map(r => ({
+        ...r,
+        priority: r.priority ?? "NORMAL",
+        department: r.department ?? "GERAL",
+        assignedTo: r.assignedTo ?? null,
+        internalDeadline: r.internalDeadline ?? null,
+        waitingSince: r.waitingSince ?? null,
+        startedAt: r.startedAt ?? null,
+      }));
+    } catch (fallbackErr: any) {
+      console.error("[DB] listTasks fallback also failed:", fallbackErr?.message);
+      return [];
+    }
   }
-  return (query as any).orderBy(desc(tasks.dueDate));
 }
 
 export async function getTaskById(id: number): Promise<Task | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
-  return result[0];
+  try {
+    const result = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
+    return result[0];
+  } catch {
+    return undefined;
+  }
 }
 
 export async function createTask(data: InsertTask): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(tasks).values(data);
-  return result[0].insertId;
+  try {
+    const result = await db.insert(tasks).values(data);
+    return result[0].insertId;
+  } catch (err: any) {
+    // Se falhar por coluna nova não existente, tenta sem os campos opcionais
+    if (err?.code === "ER_BAD_FIELD_ERROR") {
+      console.warn("[DB] createTask: column missing, retrying without new fields:", err.message);
+      const { priority, department, assignedTo, internalDeadline, waitingSince, startedAt, ...baseData } = data as any;
+      const result = await db.insert(tasks).values(baseData);
+      return result[0].insertId;
+    }
+    throw err;
+  }
 }
 
 export async function updateTask(id: number, data: Partial<InsertTask>): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  await db.update(tasks).set(data).where(eq(tasks.id, id));
+  try {
+    await db.update(tasks).set(data).where(eq(tasks.id, id));
+  } catch (err: any) {
+    // Se falhar por coluna nova, tenta sem campos opcionais
+    if (err?.code === "ER_BAD_FIELD_ERROR") {
+      console.warn("[DB] updateTask: column missing, retrying without new fields:", err.message);
+      const { priority, department, assignedTo, internalDeadline, waitingSince, startedAt, ...baseData } = data as any;
+      if (Object.keys(baseData).length > 0) {
+        await db.update(tasks).set(baseData).where(eq(tasks.id, id));
+      }
+    } else {
+      throw err;
+    }
+  }
 }
 
 export async function taskExistsByRecurringAndCompetencia(
@@ -366,22 +424,31 @@ export async function getOperationalQueue(filters?: {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export async function getDashboardStats() {
+  const empty = { total: 0, pendentes: 0, emAndamento: 0, aguardandoCliente: 0, emRevisao: 0, concluidas: 0, vencidas: 0, clientesAtivos: 0 };
   const db = await getDb();
-  if (!db) return { total: 0, pendentes: 0, emAndamento: 0, aguardandoCliente: 0, emRevisao: 0, concluidas: 0, vencidas: 0, clientesAtivos: 0 };
-  const [allTasks, allClients] = await Promise.all([
-    db.select().from(tasks),
-    db.select().from(clients).where(eq(clients.active, true)),
-  ]);
-  return {
-    total: allTasks.length,
-    pendentes: allTasks.filter((t) => t.status === "PENDENTE").length,
-    emAndamento: allTasks.filter((t) => t.status === "EM_ANDAMENTO").length,
-    aguardandoCliente: allTasks.filter((t) => t.status === "AGUARDANDO_CLIENTE").length,
-    emRevisao: allTasks.filter((t) => t.status === "EM_REVISAO").length,
-    concluidas: allTasks.filter((t) => t.status === "CONCLUIDA").length,
-    vencidas: allTasks.filter((t) => t.status === "VENCIDA").length,
-    clientesAtivos: allClients.length,
-  };
+  if (!db) return empty;
+  try {
+    const [allTasks, allClients] = await Promise.all([
+      db.select({
+        id: tasks.id,
+        status: tasks.status,
+      }).from(tasks),
+      db.select({ id: clients.id }).from(clients).where(eq(clients.active, true)),
+    ]);
+    return {
+      total: allTasks.length,
+      pendentes: allTasks.filter((t) => t.status === "PENDENTE").length,
+      emAndamento: allTasks.filter((t) => t.status === "EM_ANDAMENTO").length,
+      aguardandoCliente: allTasks.filter((t) => t.status === "AGUARDANDO_CLIENTE").length,
+      emRevisao: allTasks.filter((t) => t.status === "EM_REVISAO").length,
+      concluidas: allTasks.filter((t) => t.status === "CONCLUIDA").length,
+      vencidas: allTasks.filter((t) => t.status === "VENCIDA").length,
+      clientesAtivos: allClients.length,
+    };
+  } catch (err) {
+    console.error("[DB] getDashboardStats error:", err);
+    return empty;
+  }
 }
 
 // ─── Password Reset ───────────────────────────────────────────────────────────

@@ -49,6 +49,7 @@ import {
   updateTaskTemplate,
   getDb,
   upsertUser,
+  getUserByEmail,
 } from "./db";
 import { buildAlertEmailHtml, buildGuiaEmailHtml, sendEmail } from "./email";
 import { storagePut, storageDelete, storageGetBuffer } from "./storage";

@@ -43,9 +43,9 @@ export default function ClientDetail() {
   const { data: clientTemplates = [] } = trpc.clientTemplates.listByClient.useQuery({ clientId });
   const { data: allTemplates = [] } = trpc.taskTemplates.list.useQuery({ activeOnly: true });
   const { data: catalogs = [] } = trpc.taskCatalogs.list.useQuery({ activeOnly: true });
-  const { data: taskFiles = [] } = trpc.files.listByTask.useQuery(
+  const { data: taskFiles = [], refetch: refetchTaskFiles } = trpc.files.listByTask.useQuery(
     { taskId: selectedTaskId! },
-    { enabled: !!selectedTaskId && emailDialogOpen }
+    { enabled: !!selectedTaskId && (emailDialogOpen || uploadDialogOpen) }
   );
 
   // Mutations
@@ -121,6 +121,7 @@ export default function ClientDetail() {
         toast.success("Arquivo anexado com sucesso!");
         setUploadDialogOpen(false);
         setSelectedFile(null);
+        refetchTaskFiles();
         utils.files.listByTask.invalidate({ taskId: selectedTaskId });
         utils.tasks.list.invalidate({ clientId });
       } catch (err: any) { toast.error(err?.message ?? "Erro ao fazer upload"); }

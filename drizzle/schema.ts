@@ -158,7 +158,7 @@ export const taskFiles = mysqlTable("task_files", {
   clientId: int("clientId").notNull(),
   filename: varchar("filename", { length: 255 }).notNull(),
   fileKey: varchar("fileKey", { length: 512 }).notNull(),
-  fileUrl: varchar("fileUrl", { length: 1024 }).notNull(),
+  fileUrl: text("fileUrl").notNull(),
   mimeType: varchar("mimeType", { length: 100 }),
   fileSize: bigint("fileSize", { mode: "number" }),
   uploadedBy: int("uploadedBy"),

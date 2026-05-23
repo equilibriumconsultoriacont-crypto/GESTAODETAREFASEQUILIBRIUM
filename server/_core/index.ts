@@ -24,8 +24,8 @@ async function startServer() {
   });
 
   // ── Body parser ────────────────────────────────────────────────────────────
-  app.use(express.json({ limit: "10mb" })); // reduced from 50mb for security
-  app.use(express.urlencoded({ limit: "10mb", extended: true }));
+  app.use(express.json({ limit: "25mb" }));
+  app.use(express.urlencoded({ limit: "25mb", extended: true }));
 
   // ── Health endpoints (no auth needed) ─────────────────────────────────────
   app.get("/health", (_req, res) => {
@@ -44,6 +44,44 @@ async function startServer() {
       res.status(result.ok ? 200 : 503).json(result);
     } catch (err: any) {
       res.status(503).json({ ok: false, error: err?.message });
+    }
+  });
+
+  // ── Migration endpoint (protegido por MIGRATE_SECRET) ─────────────────────
+  app.post("/admin/migrate", async (req, res) => {
+    const secret = process.env.MIGRATE_SECRET || "equilibrium-migrate-2024";
+    const authHeader = req.headers["x-migrate-secret"];
+    if (authHeader !== secret) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    try {
+      const mysql = await import("mysql2/promise");
+      const { readFileSync } = await import("fs");
+      const { join } = await import("path");
+      const conn = await mysql.default.createConnection({ uri: process.env.DATABASE_URL! });
+      const sqlPath = join(process.cwd(), "drizzle/migrations/fix_all_missing_columns.sql");
+      const sql = readFileSync(sqlPath, "utf-8");
+      const statements = sql
+        .split(/;\s*\n/)
+        .map((s: string) => s.replace(/^--.*$/gm, "").trim())
+        .filter((s: string) => s.length > 5);
+      const results: string[] = [];
+      for (const stmt of statements) {
+        try {
+          await conn.query(stmt);
+          results.push(`✓ OK`);
+        } catch (err: any) {
+          if (err.code === "ER_DUP_FIELDNAME" || err.code === "ER_TABLE_EXISTS_ERROR" || (err.message || "").includes("Duplicate column")) {
+            results.push(`⚠ Já existe (ok)`);
+          } else {
+            results.push(`✗ ${err.message?.slice(0, 100)}`);
+          }
+        }
+      }
+      await conn.end();
+      res.json({ success: true, statements: statements.length, results });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message });
     }
   });
 
