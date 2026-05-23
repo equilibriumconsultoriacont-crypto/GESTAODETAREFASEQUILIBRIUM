@@ -172,7 +172,7 @@ async function startServer() {
         });
         return res.json({ ok: true, host, ipv4Host, workingPort: working.port, results });
       }
-      return res.status(500).json({ ok: false, host, ipv4Host, results });
+      return res.status(500).json({ ok: false, host, ipv4Host, results, tip: "Railway bloqueia SMTP. Configure RESEND_API_KEY nas variáveis do Railway." });
     } catch (e: any) {
       return res.status(500).json({ ok: false, error: e?.message, code: e?.code });
     }
