@@ -104,12 +104,24 @@ async function startServer() {
     if (req.headers["x-migrate-secret"] !== secret) return res.status(403).json({ error: "Forbidden" });
     try {
       const mysql = await import("mysql2/promise");
-      const { readFileSync } = await import("fs");
-      const { join } = await import("path");
       const conn = await mysql.default.createConnection({ uri: process.env.DATABASE_URL! });
-      const sqlPath = join(process.cwd(), "drizzle/migrations/fix_all_missing_columns.sql");
-      const sql = readFileSync(sqlPath, "utf-8");
-      const statements = sql.split(/;\s*\n/).map((s: string) => s.replace(/^--.*$/gm, "").trim()).filter((s: string) => s.length > 5);
+      // SQL embutido diretamente (esbuild não inclui arquivos externos)
+      const statements = [
+        "ALTER TABLE `clients` ADD COLUMN IF NOT EXISTS `cpf` varchar(14)",
+        "ALTER TABLE `clients` ADD COLUMN IF NOT EXISTS `documentType` enum('CNPJ','CPF') NOT NULL DEFAULT 'CNPJ'",
+        "ALTER TABLE `tasks` ADD COLUMN IF NOT EXISTS `priority` enum('BAIXA','NORMAL','ALTA','URGENTE') NOT NULL DEFAULT 'NORMAL'",
+        "ALTER TABLE `tasks` ADD COLUMN IF NOT EXISTS `department` enum('FISCAL','CONTABIL','DP','SOCIETARIO','FINANCEIRO','GERAL') NOT NULL DEFAULT 'GERAL'",
+        "ALTER TABLE `tasks` ADD COLUMN IF NOT EXISTS `assignedTo` int",
+        "ALTER TABLE `tasks` ADD COLUMN IF NOT EXISTS `completedAt` timestamp NULL",
+        "ALTER TABLE `tasks` ADD COLUMN IF NOT EXISTS `internalDeadline` timestamp NULL",
+        "ALTER TABLE `tasks` ADD COLUMN IF NOT EXISTS `waitingSince` timestamp NULL",
+        "ALTER TABLE `tasks` ADD COLUMN IF NOT EXISTS `startedAt` timestamp NULL",
+        "ALTER TABLE `tasks` MODIFY COLUMN `status` enum('PENDENTE','EM_ANDAMENTO','AGUARDANDO_CLIENTE','EM_REVISAO','CONCLUIDA','CANCELADA','VENCIDA') NOT NULL DEFAULT 'PENDENTE'",
+        "ALTER TABLE `recurring_tasks` ADD COLUMN IF NOT EXISTS `taskTemplateId` int",
+        "ALTER TABLE `users` ADD COLUMN IF NOT EXISTS `clientId` int",
+        "ALTER TABLE `users` MODIFY COLUMN `role` enum('user','admin','client') NOT NULL DEFAULT 'user'",
+        "ALTER TABLE `task_files` MODIFY COLUMN `fileUrl` mediumtext NOT NULL",
+      ];
       const results: string[] = [];
       for (const stmt of statements) {
         try { await conn.query(stmt); results.push("✓ OK"); }
