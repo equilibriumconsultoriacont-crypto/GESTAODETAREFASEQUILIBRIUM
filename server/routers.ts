@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME, SESSION_DURATION_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -1150,12 +1150,12 @@ export const appRouter = router({
         const { sdk } = await import("./_core/sdk");
         const sessionToken = await sdk.createSessionToken(user.id.toString(), {
           name: user.name || user.email,
-          expiresInMs: 1000 * 60 * 60 * 24 * 365,
+          expiresInMs: SESSION_DURATION_MS,
         });
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(COOKIE_NAME, sessionToken, {
           ...cookieOptions,
-          maxAge: 1000 * 60 * 60 * 24 * 365,
+          maxAge: SESSION_DURATION_MS,
         });
         return { success: true, user, role: user.role, clientId: (user as any).clientId };
       }),
