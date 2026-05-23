@@ -32,15 +32,24 @@ const DEPT_OPTIONS = [
   { value: "GERAL", label: "Geral" },
 ];
 
-const TYPE_OPTIONS = ["DAS","NFS","DCTF","SPED","OUTROS"];
+const TYPE_OPTIONS = ["DAS", "NFS", "DCTF", "SPED", "OUTROS"];
+const MONTHS = ["01","02","03","04","05","06","07","08","09","10","11","12"];
+const currentYear = new Date().getFullYear();
+const YEARS = [currentYear - 1, currentYear, currentYear + 1].map(String);
 
 export default function Tasks() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [deptFilter, setDeptFilter] = useState("ALL");
   const [clientFilter, setClientFilter] = useState("ALL");
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  const now = new Date();
+  const defaultMm = String(now.getMonth() + 1).padStart(2, "0");
+  const defaultYyyy = String(now.getFullYear());
+
   const [form, setForm] = useState({
-    clientId: "", title: "", taskType: "DAS", competencia: "",
+    clientId: "", title: "", taskType: "DAS",
+    competenciaMm: defaultMm, competenciaYyyy: defaultYyyy,
     dueDate: "", description: "", notes: "",
     department: "GERAL", priority: "NORMAL",
   });
@@ -50,7 +59,6 @@ export default function Tasks() {
     status: statusFilter !== "ALL" ? statusFilter as any : undefined,
     clientId: clientFilter !== "ALL" ? Number(clientFilter) : undefined,
   });
-  const { data: opStats } = (trpc as any).operational?.stats?.useQuery?.() ?? { data: null };
   const createMutation = trpc.tasks.create.useMutation();
   const utils = trpc.useUtils();
 
@@ -62,13 +70,16 @@ export default function Tasks() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.clientId) { toast.error("Selecione um cliente"); return; }
+    if (!form.dueDate) { toast.error("Informe a data de vencimento"); return; }
+    const competencia = `${form.competenciaMm}/${form.competenciaYyyy}`;
     try {
       await createMutation.mutateAsync({
         clientId: Number(form.clientId),
         title: form.title,
         taskType: form.taskType as any,
-        competencia: form.competencia,
-        dueDate: new Date(form.dueDate).toISOString(),
+        competencia,
+        dueDate: new Date(form.dueDate + "T12:00:00").toISOString(),
         description: form.description || undefined,
         notes: form.notes || undefined,
         department: form.department as any,
@@ -76,7 +87,7 @@ export default function Tasks() {
       });
       toast.success("Tarefa criada!");
       setDialogOpen(false);
-      setForm({ clientId: "", title: "", taskType: "DAS", competencia: "", dueDate: "", description: "", notes: "", department: "GERAL", priority: "NORMAL" });
+      setForm({ clientId: "", title: "", taskType: "DAS", competenciaMm: defaultMm, competenciaYyyy: defaultYyyy, dueDate: "", description: "", notes: "", department: "GERAL", priority: "NORMAL" });
       utils.tasks.list.invalidate();
       utils.tasks.dashboard.invalidate();
     } catch (err: any) {
@@ -92,7 +103,6 @@ export default function Tasks() {
   return (
     <AppLayout>
       <div className="space-y-5">
-        {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-xl font-bold" style={{ color: "#e5e5e5" }}>Fila de Tarefas</h1>
@@ -103,40 +113,29 @@ export default function Tasks() {
           </Button>
         </div>
 
-        {/* Operational alerts */}
         {(vencendoHoje > 0 || aguardandoCliente > 0 || vencidas > 0) && (
           <div className="grid grid-cols-3 gap-3">
             {vencendoHoje > 0 && (
               <div className="rounded-xl p-3 flex items-center gap-3" style={{ background: "rgba(251,146,60,0.1)", border: "1px solid rgba(251,146,60,0.3)" }}>
                 <Clock size={18} style={{ color: "#fb923c" }} />
-                <div>
-                  <p className="text-lg font-bold" style={{ color: "#fb923c" }}>{vencendoHoje}</p>
-                  <p className="text-xs" style={{ color: "#a1a1aa" }}>Vencem hoje</p>
-                </div>
+                <div><p className="text-lg font-bold" style={{ color: "#fb923c" }}>{vencendoHoje}</p><p className="text-xs" style={{ color: "#a1a1aa" }}>Vencem hoje</p></div>
               </div>
             )}
             {aguardandoCliente > 0 && (
               <div className="rounded-xl p-3 flex items-center gap-3" style={{ background: "rgba(251,146,60,0.1)", border: "1px solid rgba(251,146,60,0.3)" }}>
                 <Users size={18} style={{ color: "#fb923c" }} />
-                <div>
-                  <p className="text-lg font-bold" style={{ color: "#fb923c" }}>{aguardandoCliente}</p>
-                  <p className="text-xs" style={{ color: "#a1a1aa" }}>Aguardando cliente</p>
-                </div>
+                <div><p className="text-lg font-bold" style={{ color: "#fb923c" }}>{aguardandoCliente}</p><p className="text-xs" style={{ color: "#a1a1aa" }}>Aguardando cliente</p></div>
               </div>
             )}
             {vencidas > 0 && (
               <div className="rounded-xl p-3 flex items-center gap-3" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)" }}>
                 <AlertCircle size={18} style={{ color: "#f87171" }} />
-                <div>
-                  <p className="text-lg font-bold" style={{ color: "#f87171" }}>{vencidas}</p>
-                  <p className="text-xs" style={{ color: "#a1a1aa" }}>Vencidas</p>
-                </div>
+                <div><p className="text-lg font-bold" style={{ color: "#f87171" }}>{vencidas}</p><p className="text-xs" style={{ color: "#a1a1aa" }}>Vencidas</p></div>
               </div>
             )}
           </div>
         )}
 
-        {/* Filters */}
         <div className="flex gap-3 flex-wrap">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-52" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
@@ -146,20 +145,14 @@ export default function Tasks() {
               {STATUS_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value} style={{ color: "#e5e5e5" }}>{o.label}</SelectItem>)}
             </SelectContent>
           </Select>
-
           <Select value={deptFilter} onValueChange={setDeptFilter}>
-            <SelectTrigger className="w-48" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger className="w-48" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}><SelectValue /></SelectTrigger>
             <SelectContent style={{ background: "#111", borderColor: "#1e4f5c" }}>
               {DEPT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value} style={{ color: "#e5e5e5" }}>{o.label}</SelectItem>)}
             </SelectContent>
           </Select>
-
           <Select value={clientFilter} onValueChange={setClientFilter}>
-            <SelectTrigger className="w-52" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
-              <SelectValue placeholder="Todos os clientes" />
-            </SelectTrigger>
+            <SelectTrigger className="w-52" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}><SelectValue placeholder="Todos os clientes" /></SelectTrigger>
             <SelectContent style={{ background: "#111", borderColor: "#1e4f5c" }}>
               <SelectItem value="ALL" style={{ color: "#e5e5e5" }}>Todos os clientes</SelectItem>
               {clients.map((c) => <SelectItem key={c.id} value={String(c.id)} style={{ color: "#e5e5e5" }}>{c.name}</SelectItem>)}
@@ -167,7 +160,6 @@ export default function Tasks() {
           </Select>
         </div>
 
-        {/* Task list */}
         {isLoading ? (
           <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-16 rounded-xl animate-pulse" style={{ background: "#1a1a1a" }} />)}</div>
         ) : filteredTasks.length === 0 ? (
@@ -191,7 +183,7 @@ export default function Tasks() {
                 {filteredTasks.map((task, idx) => {
                   const client = clientMap.get(task.clientId);
                   const due = new Date(task.dueDate);
-                  const isOverdue = due < today && task.status !== "CONCLUIDA" && task.status !== "CANCELADA";
+                  const isOverdue = due < today && task.status !== "CONCLUIDA" && task.status !== "CANCELADA" && task.status !== "VENCIDA";
                   const isDueToday = due.toDateString() === today.toDateString();
                   return (
                     <tr key={task.id} style={{ borderBottom: idx < filteredTasks.length - 1 ? "1px solid rgba(30,79,92,0.4)" : "none" }}>
@@ -217,9 +209,7 @@ export default function Tasks() {
                           {isDueToday ? "⚡ Hoje" : due.toLocaleDateString("pt-BR")}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={task.status} />
-                      </td>
+                      <td className="px-4 py-3"><StatusBadge status={task.status} /></td>
                     </tr>
                   );
                 })}
@@ -229,7 +219,6 @@ export default function Tasks() {
         )}
       </div>
 
-      {/* Create task dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader><DialogTitle style={{ color: "#e5e5e5" }}>Nova Tarefa</DialogTitle></DialogHeader>
@@ -269,14 +258,18 @@ export default function Tasks() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label style={{ color: "#a1a1aa" }}>Competência *</Label>
-                <Input value={form.competencia}
-                  onChange={(e) => {
-                    let v = e.target.value.replace(/\D/g, "");
-                    if (v.length >= 3) v = v.slice(0, 2) + "/" + v.slice(2, 6);
-                    setForm({ ...form, competencia: v });
-                  }}
-                  placeholder="MM/YYYY" maxLength={7} required className="mt-1"
-                  style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }} />
+                <div className="flex gap-1 mt-1">
+                  <select value={form.competenciaMm} onChange={(e) => setForm({ ...form, competenciaMm: e.target.value })}
+                    className="w-1/2 rounded-md px-2 py-2 text-sm"
+                    style={{ background: "#0d1f22", border: "1px solid #1e4f5c", color: "#e5e5e5", outline: "none" }}>
+                    {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <select value={form.competenciaYyyy} onChange={(e) => setForm({ ...form, competenciaYyyy: e.target.value })}
+                    className="w-1/2 rounded-md px-2 py-2 text-sm"
+                    style={{ background: "#0d1f22", border: "1px solid #1e4f5c", color: "#e5e5e5", outline: "none" }}>
+                    {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
               </div>
               <div>
                 <Label style={{ color: "#a1a1aa" }}>Vencimento *</Label>
