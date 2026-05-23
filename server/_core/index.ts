@@ -128,10 +128,32 @@ async function startServer() {
   });
 
   // ── Teste de SMTP ────────────────────────────────────────────────────────
-  app.get("/admin/test-smtp", async (req, res) => {
+  app.get("/admin/test-email", async (req, res) => {
     const secret = process.env.MIGRATE_SECRET || "equilibrium-migrate-2024";
     if (req.headers["x-migrate-secret"] !== secret && req.query.secret !== secret) {
       return res.status(403).json({ error: "Forbidden" });
+    }
+    // Testa Resend se configurado
+    const resendKey = process.env.RESEND_API_KEY;
+    const resendFrom = process.env.RESEND_FROM || "contato@equilibriumcont.com";
+    if (resendKey) {
+      try {
+        const r = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: `Equilibrium <${resendFrom}>`,
+            to: [resendFrom],
+            subject: "✅ Teste Resend — Equilibrium funcionando!",
+            html: "<h1>Funcionando!</h1><p>E-mail via Resend configurado com sucesso.</p><p>Data: " + new Date().toISOString() + "</p>"
+          })
+        });
+        const data = await r.json();
+        if (r.ok) return res.json({ ok: true, method: "resend", from: resendFrom, id: data.id });
+        return res.status(500).json({ ok: false, method: "resend", error: data, status: r.status });
+      } catch (e: any) {
+        return res.status(500).json({ ok: false, method: "resend", error: e.message });
+      }
     }
     try {
       const nodemailer = await import("nodemailer");
