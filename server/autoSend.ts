@@ -26,11 +26,18 @@ export async function autoSendPendingGuias(): Promise<{
       return { sent: 0, failed: 0, errors: ["Database not available"] };
     }
 
-    // Buscar tarefas com status "PENDENTE" que têm arquivos anexados
+    // Buscar tarefas com status "PENDENTE" que vencem nos próximos 7 dias
+    const sevenDaysFromNow = new Date();
+    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
     const pendingTasks = await database
       .select()
       .from(tasks)
-      .where(eq(tasks.status, "PENDENTE"))
+      .where(
+        and(
+          eq(tasks.status, "PENDENTE"),
+          sql`${tasks.dueDate} <= ${sevenDaysFromNow}`
+        )
+      )
       .limit(100);
 
     for (const task of pendingTasks) {

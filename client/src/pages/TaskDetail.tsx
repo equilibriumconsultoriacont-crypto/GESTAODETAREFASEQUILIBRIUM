@@ -107,7 +107,7 @@ export default function TaskDetail() {
     }
   };
 
-  const handleStatusChange = async (status: "PENDENTE" | "EM_ANDAMENTO" | "CONCLUIDA" | "VENCIDA") => {
+  const handleStatusChange = async (status: "PENDENTE" | "EM_ANDAMENTO" | "AGUARDANDO_CLIENTE" | "EM_REVISAO" | "CONCLUIDA" | "CANCELADA" | "VENCIDA") => {
     if (!task) return;
     await updateStatusMutation.mutateAsync({ id: task.id, status });
     toast.success("Status atualizado");
@@ -137,7 +137,7 @@ export default function TaskDetail() {
     );
   }
 
-  const isOverdue = new Date(task.dueDate) < new Date() && task.status !== "CONCLUIDA";
+  const isOverdue = new Date(task.dueDate) < new Date() && task.status !== "CONCLUIDA" && task.status !== "CANCELADA" && task.status !== "VENCIDA";
 
   return (
     <AppLayout>
@@ -260,7 +260,7 @@ export default function TaskDetail() {
                     <div>
                       <p className="text-sm font-medium" style={{ color: "#e5e5e5" }}>{file.filename}</p>
                       <p className="text-xs" style={{ color: "#a1a1aa" }}>
-                        {new Date(file.uploadedAt ?? file.createdAt).toLocaleDateString("pt-BR")}
+                        {new Date(file.uploadedAt).toLocaleDateString("pt-BR")}
                         {file.fileSize ? ` · ${(file.fileSize / 1024).toFixed(0)} KB` : ""}
                       </p>
                     </div>

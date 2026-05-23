@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 
 export interface SendEmailOptions {
   to: string;
+  cc?: string;
   subject: string;
   html: string;
   attachments?: Array<{
@@ -35,9 +36,11 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
   const fromName = process.env.SMTP_FROM_NAME || "Equilibrium Consultoria";
   const fromEmail = process.env.SMTP_USER || "";
 
+  const ccEmail = options.cc ?? process.env.SMTP_CC_EMAIL ?? "contato@equilibriumcont.com";
   await transporter.sendMail({
     from: `"${fromName}" <${fromEmail}>`,
     to: options.to,
+    cc: ccEmail !== options.to ? ccEmail : undefined,
     subject: options.subject,
     html: options.html,
     attachments: options.attachments,

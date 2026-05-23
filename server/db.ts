@@ -285,7 +285,7 @@ export async function createTaskFile(data: InsertTaskFile): Promise<number> {
 export async function listTaskFiles(taskId: number): Promise<TaskFile[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(taskFiles).where(eq(taskFiles.taskId, taskId)).orderBy(desc(taskFiles.createdAt));
+  return db.select().from(taskFiles).where(eq(taskFiles.taskId, taskId)).orderBy(desc(taskFiles.uploadedAt));
 }
 
 export async function getTaskFileById(id: number): Promise<TaskFile | undefined> {

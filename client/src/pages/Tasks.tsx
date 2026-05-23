@@ -71,6 +71,8 @@ export default function Tasks() {
         dueDate: new Date(form.dueDate).toISOString(),
         description: form.description || undefined,
         notes: form.notes || undefined,
+        department: form.department as any,
+        priority: form.priority as any,
       });
       toast.success("Tarefa criada!");
       setDialogOpen(false);

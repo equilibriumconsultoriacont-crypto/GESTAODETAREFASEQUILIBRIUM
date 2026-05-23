@@ -178,6 +178,8 @@ const tasksRouter = router({
         competencia: z.string().regex(/^\d{2}\/\d{4}$/),
         dueDate: z.string(),
         notes: z.string().optional(),
+        department: z.enum(["FISCAL", "CONTABIL", "DP", "SOCIETARIO", "FINANCEIRO", "GERAL"]).optional(),
+        priority: z.enum(["BAIXA", "NORMAL", "ALTA", "URGENTE"]).optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -185,6 +187,8 @@ const tasksRouter = router({
         ...input,
         dueDate: new Date(input.dueDate),
         status: "PENDENTE",
+        department: input.department ?? "GERAL",
+        priority: input.priority ?? "NORMAL",
       });
       return { id };
     }),
@@ -636,19 +640,25 @@ const smartUploadRouter = router({
 
       // 5. Localizar a tarefa DAS/DAS_MEI do cliente para a competência
       const clientTasks = await listTasks({ clientId: matchedClient.id });
-      const taskTypeSearch = recognition.documentType === "DAS_MEI" ? "MEI" : "DAS";
+      const isMei = recognition.documentType === "DAS_MEI";
+      // Para DAS MEI busca título com "MEI"; fallback busca qualquer tarefa DAS da competência
       let matchedTask = clientTasks.find(
         (t) =>
           t.competencia === recognition.competencia &&
           t.taskType === "DAS" &&
-          t.title.toUpperCase().includes(taskTypeSearch)
+          (!isMei || t.title.toUpperCase().includes("MEI"))
       );
 
-      // Se não encontrar tarefa existente, buscar a mais recente do tipo
+      // Fallback 1: qualquer tarefa DAS da competência (mesmo sem "MEI" no título)
       if (!matchedTask) {
         matchedTask = clientTasks.find(
-          (t) => t.taskType === "DAS" && t.title.toUpperCase().includes(taskTypeSearch)
+          (t) => t.competencia === recognition.competencia && t.taskType === "DAS"
         );
+      }
+
+      // Fallback 2: tarefa DAS mais recente do cliente (sem filtro de competência)
+      if (!matchedTask) {
+        matchedTask = clientTasks.find((t) => t.taskType === "DAS");
       }
 
       if (!matchedTask) {
@@ -922,18 +932,24 @@ const clientTemplatesRouter = router({
 
       const id = await addClientTaskTemplate({ ...input, active: true });
 
-      // Criar recurringTask para gerar instâncias mensais
+      // Criar recurringTask para gerar instâncias mensais (apenas se não existir)
       const template = await getTaskTemplateById(input.taskTemplateId);
       if (template) {
-        await createRecurringTask({
-          clientId: input.clientId,
-          taskTemplateId: input.taskTemplateId,
-          title: template.title,
-          description: template.description ?? undefined,
-          taskType: template.taskType,
-          dueDayOfMonth: template.dueDayOfMonth,
-          active: true,
-        });
+        const existingRecurring = await listRecurringTasks(input.clientId);
+        const alreadyHasRecurring = existingRecurring.some(
+          (r) => r.taskTemplateId === input.taskTemplateId
+        );
+        if (!alreadyHasRecurring) {
+          await createRecurringTask({
+            clientId: input.clientId,
+            taskTemplateId: input.taskTemplateId,
+            title: template.title,
+            description: template.description ?? undefined,
+            taskType: template.taskType,
+            dueDayOfMonth: template.dueDayOfMonth,
+            active: true,
+          });
+        }
       }
       return { id };
     }),
@@ -958,10 +974,9 @@ const monthlyPanelRouter = router({
 // Interface exclusiva para clientes — acesso somente às próprias guias
 const clientPortalRouter = router({
   // Dados do calendário: tarefas do cliente logado agrupadas por mês
-  calendar: publicProcedure
+  calendar: protectedProcedure
     .input(z.object({ month: z.number().min(1).max(12), year: z.number().min(2020) }))
     .query(async ({ input, ctx }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
       if (ctx.user.role !== "client" || !ctx.user.clientId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito a clientes" });
       }
@@ -979,10 +994,9 @@ const clientPortalRouter = router({
     }),
 
   // Arquivos de uma tarefa específica (somente do cliente logado)
-  taskFiles: publicProcedure
+  taskFiles: protectedProcedure
     .input(z.object({ taskId: z.number() }))
     .query(async ({ input, ctx }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
       if (ctx.user.role !== "client" || !ctx.user.clientId) {
         throw new TRPCError({ code: "FORBIDDEN" });
       }
@@ -994,10 +1008,9 @@ const clientPortalRouter = router({
     }),
 
   // URL de download de arquivo (presigned)
-  fileDownloadUrl: publicProcedure
+  fileDownloadUrl: protectedProcedure
     .input(z.object({ taskId: z.number(), fileId: z.number() }))
     .query(async ({ input, ctx }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
       if (ctx.user.role !== "client" || !ctx.user.clientId) {
         throw new TRPCError({ code: "FORBIDDEN" });
       }
