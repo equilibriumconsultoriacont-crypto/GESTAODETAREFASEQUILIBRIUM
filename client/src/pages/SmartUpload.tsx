@@ -116,7 +116,7 @@ export default function SmartUploadPage() {
         <div>
           <h1 className="text-xl font-bold" style={{ color: "#e5e5e5" }}>Upload Inteligente de Guias</h1>
           <p className="text-sm mt-0.5" style={{ color: "#a1a1aa" }}>
-            Arraste PDFs de guias DAS ou DAS MEI — o sistema reconhece, aloca na tarefa e notifica o cliente automaticamente
+            Arraste PDFs de guias contábeis — o sistema reconhece o tipo, aloca na tarefa e notifica o cliente automaticamente
           </p>
         </div>
 
@@ -130,12 +130,12 @@ export default function SmartUploadPage() {
             <p className="font-medium mb-1">Como funciona</p>
             <ol className="space-y-0.5 text-xs" style={{ color: "#a1a1aa" }}>
               <li>1. Você solta o PDF aqui</li>
-              <li>2. A IA lê e extrai: tipo (DAS/DAS MEI), CNPJ/CPF e competência</li>
+              <li>2. A IA lê e extrai: tipo (DAS, NFS, DCTF...), CNPJ/CPF e competência</li>
               <li>3. O sistema localiza o cliente e a tarefa correspondente</li>
               <li>4. O arquivo é anexado à tarefa e o cliente recebe e-mail + WhatsApp</li>
             </ol>
             <p className="mt-2 text-xs" style={{ color: "#52525b" }}>
-              Suportado agora: <strong style={{ color: "#9fd4dc" }}>DAS Simples Nacional</strong> e <strong style={{ color: "#9fd4dc" }}>DAS MEI</strong>. Em breve: SPED, DCTF e outros.
+              Suportado: <strong style={{ color: "#9fd4dc" }}>DAS</strong>, <strong style={{ color: "#9fd4dc" }}>DAS MEI</strong>, <strong style={{ color: "#9fd4dc" }}>NFS-e</strong>, <strong style={{ color: "#9fd4dc" }}>DCTF</strong>, <strong style={{ color: "#9fd4dc" }}>SPED</strong> e outros.
             </p>
           </div>
         </div>
@@ -164,7 +164,7 @@ export default function SmartUploadPage() {
               {dragging ? "Solte aqui!" : "Arraste PDFs ou clique para selecionar"}
             </p>
             <p className="text-xs mt-1" style={{ color: "#52525b" }}>
-              Aceita múltiplos arquivos PDF — DAS e DAS MEI
+              Aceita múltiplos arquivos PDF — DAS, NFS-e, DCTF, SPED e outros
             </p>
           </div>
           <input

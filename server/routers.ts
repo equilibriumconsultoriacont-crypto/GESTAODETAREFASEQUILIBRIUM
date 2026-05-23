@@ -610,24 +610,24 @@ const smartUploadRouter = router({
       const buffer = Buffer.from(input.base64, "base64");
       const { url } = await storagePut(fileKey, buffer, input.mimeType || "application/pdf");
 
-      // 2. Reconhecer documento via OCR
+      // 2. Reconhecer documento via OCR (passa base64 diretamente para Anthropic)
       const { recognizeDocument } = await import("./ocr");
-      const recognition = await recognizeDocument(url, input.mimeType || "application/pdf");
+      const recognition = await recognizeDocument(url, input.mimeType || "application/pdf", input.base64);
 
-      // 3. Validar: só aceita DAS e DAS_MEI por enquanto
-      const supportedTypes = ["DAS", "DAS_MEI"];
+      // 3. Validar tipo de documento
+      const supportedTypes = ["DAS", "DAS_MEI", "NFS", "DCTF", "SPED", "OUTROS"];
       if (!supportedTypes.includes(recognition.documentType)) {
         return {
           success: false,
-          error: `Tipo de documento não suportado: ${recognition.documentType}. Por enquanto só DAS e DAS MEI são aceitos.`,
+          error: `Não foi possível identificar o tipo do documento (confiança: ${recognition.confidence}%). Verifique se o arquivo é uma guia contábil válida.`,
           recognition,
         };
       }
 
-      if (recognition.confidence < 50) {
+      if (recognition.confidence < 40) {
         return {
           success: false,
-          error: `Confiança muito baixa (${recognition.confidence}%). Verifique se o PDF é uma guia DAS ou DAS MEI.`,
+          error: `Confiança muito baixa (${recognition.confidence}%). Verifique se o PDF está legível e é uma guia contábil.`,
           recognition,
         };
       }
@@ -662,27 +662,39 @@ const smartUploadRouter = router({
         };
       }
 
-      // 5. Localizar a tarefa DAS/DAS_MEI do cliente para a competência
+      // 5. Localizar a tarefa do cliente para a competência e tipo de documento
       const clientTasks = await listTasks({ clientId: matchedClient.id });
+
+      // Mapeamento de tipo de documento para tipo de tarefa
+      const docTypeToTaskType: Record<string, string> = {
+        DAS: "DAS", DAS_MEI: "DAS", NFS: "NFS", DCTF: "DCTF", SPED: "SPED", OUTROS: "OUTROS",
+      };
+      const targetTaskType = docTypeToTaskType[recognition.documentType] || "OUTROS";
       const isMei = recognition.documentType === "DAS_MEI";
-      // Para DAS MEI busca título com "MEI"; fallback busca qualquer tarefa DAS da competência
+
+      // Busca 1: tarefa do tipo certo + competência certa
       let matchedTask = clientTasks.find(
         (t) =>
           t.competencia === recognition.competencia &&
-          t.taskType === "DAS" &&
+          t.taskType === targetTaskType &&
           (!isMei || t.title.toUpperCase().includes("MEI"))
       );
 
-      // Fallback 1: qualquer tarefa DAS da competência (mesmo sem "MEI" no título)
-      if (!matchedTask) {
+      // Busca 2: mesma competência, qualquer tipo parecido
+      if (!matchedTask && recognition.competencia) {
         matchedTask = clientTasks.find(
-          (t) => t.competencia === recognition.competencia && t.taskType === "DAS"
+          (t) => t.competencia === recognition.competencia && t.taskType === targetTaskType
         );
       }
 
-      // Fallback 2: tarefa DAS mais recente do cliente (sem filtro de competência)
+      // Busca 3: qualquer tarefa do mesmo tipo (sem filtro de competência)
       if (!matchedTask) {
-        matchedTask = clientTasks.find((t) => t.taskType === "DAS");
+        matchedTask = clientTasks.find((t) => t.taskType === targetTaskType);
+      }
+
+      // Busca 4: qualquer tarefa pendente do cliente (último recurso)
+      if (!matchedTask) {
+        matchedTask = clientTasks.find((t) => t.status === "PENDENTE");
       }
 
       if (!matchedTask) {
