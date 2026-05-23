@@ -259,7 +259,7 @@ const tasksRouter = router({
       z.object({
         month: z.number().min(1).max(12),
         year: z.number().min(2020),
-        clientId: z.number().optional(), // se informado, gera só para este cliente
+        clientId: z.number().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -280,8 +280,38 @@ const tasksRouter = router({
         const existsByTitle = (await listTasks({ clientId: rt.clientId, competencia }))
           .some((t) => t.title === rt.title);
         if (existsByTitle) { skipped++; continue; }
-        const [mm, yyyy] = competencia.split("/").map(Number);
-        const dueDate = new Date(yyyy!, mm! - 1, rt.dueDayOfMonth);
+
+        // ── Cálculo do vencimento ─────────────────────────────────────────
+        // A competência é o mês de APURAÇÃO (ex: abril/2026).
+        // O vencimento é sempre no mês SEGUINTE à competência, conforme:
+        //   DAS / DAS-MEI      → dia 20 do mês seguinte (Lei Compl. 123/2006)
+        //   NFS-e / ISS        → dia 10 do mês seguinte (normas municipais)
+        //   DCTFWeb / DARF     → último dia útil do mês seguinte (IN RFB 2.237/2024)
+        //   SPED / OUTROS      → usa o dueDayOfMonth cadastrado no template, mês seguinte
+        //
+        // Ex: competência 04/2026 → vence em maio/2026
+
+        // Mês seguinte à competência (mês 0-based para Date)
+        let dueYear = year;
+        let dueMonth = month; // já é o mês seguinte (month=4 → abril → vence em maio=5-1=4 em 0-based)
+        if (month === 12) { dueMonth = 0; dueYear = year + 1; }
+
+        let dueDay = rt.dueDayOfMonth;
+
+        // Ajuste por tipo de tarefa (sobrescreve o dia padrão do template)
+        if (rt.taskType === "DAS") {
+          dueDay = 20; // Simples Nacional sempre dia 20 do mês seguinte
+        } else if (rt.taskType === "NFS") {
+          dueDay = 10; // ISS municipal normalmente dia 10 do mês seguinte
+        } else if (rt.taskType === "DCTF") {
+          // Último dia útil do mês seguinte — usamos dia 28 como aproximação segura
+          // (escritórios ajustam manualmente quando cai fim de semana)
+          dueDay = 28;
+        }
+        // SPED e OUTROS usam o dueDayOfMonth cadastrado no template
+
+        const dueDate = new Date(dueYear, dueMonth, dueDay);
+
         await createTask({
           clientId: rt.clientId,
           recurringTaskId: rt.id,
