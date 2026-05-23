@@ -135,26 +135,37 @@ async function startServer() {
     }
     try {
       const nodemailer = await import("nodemailer");
+      const dns = await import("dns/promises");
       const host = process.env.SMTP_HOST || "smtp.gmail.com";
       const port = parseInt(process.env.SMTP_PORT || "587");
       const user = process.env.SMTP_USER;
       const pass = process.env.SMTP_PASS;
       if (!user || !pass) return res.status(500).json({ error: "SMTP_USER ou SMTP_PASS não configurados" });
+
+      // Resolver IPv4 explicitamente
+      let ipv4Host = host;
+      try {
+        const addrs = await dns.resolve4(host);
+        if (addrs.length > 0) ipv4Host = addrs[0]!;
+      } catch (e) {}
+
+      const secure = port === 465;
       const transporter = nodemailer.default.createTransport({
-        host, port, secure: port === 465,
+        host: ipv4Host,
+        port,
+        secure,
         auth: { user, pass },
-        tls: { rejectUnauthorized: false },
-        connectionTimeout: 10000,
+        tls: { rejectUnauthorized: false, servername: host },
+        connectionTimeout: 15000,
       });
       await transporter.verify();
-      // Envia e-mail de teste
       await transporter.sendMail({
         from: `"Equilibrium Teste" <${user}>`,
         to: user,
         subject: "✅ Teste SMTP — Equilibrium funcionando",
-        text: `SMTP configurado corretamente!\nHost: ${host}:${port}\nUsuário: ${user}\nData: ${new Date().toISOString()}`,
+        text: `SMTP OK!\nHost: ${host} → IPv4: ${ipv4Host}:${port}\nUsuário: ${user}\nData: ${new Date().toISOString()}`,
       });
-      return res.json({ ok: true, host, port, user, message: "SMTP OK — e-mail de teste enviado para " + user });
+      return res.json({ ok: true, host, ipv4Host, port, user, message: "SMTP OK — e-mail de teste enviado para " + user });
     } catch (e: any) {
       return res.status(500).json({ ok: false, error: e?.message, code: e?.code });
     }

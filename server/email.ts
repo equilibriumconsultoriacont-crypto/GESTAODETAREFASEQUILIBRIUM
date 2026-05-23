@@ -13,7 +13,16 @@ export interface SendEmailOptions {
   }>;
 }
 
-function createTransporter() {
+async function resolveIPv4(hostname: string): Promise<string> {
+  const dns = await import("dns/promises");
+  try {
+    const addresses = await dns.resolve4(hostname);
+    if (addresses.length > 0) return addresses[0]!;
+  } catch {}
+  return hostname;
+}
+
+async function createTransporter() {
   const host = process.env.SMTP_HOST || "smtp.gmail.com";
   const port = parseInt(process.env.SMTP_PORT || "587");
   const user = process.env.SMTP_USER;
@@ -23,24 +32,29 @@ function createTransporter() {
     throw new Error("SMTP credentials not configured. Set SMTP_USER and SMTP_PASS.");
   }
 
+  // Resolve hostname para IPv4 explicitamente (Railway usa IPv6 por padrão)
+  const ipv4Host = await resolveIPv4(host);
+  console.log(`[SMTP] Conectando: ${host} → ${ipv4Host}:${port}`);
+
   const secure = port === 465;
 
   return nodemailer.createTransport({
-    host,
+    host: ipv4Host,
     port,
     secure,
     auth: { user, pass },
-    tls: { rejectUnauthorized: false },
-    // Forçar IPv4 — Railway tenta IPv6 por padrão mas Hostinger não suporta
-    family: 4,
+    tls: {
+      rejectUnauthorized: false,
+      servername: host, // SNI usa o hostname original
+    },
     connectionTimeout: 15000,
     greetingTimeout: 15000,
     socketTimeout: 20000,
-  } as any);
+  });
 }
 
 export async function sendEmail(options: SendEmailOptions): Promise<void> {
-  const transporter = createTransporter();
+  const transporter = await createTransporter();
   const fromName = process.env.SMTP_FROM_NAME || "Equilibrium Consultoria";
   const fromEmail = process.env.SMTP_USER || "";
 
