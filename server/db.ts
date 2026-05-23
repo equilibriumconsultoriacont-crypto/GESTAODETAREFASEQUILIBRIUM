@@ -583,6 +583,9 @@ export async function applyCatalogToClient(clientId: number, catalogId: number):
   const items = await getCatalogTemplates(catalogId);
   const existing = await listClientTaskTemplates(clientId, true);
   const existingIds = new Set(existing.map((e) => e.taskTemplateId));
+  // Pré-carrega recorrentes para evitar duplicatas
+  const existingRecurring = await listRecurringTasks(clientId);
+  const existingRecurringTemplateIds = new Set(existingRecurring.map((r) => r.taskTemplateId).filter(Boolean));
   let added = 0;
   for (const item of items) {
     if (existingIds.has(item.taskTemplateId)) continue;
@@ -593,7 +596,7 @@ export async function applyCatalogToClient(clientId: number, catalogId: number):
       active: true,
     });
     const tmpl = await getTaskTemplateById(item.taskTemplateId);
-    if (tmpl) {
+    if (tmpl && !existingRecurringTemplateIds.has(item.taskTemplateId)) {
       await createRecurringTask({
         clientId,
         taskTemplateId: item.taskTemplateId,
@@ -603,6 +606,7 @@ export async function applyCatalogToClient(clientId: number, catalogId: number):
         dueDayOfMonth: tmpl.dueDayOfMonth,
         active: true,
       });
+      existingRecurringTemplateIds.add(item.taskTemplateId);
     }
     added++;
   }

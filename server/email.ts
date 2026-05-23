@@ -36,11 +36,12 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
   const fromName = process.env.SMTP_FROM_NAME || "Equilibrium Consultoria";
   const fromEmail = process.env.SMTP_USER || "";
 
-  const ccEmail = options.cc ?? process.env.SMTP_CC_EMAIL ?? "contato@equilibriumcont.com";
+  // CC apenas se explicitamente configurado via env ou passado como opção
+  const ccEmail = options.cc ?? process.env.SMTP_CC_EMAIL;
   await transporter.sendMail({
     from: `"${fromName}" <${fromEmail}>`,
     to: options.to,
-    cc: ccEmail !== options.to ? ccEmail : undefined,
+    cc: ccEmail && ccEmail !== options.to ? ccEmail : undefined,
     subject: options.subject,
     html: options.html,
     attachments: options.attachments,
