@@ -257,6 +257,16 @@ export default function ClientDetail() {
               </div>
             ))}
           </div>
+          {/* Botão gerar tarefas — visível logo no topo do perfil */}
+          <div className="mt-4 pt-4 flex justify-end" style={{ borderTop: "1px solid #1e4f5c" }}>
+            <Button
+              onClick={() => setGenOpen(true)}
+              className="gap-2"
+              style={{ background: "#24646c", color: "#fff" }}
+            >
+              <Zap size={14} /> Gerar tarefas do mês
+            </Button>
+          </div>
         </div>
 
         {/* ── Obrigações ── */}
