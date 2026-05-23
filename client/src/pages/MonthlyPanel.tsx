@@ -55,7 +55,7 @@ export default function MonthlyPanelPage() {
   // Map tasks by day
   const tasksByDay = new Map<number, typeof allTasks>();
   allTasks.forEach((t) => {
-    // Use UTC date to avoid timezone day-shift (ex: 20/05 UTC → 19/05 UTC-3)
+    // Use UTC date to avoid timezone day-shift
     const d = new Date(t.dueDate).getUTCDate();
     if (!tasksByDay.has(d)) tasksByDay.set(d, []);
     tasksByDay.get(d)!.push(t);

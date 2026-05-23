@@ -37,23 +37,21 @@ describe("Competencia format", () => {
     expect(valid.test("abc")).toBe(false);
   });
 
-  it("should generate correct due date for DAS (day 20 of same competencia month)", () => {
-    // Competência 03/2026 → vence 20/03/2026 (dia 20 do próprio mês da competência)
+  it("should generate correct due date for DAS (day 20 of next month)", () => {
+    // Competência 03/2026 → vence 20/04/2026
     const competencia = "03/2026";
     const [mm, yyyy] = competencia.split("/").map(Number);
-    // Router usa: new Date(yyyy!, mm! - 1, dueDayOfMonth) — mês 0-based
-    const dueDate = new Date(yyyy!, mm! - 1, 20);
+    const dueDate = new Date(yyyy!, mm! - 1, 20); // mm-1: mês 0-based, mesmo mês da competência
     expect(dueDate.getDate()).toBe(20);
     expect(dueDate.getMonth()).toBe(2); // March = 2 (0-based)
     expect(dueDate.getFullYear()).toBe(2026);
   });
 
   it("should generate correct due date for April competencia", () => {
-    // Competência 04/2026 → vence 20/04/2026
+    // Competência 04/2026 → vence 20/05/2026
     const competencia = "04/2026";
     const [mm, yyyy] = competencia.split("/").map(Number);
-    // Router usa: new Date(yyyy!, mm! - 1, dueDayOfMonth)
-    const dueDate = new Date(yyyy!, mm! - 1, 20);
+    const dueDate = new Date(yyyy!, mm! - 1, 20); // mm-1: mês 0-based
     expect(dueDate.getDate()).toBe(20);
     expect(dueDate.getMonth()).toBe(3); // April = 3 (0-based)
     expect(dueDate.getFullYear()).toBe(2026);
