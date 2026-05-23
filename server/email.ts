@@ -23,11 +23,23 @@ function createTransporter() {
     throw new Error("SMTP credentials not configured. Set SMTP_USER and SMTP_PASS.");
   }
 
+  // Porta 465 = SSL implícito (secure: true)
+  // Porta 587 = STARTTLS (secure: false)
+  // Porta 25  = sem criptografia
+  const secure = port === 465;
+
   return nodemailer.createTransport({
     host,
     port,
-    secure: port === 465,
+    secure,
     auth: { user, pass },
+    tls: {
+      // Aceita certificados autoassinados (necessário em alguns servidores Hostinger)
+      rejectUnauthorized: false,
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 }
 

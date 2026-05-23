@@ -430,9 +430,11 @@ const emailRouter = router({
 
       try {
         await sendEmail({ to: input.recipientEmail, subject, html, attachments });
+        console.log(`[Email] Enviado para ${input.recipientEmail} — tarefa ${input.taskId}`);
       } catch (err) {
         status = "FALHOU";
         errorMessage = err instanceof Error ? err.message : String(err);
+        console.error(`[Email] FALHOU para ${input.recipientEmail}:`, errorMessage);
       }
 
       await createEmailLog({

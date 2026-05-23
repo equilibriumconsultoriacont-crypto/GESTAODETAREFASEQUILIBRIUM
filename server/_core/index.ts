@@ -126,9 +126,38 @@ async function startServer() {
     }
   });
 
-  // ── Manus integrations ────────────────────────────────────────────────────
-  try { registerStorageProxy(app); } catch {}
-  try { registerOAuthRoutes(app); } catch {}
+  // ── Teste de SMTP ────────────────────────────────────────────────────────
+  app.get("/admin/test-smtp", async (req, res) => {
+    const secret = process.env.MIGRATE_SECRET || "equilibrium-migrate-2024";
+    if (req.headers["x-migrate-secret"] !== secret && req.query.secret !== secret) {
+      return res.status(403).json({ error: "Forbidden — passe ?secret=equilibrium-migrate-2024" });
+    }
+    try {
+      const nodemailer = await import("nodemailer");
+      const host = process.env.SMTP_HOST || "smtp.gmail.com";
+      const port = parseInt(process.env.SMTP_PORT || "587");
+      const user = process.env.SMTP_USER;
+      const pass = process.env.SMTP_PASS;
+      if (!user || !pass) return res.status(500).json({ error: "SMTP_USER ou SMTP_PASS não configurados" });
+      const transporter = nodemailer.default.createTransport({
+        host, port, secure: port === 465,
+        auth: { user, pass },
+        tls: { rejectUnauthorized: false },
+        connectionTimeout: 10000,
+      });
+      await transporter.verify();
+      // Envia e-mail de teste
+      await transporter.sendMail({
+        from: `"Equilibrium Teste" <${user}>`,
+        to: user,
+        subject: "✅ Teste SMTP — Equilibrium funcionando",
+        text: `SMTP configurado corretamente!\nHost: ${host}:${port}\nUsuário: ${user}\nData: ${new Date().toISOString()}`,
+      });
+      return res.json({ ok: true, host, port, user, message: "SMTP OK — e-mail de teste enviado para " + user });
+    } catch (e: any) {
+      return res.status(500).json({ ok: false, error: e?.message, code: e?.code });
+    }
+  });
 
   // ── tRPC ──────────────────────────────────────────────────────────────────
   app.use(
