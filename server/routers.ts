@@ -364,27 +364,16 @@ const filesRouter = router({
         filename: z.string(),
         mimeType: z.string().optional(),
         fileSize: z.number().optional(),
-        base64: z.string(), // base64 encoded file content
+        base64: z.string(),
       })
     )
     .mutation(async ({ input, ctx }) => {
+      // Upload manual — o arquivo já está sendo colocado na tarefa certa
+      // NÃO precisa de OCR (OCR é só para o Upload Inteligente)
       const buffer = Buffer.from(input.base64, "base64");
       const fileKey = `tasks/${input.taskId}/${Date.now()}-${input.filename}`;
       const { url } = await storagePut(fileKey, buffer, input.mimeType || "application/pdf");
-      
-      // Reconhecer tipo de documento via OCR (não-bloqueante, não impede o upload)
-      let documentType = "UNKNOWN";
-      let confidence = 0;
-      try {
-        const { recognizeDocument } = await import("./ocr");
-        // Passa o base64 diretamente para o OCR usar Anthropic/regex sem precisar de URL pública
-        const recognition = await recognizeDocument(url, input.mimeType || "application/pdf", input.base64);
-        documentType = recognition.documentType;
-        confidence = recognition.confidence;
-      } catch (error) {
-        console.warn("[OCR] Error recognizing document:", error);
-      }
-      
+
       const id = await createTaskFile({
         taskId: input.taskId,
         clientId: input.clientId,
@@ -395,14 +384,8 @@ const filesRouter = router({
         fileSize: input.fileSize,
         uploadedBy: ctx.user?.id,
       });
-      
-      return { 
-        id, 
-        fileKey, 
-        fileUrl: url,
-        documentType,
-        confidence
-      };
+
+      return { id, fileKey, fileUrl: url };
     }),
 });
 
