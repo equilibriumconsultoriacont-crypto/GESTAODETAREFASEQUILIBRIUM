@@ -40,7 +40,7 @@ import {
 let _pool: mysql.Pool | null = null;
 let _db: ReturnType<typeof drizzle> | null = null;
 
-function getPool(): mysql.Pool {
+export function getPool(): mysql.Pool {
   if (!_pool) {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error("DATABASE_URL not set");
@@ -336,7 +336,9 @@ export async function markOverdueTasks(): Promise<number> {
     const pool = getPool();
     const now = new Date();
     const [result] = await pool.query(
-      `UPDATE tasks SET status = 'VENCIDA' WHERE status = 'PENDENTE' AND dueDate < ?`,
+      `UPDATE tasks SET status = 'VENCIDA' 
+       WHERE status IN ('PENDENTE', 'EM_ANDAMENTO', 'AGUARDANDO_CLIENTE', 'EM_REVISAO') 
+       AND dueDate < ?`,
       [now]
     ) as [any, any];
     return result.affectedRows ?? 0;

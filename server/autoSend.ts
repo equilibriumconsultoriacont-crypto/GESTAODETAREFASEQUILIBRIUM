@@ -1,15 +1,10 @@
-import { getDb } from "./db";
-import { tasks, taskFiles, clients, emailLogs } from "../drizzle/schema";
-import { eq, and, sql, desc } from "drizzle-orm";
-import { sendEmail } from "./email";
-import { sendGuiaConfirmationWhatsApp } from "./whatsapp";
-
-const EQUILIBRIUM_EMAIL = "contato@equilibriumcont.com";
-const ONE_HOUR_MS = 3_600_000;
+import { getPool } from "./db";
+import { sendEmail, buildGuiaEmailHtml } from "./email";
+import { storageGetBuffer } from "./storage";
 
 /**
- * Enviar automaticamente guias que estão pendentes há mais de 1 hora
- * Executado a cada 1 hora por uma tarefa agendada
+ * Envia automaticamente guias que têm arquivo anexado mas nunca foram enviadas por e-mail.
+ * Executado a cada 1 hora pelo scheduler em index.ts
  */
 export async function autoSendPendingGuias(): Promise<{
   sent: number;
@@ -21,237 +16,146 @@ export async function autoSendPendingGuias(): Promise<{
   let failed = 0;
 
   try {
-    const database = await getDb();
-    if (!database) {
-      return { sent: 0, failed: 0, errors: ["Database not available"] };
-    }
+    const pool = getPool();
 
-    // Buscar tarefas com status "PENDENTE" que vencem nos próximos 7 dias
-    const sevenDaysFromNow = new Date();
-    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
-    const pendingTasks = await database
-      .select()
-      .from(tasks)
-      .where(
-        and(
-          eq(tasks.status, "PENDENTE"),
-          sql`${tasks.dueDate} <= ${sevenDaysFromNow}`
-        )
-      )
-      .limit(100);
+    // Tarefas com arquivo mas sem e-mail enviado
+    const [rows] = await pool.query(`
+      SELECT 
+        t.id, t.title, t.taskType, t.competencia, t.dueDate, t.status, t.notes,
+        t.clientId,
+        c.name as clientName, c.email as clientEmail, c.phone as clientPhone,
+        f.id as fileId, f.filename, f.fileKey, f.fileUrl, f.mimeType
+      FROM tasks t
+      INNER JOIN task_files f ON f.taskId = t.id
+      INNER JOIN clients c ON c.id = t.clientId
+      WHERE t.status NOT IN ('CANCELADA', 'CONCLUIDA')
+        AND c.active = 1
+        AND c.email IS NOT NULL AND c.email != ''
+        AND (
+          SELECT COUNT(*) FROM email_logs el 
+          WHERE el.taskId = t.id AND el.status = 'ENVIADO'
+        ) = 0
+      ORDER BY t.dueDate ASC
+      LIMIT 50
+    `) as [any[], any];
 
-    for (const task of pendingTasks) {
+    for (const row of rows) {
       try {
-        // Verificar via banco se já foi enviado automaticamente há menos de 1 hora
-        // (evita reenvios duplicados mesmo que o servidor tenha reiniciado)
-        const now = Date.now();
-        const oneHourAgo = new Date(now - ONE_HOUR_MS);
-        const recentLog = await database
-          .select({ sentAt: emailLogs.sentAt })
-          .from(emailLogs)
-          .where(
-            and(
-              eq(emailLogs.taskId, task.id),
-              sql`${emailLogs.sentAt} >= ${oneHourAgo.toISOString()}`
-            )
-          )
-          .orderBy(desc(emailLogs.sentAt))
-          .limit(1);
-
-        if (recentLog.length > 0) {
-          continue; // Já enviado há menos de 1 hora, pular
-        }
-
-        // Buscar arquivos da tarefa
-        const files = await database
-          .select()
-          .from(taskFiles)
-          .where(eq(taskFiles.taskId, task.id))
-          .limit(1);
-
-        if (files.length === 0) {
-          continue; // Sem arquivos para enviar
-        }
-
-        // Buscar cliente
-        const client = await database
-          .select()
-          .from(clients)
-          .where(eq(clients.id, task.clientId))
-          .limit(1);
-
-        if (client.length === 0 || !client[0]?.email) {
-          errors.push(`Task ${task.id}: Client not found or no email`);
+        // Carregar arquivo do storage
+        const buf = await storageGetBuffer(row.fileKey, row.fileUrl);
+        if (!buf) {
+          errors.push(`Tarefa ${row.id}: arquivo não encontrado no storage`);
           failed++;
           continue;
         }
 
-        const file = files[0];
-        const clientData = client[0];
-
-        // Buscar o arquivo real do storage via URL presignada
-        let attachmentBuffer: Buffer | undefined;
-        const attachmentFilename = file.filename || "guia.pdf";
-        const attachmentMime = file.mimeType || "application/pdf";
-        try {
-          const { storageGetBuffer } = await import("./storage");
-          const buf = await storageGetBuffer(file.fileKey, file.fileUrl);
-          if (buf) attachmentBuffer = buf;
-          else console.warn(`[AutoSend] Could not load attachment for task ${task.id}`);
-        } catch (attachErr) {
-          console.warn(`[AutoSend] Could not fetch attachment for task ${task.id}:`, attachErr);
-        }
-
-        const attachments = attachmentBuffer
-          ? [{ filename: attachmentFilename, content: attachmentBuffer, contentType: attachmentMime }]
-          : [];
-
-        // Enviar e-mail ao cliente
-        await sendEmail({
-          to: clientData.email,
-          subject: `Guia - ${task.title} (${task.competencia})`,
-          html: `<p>Prezado(a) ${clientData.name},</p>
-<p>Segue em anexo a guia referente a <strong>${task.title}</strong> da competência <strong>${task.competencia}</strong>.</p>
-<p>Atenciosamente,<br/>Equilibrium Consultoria</p>`,
-          attachments,
+        const subject = `Guia ${row.taskType} — Competência ${row.competencia} | Equilibrium Consultoria`;
+        const html = buildGuiaEmailHtml({
+          clientName: row.clientName,
+          taskTitle: row.title,
+          competencia: row.competencia,
+          dueDate: new Date(row.dueDate),
+          notes: row.notes ?? undefined,
         });
 
-        // Enviar cópia para Equilibrium
         await sendEmail({
-          to: EQUILIBRIUM_EMAIL,
-          subject: `[CÓPIA] Guia enviada - ${clientData.name} - ${task.title}`,
-          html: `<p>Cópia do envio de guia:</p>
-<p><strong>Cliente:</strong> ${clientData.name}</p>
-<p><strong>CNPJ:</strong> ${clientData.cnpj}</p>
-<p><strong>Tarefa:</strong> ${task.title}</p>
-<p><strong>Competência:</strong> ${task.competencia}</p>
-<p><strong>E-mail do cliente:</strong> ${clientData.email}</p>
-<p><strong>Hora do envio:</strong> ${new Date().toLocaleString("pt-BR")}</p>`,
-          attachments,
+          to: row.clientEmail,
+          subject,
+          html,
+          attachments: [{
+            filename: row.filename,
+            content: buf,
+            contentType: row.mimeType || "application/pdf",
+          }],
         });
 
         // Registrar envio no log
-        await database.insert(emailLogs).values({
-          taskId: task.id,
-          clientId: task.clientId,
-          sentAt: new Date(),
-          sentBy: 1, // auto-send ID
-          recipientEmail: clientData.email,
-          subject: `Guia - ${task.title}`,
-          status: "ENVIADO",
-        } as any);
+        await pool.query(
+          `INSERT INTO email_logs (taskId, clientId, taskFileId, recipientEmail, subject, body, status, sentAt, sentBy)
+           VALUES (?, ?, ?, ?, ?, ?, 'ENVIADO', NOW(), NULL)`,
+          [row.id, row.clientId, row.fileId, row.clientEmail, subject, html]
+        );
 
-        // Enviar confirmação por WhatsApp (não bloqueia o fluxo principal)
-        if (clientData.phone) {
-          try {
-            const wppResult = await sendGuiaConfirmationWhatsApp(
-              clientData.phone,
-              task.title,
-              clientData.name
-            );
-            if (!wppResult.success) {
-              console.warn(`[AutoSend] WhatsApp não entregue para task ${task.id}:`, wppResult.error);
-            }
-          } catch (wppErr) {
-            console.warn(`[AutoSend] Erro ao enviar WhatsApp para task ${task.id}:`, wppErr);
-          }
-        }
+        // Marcar como CONCLUIDA
+        await pool.query(
+          `UPDATE tasks SET status = 'CONCLUIDA', completedAt = NOW() WHERE id = ?`,
+          [row.id]
+        );
 
+        console.log(`[AutoSend] ✓ Tarefa ${row.id} (${row.title}) enviada para ${row.clientEmail}`);
         sent++;
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : "Unknown error";
-        errors.push(`Task ${task.id}: ${errorMsg}`);
+      } catch (err: any) {
+        const msg = err?.message ?? String(err);
+        errors.push(`Tarefa ${row.id}: ${msg}`);
+        console.error(`[AutoSend] ✗ Tarefa ${row.id}:`, msg);
+
+        // Registrar falha no log
+        try {
+          await pool.query(
+            `INSERT INTO email_logs (taskId, clientId, taskFileId, recipientEmail, subject, body, status, errorMessage, sentAt, sentBy)
+             VALUES (?, ?, ?, ?, ?, '', 'FALHOU', ?, NOW(), NULL)`,
+            [row.id, row.clientId, row.fileId, row.clientEmail,
+             `Guia ${row.taskType} — ${row.competencia}`, msg]
+          );
+        } catch {}
+
         failed++;
       }
     }
 
-    console.log(
-      `[AutoSend] Completed: ${sent} sent, ${failed} failed, ${errors.length} errors`
-    );
+    console.log(`[AutoSend] Concluído: ${sent} enviadas, ${failed} falhas`);
     return { sent, failed, errors };
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : "Unknown error";
-    console.error("[AutoSend] Fatal error:", errorMsg);
-    return { sent: 0, failed: 0, errors: [errorMsg] };
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error("[AutoSend] Erro fatal:", msg);
+    return { sent: 0, failed: 0, errors: [msg] };
   }
 }
 
 /**
- * Enviar alertas de tarefas vencendo em 3 dias
+ * Envia alertas internos de tarefas vencendo em 3 dias
  */
-export async function sendDueSoonAlerts(): Promise<{
-  sent: number;
-  errors: string[];
-}> {
+export async function sendDueSoonAlerts(): Promise<{ sent: number; errors: string[] }> {
   const errors: string[] = [];
   let sent = 0;
 
   try {
-    const database = await getDb();
-    if (!database) {
-      return { sent: 0, errors: ["Database not available"] };
-    }
+    const pool = getPool();
+    const alertEmail = process.env.SMTP_USER || process.env.RESEND_FROM;
+    if (!alertEmail) return { sent: 0, errors: ["E-mail de alerta não configurado"] };
 
-    // Buscar tarefas que vencem em 3 dias
-    const threeDaysFromNow = new Date();
-    threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
-    threeDaysFromNow.setHours(23, 59, 59, 999);
+    const [rows] = await pool.query(`
+      SELECT t.id, t.title, t.taskType, t.competencia, t.dueDate,
+             c.name as clientName, c.cnpj
+      FROM tasks t
+      INNER JOIN clients c ON c.id = t.clientId
+      WHERE t.status IN ('PENDENTE', 'EM_ANDAMENTO')
+        AND t.dueDate BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 3 DAY)
+        AND (
+          SELECT COUNT(*) FROM email_logs el
+          WHERE el.taskId = t.id AND el.status = 'ENVIADO'
+            AND el.sentAt >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+        ) = 0
+      ORDER BY t.dueDate ASC
+      LIMIT 50
+    `) as [any[], any];
 
-    const now = new Date();
-    const threeDaysStr = threeDaysFromNow.toISOString().split("T")[0];
-    const nowStr = now.toISOString().split("T")[0];
+    if (rows.length === 0) return { sent: 0, errors: [] };
 
-    const dueSoonTasks = await database
-      .select()
-      .from(tasks)
-      .where(
-        and(
-          eq(tasks.status, "PENDENTE"),
-          sql`${tasks.dueDate} < ${threeDaysStr}`,
-          sql`${nowStr} < ${tasks.dueDate}`
-        )
-      );
+    const taskList = rows.map((r: any) =>
+      `• ${r.clientName} (${r.cnpj}) — ${r.title} [${r.competencia}] vence ${new Date(r.dueDate).toLocaleDateString("pt-BR")}`
+    ).join("\n");
 
-    for (const task of dueSoonTasks) {
-      try {
-        const client = await database
-          .select()
-          .from(clients)
-          .where(eq(clients.id, task.clientId))
-          .limit(1);
+    await sendEmail({
+      to: alertEmail,
+      subject: `⚠️ ${rows.length} guia(s) vencendo nos próximos 3 dias`,
+      html: `<h2>Guias vencendo em breve</h2><pre style="font-family:monospace">${taskList}</pre>`,
+    });
 
-        if (client.length === 0) continue;
-
-        const clientData = client[0];
-        const dueDateStr =
-          task.dueDate instanceof Date
-            ? task.dueDate.toLocaleDateString("pt-BR")
-            : new Date(task.dueDate).toLocaleDateString("pt-BR");
-
-        // Enviar alerta para Equilibrium
-        await sendEmail({
-          to: EQUILIBRIUM_EMAIL,
-          subject: `⚠️ ALERTA: Tarefa vencendo em 3 dias - ${clientData.name}`,
-          html: `<p><strong>ALERTA DE VENCIMENTO</strong></p>
-<p><strong>Cliente:</strong> ${clientData.name}</p>
-<p><strong>CNPJ:</strong> ${clientData.cnpj}</p>
-<p><strong>Tarefa:</strong> ${task.title}</p>
-<p><strong>Vencimento:</strong> ${dueDateStr}</p>
-<p>Por favor, providencie o envio da guia ao cliente.</p>`,
-        });
-
-        sent++;
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : "Unknown error";
-        errors.push(`Task ${task.id}: ${errorMsg}`);
-      }
-    }
-
-    console.log(`[DueSoonAlerts] Sent ${sent} alerts`);
-    return { sent, errors };
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : "Unknown error";
-    console.error("[DueSoonAlerts] Fatal error:", errorMsg);
-    return { sent: 0, errors: [errorMsg] };
+    sent = 1;
+  } catch (err: any) {
+    errors.push(err?.message ?? String(err));
   }
+
+  return { sent, errors };
 }

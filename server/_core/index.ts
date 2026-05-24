@@ -247,3 +247,32 @@ startServer().catch((err) => {
   console.error("[Fatal] Server failed to start:", err);
   process.exit(1);
 });
+
+// ── Agendador automático ──────────────────────────────────────────────────────
+// Roda após o servidor iniciar, sem bloquear o startup
+
+async function runScheduledJobs() {
+  // 1. Marcar tarefas vencidas (PENDENTE/EM_ANDAMENTO com dueDate < agora)
+  try {
+    const { markOverdueTasks } = await import("../db");
+    const count = await markOverdueTasks();
+    if (count > 0) console.log(`[Scheduler] ${count} tarefa(s) marcada(s) como VENCIDA`);
+  } catch (err) {
+    console.warn("[Scheduler] markOverdue error:", err);
+  }
+
+  // 2. Auto-envio de guias com arquivo anexado mas não enviadas
+  try {
+    const { autoSendPendingGuias } = await import("../autoSend");
+    const result = await autoSendPendingGuias();
+    if (result.sent > 0) console.log(`[Scheduler] AutoSend: ${result.sent} enviada(s), ${result.failed} falha(s)`);
+  } catch (err) {
+    console.warn("[Scheduler] autoSend error:", err);
+  }
+}
+
+// Roda imediatamente ao iniciar (depois de 30s para o servidor estar estável)
+setTimeout(runScheduledJobs, 30_000);
+
+// Roda a cada 1 hora
+setInterval(runScheduledJobs, 60 * 60 * 1_000);

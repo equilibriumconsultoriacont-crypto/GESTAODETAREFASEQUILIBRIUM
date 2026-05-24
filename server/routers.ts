@@ -50,6 +50,7 @@ import {
   deleteTask,
   updateTaskTemplate,
   getDb,
+  getPool,
   upsertUser,
   getUserByEmail,
 } from "./db";
@@ -476,6 +477,11 @@ const emailRouter = router({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: errorMessage });
       }
 
+      // ── Marcar tarefa como CONCLUIDA após envio bem-sucedido ─────────────────
+      if (task.status !== "CONCLUIDA" && task.status !== "CANCELADA") {
+        await updateTask(task.id, { status: "CONCLUIDA", completedAt: new Date() });
+      }
+
       // ── Notificação WhatsApp (não bloqueia o retorno) ────────────────────────
       let whatsappSent = false;
       try {
@@ -574,14 +580,36 @@ const emailRouter = router({
 
 // ─── Auto-Send Router (para tarefa agendada) ───────────────────────────────────
 const autoSendRouter = router({
-  sendGuias: publicProcedure.mutation(async () => {
+  // Disparo manual do auto-envio
+  sendGuias: protectedProcedure.mutation(async () => {
     const { autoSendPendingGuias, sendDueSoonAlerts } = await import("./autoSend");
     const sendResult = await autoSendPendingGuias();
     const alertResult = await sendDueSoonAlerts();
-    return {
-      guias: sendResult,
-      alerts: alertResult,
-    };
+    return { guias: sendResult, alerts: alertResult };
+  }),
+
+  // Listar tarefas com arquivo anexado mas sem e-mail enviado (pendentes de envio)
+  pendingGuias: protectedProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return [];
+    // Tarefas que têm arquivo anexado mas nenhum e-mail enviado com sucesso
+    const pool = getPool();
+    const [rows] = await pool.query(`
+      SELECT 
+        t.id as taskId, t.title, t.taskType, t.competencia, t.dueDate, t.status,
+        t.clientId,
+        c.name as clientName, c.email as clientEmail,
+        f.id as fileId, f.filename, f.uploadedAt,
+        (SELECT COUNT(*) FROM email_logs el WHERE el.taskId = t.id AND el.status = 'ENVIADO') as emailsSent
+      FROM tasks t
+      INNER JOIN task_files f ON f.taskId = t.id
+      INNER JOIN clients c ON c.id = t.clientId
+      WHERE t.status NOT IN ('CANCELADA')
+      AND (SELECT COUNT(*) FROM email_logs el WHERE el.taskId = t.id AND el.status = 'ENVIADO') = 0
+      ORDER BY t.dueDate ASC
+      LIMIT 100
+    `) as [any[], any];
+    return rows;
   }),
 });
 

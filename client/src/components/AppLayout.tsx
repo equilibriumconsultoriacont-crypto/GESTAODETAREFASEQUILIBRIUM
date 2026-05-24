@@ -10,6 +10,7 @@ import {
   KeyRound,
   Menu,
   RefreshCw,
+  SendHorizonal,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/clientes", label: "Clientes", icon: Building2 },
   { href: "/tarefas", label: "Tarefas", icon: CheckSquare },
   { href: "/upload-inteligente", label: "Upload Guias", icon: CloudUpload },
+  { href: "/pendentes-envio", label: "Pendentes Envio", icon: SendHorizonal },
   { href: "/catalogos", label: "Catálogos", icon: Package },
   { href: "/catalogo", label: "Tarefas Base", icon: BookOpen },
   { href: "/painel-mensal", label: "Painel Mensal", icon: CalendarDays },

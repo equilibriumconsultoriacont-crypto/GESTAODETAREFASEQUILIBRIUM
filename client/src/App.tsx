@@ -19,6 +19,7 @@ import Login from "./pages/Login";
 import ClientPortal from "./pages/ClientPortal";
 import { useAuth } from "./_core/hooks/useAuth";
 import TaskCatalogsPage from "./pages/TaskCatalogs";
+import PendingSendsPage from "./pages/PendingSends";
 import { useInactivityLogout } from "./hooks/useInactivityLogout";
 
 function Router() {
@@ -68,6 +69,7 @@ function Router() {
       <Route path="/painel-mensal" component={MonthlyPanelPage} />
       <Route path="/upload-inteligente" component={SmartUploadPage} />
       <Route path="/acessos-clientes" component={ClientLoginsPage} />
+      <Route path="/pendentes-envio" component={PendingSendsPage} />
       <Route component={NotFound} />
     </Switch>
   );
