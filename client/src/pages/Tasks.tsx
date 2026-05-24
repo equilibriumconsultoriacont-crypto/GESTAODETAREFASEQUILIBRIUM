@@ -211,7 +211,7 @@ export default function Tasks() {
                           {isDueToday ? "⚡ Hoje" : due.toLocaleDateString("pt-BR")}
                         </span>
                       </td>
-                      <td className="px-4 py-3"><StatusBadge status={task.status} /></td>
+                      <td className="px-4 py-3"><StatusBadge status={task.status} dueDate={task.dueDate} completedAt={(task as any).completedAt} /></td>
                     </tr>
                   );
                 })}

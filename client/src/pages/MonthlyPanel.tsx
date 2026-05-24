@@ -204,7 +204,7 @@ export default function MonthlyPanelPage() {
                           <span className="text-xs" style={{ color: isOverdue ? "#f87171" : "#52525b" }}>
                             {due.toLocaleDateString("pt-BR")}
                           </span>
-                          <StatusBadge status={task.status} />
+                          <StatusBadge status={task.status} dueDate={task.dueDate} />
                         </div>
                       </div>
                     </Link>
@@ -245,7 +245,7 @@ export default function MonthlyPanelPage() {
                           <span className="text-xs" style={{ color: isOverdue ? "#f87171" : "#52525b" }}>
                             {due.toLocaleDateString("pt-BR")}
                           </span>
-                          <StatusBadge status={task.status} />
+                          <StatusBadge status={task.status} dueDate={task.dueDate} />
                         </div>
                       </div>
                     </Link>
@@ -343,7 +343,7 @@ export default function MonthlyPanelPage() {
                               <span className="text-xs" style={{ color: isOverdue ? "#f87171" : "#52525b" }}>
                                 {due.toLocaleDateString("pt-BR")}
                               </span>
-                              <StatusBadge status={task.status} />
+                              <StatusBadge status={task.status} dueDate={task.dueDate} />
                             </div>
                           </div>
                         </Link>

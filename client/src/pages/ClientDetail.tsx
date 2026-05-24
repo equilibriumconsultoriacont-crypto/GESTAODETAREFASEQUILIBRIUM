@@ -383,7 +383,7 @@ export default function ClientDetail() {
                       <td className="px-4 py-3 hidden md:table-cell text-xs" style={{ color: "#a1a1aa" }}>
                         {new Date(task.dueDate).toLocaleDateString("pt-BR")}
                       </td>
-                      <td className="px-4 py-3"><StatusBadge status={task.status} /></td>
+                      <td className="px-4 py-3"><StatusBadge status={task.status} dueDate={task.dueDate} completedAt={(task as any).completedAt} /></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <button

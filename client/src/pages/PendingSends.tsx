@@ -156,7 +156,7 @@ export default function PendingSendsPage() {
                             </div>
                           </div>
                         </div>
-                        <StatusBadge status={task.status} />
+                        <StatusBadge status={task.status} dueDate={task.dueDate} />
                       </div>
                     );
                   })}

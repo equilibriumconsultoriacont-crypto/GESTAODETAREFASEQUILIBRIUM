@@ -161,7 +161,7 @@ export default function Dashboard() {
                       <td className="px-4 py-3 hidden sm:table-cell text-xs" style={{ color: "#a1a1aa" }}>—</td>
                       <td className="px-4 py-3 hidden md:table-cell text-xs" style={{ color: "#a1a1aa" }}>{task.competencia}</td>
                       <td className="px-4 py-3 hidden lg:table-cell text-xs" style={{ color: "#a1a1aa" }}>{new Date(task.dueDate).toLocaleDateString("pt-BR")}</td>
-                      <td className="px-4 py-3"><StatusBadge status={task.status} /></td>
+                      <td className="px-4 py-3"><StatusBadge status={task.status} dueDate={task.dueDate} completedAt={(task as any).completedAt} /></td>
                     </tr>
                   ))}
                 </tbody>

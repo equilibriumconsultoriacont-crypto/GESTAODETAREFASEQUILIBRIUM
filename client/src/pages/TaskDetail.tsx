@@ -160,7 +160,7 @@ export default function TaskDetail() {
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-2">
                 <TaskTypeBadge type={task.taskType} />
-                <StatusBadge status={task.status} />
+                <StatusBadge status={task.status} dueDate={task.dueDate} completedAt={task.completedAt} />
               </div>
               <h1 className="text-lg font-bold" style={{ color: "#e5e5e5" }}>{task.title}</h1>
               {client && (
