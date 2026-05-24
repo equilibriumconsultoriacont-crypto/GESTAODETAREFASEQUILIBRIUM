@@ -62,8 +62,10 @@ export default function ClientDetail() {
   const addTemplateMutation = trpc.clientTemplates.add.useMutation();
   const removeTemplateMutation = trpc.clientTemplates.remove.useMutation();
   const applyCatalogMutation = trpc.taskCatalogs.applyToClient.useMutation();
+  const uploadMutation = trpc.files.upload.useMutation();
   const sendEmailMutation = trpc.email.sendGuia.useMutation();
   const generateMonthly = trpc.tasks.generateMonthly.useMutation();
+  const deleteTaskMutation = trpc.tasks.delete.useMutation();
   const utils = trpc.useUtils();
 
   const client = clients.find((c) => c.id === clientId);
@@ -122,7 +124,15 @@ export default function ClientDetail() {
     } catch (err: any) { toast.error(err?.message ?? "Erro ao aplicar catálogo"); }
   };
 
-  // ── Upload ───────────────────────────────────────────────────────────────
+  const handleDeleteTask = async (taskId: number, taskTitle: string) => {
+    if (!confirm(`Excluir a tarefa "${taskTitle}"?\n\nEssa ação também remove os arquivos vinculados e não pode ser desfeita.`)) return;
+    try {
+      await deleteTaskMutation.mutateAsync({ id: taskId });
+      toast.success("Tarefa excluída!");
+      refetchTasks();
+      utils.tasks.dashboard.invalidate();
+    } catch (err: any) { toast.error(err?.message ?? "Erro ao excluir tarefa"); }
+  };
   const openUpload = (taskId: number, taskTitle: string) => {
     setSelectedTaskId(taskId);
     setSelectedTaskTitle(taskTitle);
@@ -134,24 +144,26 @@ export default function ClientDetail() {
     if (!selectedFile || !selectedTaskId) return;
     setIsUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      formData.append("taskId", String(selectedTaskId));
-      formData.append("clientId", String(clientId));
-
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        credentials: "include",
-        body: formData,
+      // Converter arquivo para base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1]!);
+        reader.onerror = reject;
+        reader.readAsDataURL(selectedFile);
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
+      await uploadMutation.mutateAsync({
+        taskId: selectedTaskId,
+        clientId,
+        filename: selectedFile.name,
+        mimeType: selectedFile.type || "application/pdf",
+        fileSize: selectedFile.size,
+        base64,
+      });
 
-      toast.success(`Arquivo "${data.filename}" anexado com sucesso!`);
+      toast.success(`Arquivo "${selectedFile.name}" anexado com sucesso!`);
       setUploadDialogOpen(false);
       setSelectedFile(null);
-      // Recarrega lista de arquivos para o dialog de email
       utils.files.listByTask.invalidate({ taskId: selectedTaskId });
       refetchTaskFiles();
     } catch (err: any) {
@@ -389,6 +401,14 @@ export default function ClientDetail() {
                             title="Enviar guia por e-mail"
                           >
                             <Mail size={11} /> Enviar
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTask(task.id, task.title)}
+                            className="flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors hover:bg-red-900/30"
+                            style={{ color: "#f87171", border: "1px solid rgba(248,113,113,0.3)" }}
+                            title="Excluir tarefa"
+                          >
+                            <Trash2 size={11} />
                           </button>
                         </div>
                       </td>

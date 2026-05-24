@@ -47,6 +47,7 @@ import {
   updateClient,
   updateRecurringTask,
   updateTask,
+  deleteTask,
   updateTaskTemplate,
   getDb,
   upsertUser,
@@ -239,6 +240,13 @@ const tasksRouter = router({
         ...rest,
         ...(dueDate ? { dueDate: new Date(dueDate) } : {}),
       });
+      return { success: true };
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await deleteTask(input.id);
       return { success: true };
     }),
 

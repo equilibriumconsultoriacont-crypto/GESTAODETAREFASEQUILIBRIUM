@@ -289,6 +289,15 @@ export async function updateTask(id: number, data: Partial<InsertTask>): Promise
   }
 }
 
+export async function deleteTask(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  // Remove arquivos vinculados primeiro para não violar FK
+  await db.delete(taskFiles).where(eq(taskFiles.taskId, id));
+  // Remove a tarefa
+  await db.delete(tasks).where(eq(tasks.id, id));
+}
+
 export async function taskExistsByRecurringAndCompetencia(
   recurringTaskId: number,
   competencia: string

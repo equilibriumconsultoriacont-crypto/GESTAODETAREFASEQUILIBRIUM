@@ -14,13 +14,14 @@ export default function MonthlyPanelPage() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   const { data: panel = [], isLoading, refetch } = trpc.monthlyPanel.get.useQuery({ month, year });
   const generateMutation = trpc.tasks.generateMonthly.useMutation();
   const utils = trpc.useUtils();
 
-  const prevMonth = () => { if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1); };
-  const nextMonth = () => { if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1); };
+  const prevMonth = () => { setSelectedDay(null); if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1); };
+  const nextMonth = () => { setSelectedDay(null); if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1); };
 
   const handleGenerate = async () => {
     try {
@@ -63,6 +64,15 @@ export default function MonthlyPanelPage() {
 
   const cells: (number | null)[] = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
   while (cells.length % 7 !== 0) cells.push(null);
+
+  // Tarefas do dia selecionado — com nome do cliente
+  const clientMap = new Map(panel.map((c) => [c.clientId, c.clientName]));
+  const selectedDayTasks = selectedDay
+    ? (tasksByDay.get(selectedDay) ?? []).map((t) => ({
+        ...t,
+        clientName: panel.find((c) => c.tasks.some((ct) => ct.taskId === t.taskId))?.clientName ?? "—",
+      }))
+    : [];
 
   const getDayColor = (dayTasks: typeof allTasks) => {
     if (!dayTasks.length) return null;
@@ -118,10 +128,15 @@ export default function MonthlyPanelPage() {
                 const isToday = day === today.getDate() && month === today.getMonth() + 1 && year === today.getFullYear();
                 const dotColor = getDayColor(dayTasks);
                 return (
-                  <div key={idx} className="flex flex-col items-center justify-center rounded-lg py-1.5"
+                  <div key={idx} className="flex flex-col items-center justify-center rounded-lg py-1.5 cursor-pointer transition-all"
+                    onClick={() => day && setSelectedDay(selectedDay === day ? null : day)}
                     style={{
-                      background: isToday ? "rgba(36,100,108,0.25)" : "transparent",
-                      border: isToday ? "1px solid rgba(36,100,108,0.5)" : "1px solid transparent",
+                      background: selectedDay === day
+                        ? "rgba(36,100,108,0.4)"
+                        : isToday ? "rgba(36,100,108,0.25)" : "transparent",
+                      border: selectedDay === day
+                        ? "1px solid rgba(159,212,220,0.6)"
+                        : isToday ? "1px solid rgba(36,100,108,0.5)" : "1px solid transparent",
                       minHeight: 44,
                     }}>
                     <span className="text-sm font-medium" style={{ color: isToday ? "#9fd4dc" : dayTasks.length > 0 ? "#e5e5e5" : "#3f3f46" }}>
@@ -151,8 +166,54 @@ export default function MonthlyPanelPage() {
                 <span className="text-xs" style={{ color: "#52525b" }}>{l.label}</span>
               </div>
             ))}
+            {selectedDay && (
+              <button onClick={() => setSelectedDay(null)} className="ml-4 text-xs hover:underline" style={{ color: "#52525b" }}>
+                Limpar seleção
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Painel do dia selecionado */}
+        {selectedDay && (
+          <div className="rounded-xl border overflow-hidden" style={{ background: "#111", borderColor: "#1e4f5c" }}>
+            <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid #1e4f5c", background: "rgba(36,100,108,0.1)" }}>
+              <span className="text-sm font-semibold" style={{ color: "#9fd4dc" }}>
+                📅 {String(selectedDay).padStart(2, "0")}/{String(month).padStart(2, "0")}/{year} — {selectedDayTasks.length} tarefa(s)
+              </span>
+              <button onClick={() => setSelectedDay(null)} style={{ color: "#52525b" }}>✕</button>
+            </div>
+            {selectedDayTasks.length === 0 ? (
+              <p className="text-sm text-center py-6" style={{ color: "#52525b" }}>Nenhuma tarefa neste dia</p>
+            ) : (
+              <div className="divide-y" style={{ borderColor: "rgba(30,79,92,0.3)" }}>
+                {selectedDayTasks.map((task) => {
+                  const due = new Date(task.dueDate);
+                  const isOverdue = due < today && task.status !== "CONCLUIDA";
+                  return (
+                    <Link key={task.taskId} href={`/tarefas/${task.taskId}`}>
+                      <div className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <TaskTypeBadge type={task.taskType} />
+                          <div>
+                            <p className="text-sm" style={{ color: "#e5e5e5" }}>{task.title}</p>
+                            <p className="text-xs mt-0.5" style={{ color: "#52525b" }}>{task.clientName}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs" style={{ color: isOverdue ? "#f87171" : "#52525b" }}>
+                            {due.toLocaleDateString("pt-BR")}
+                          </span>
+                          <StatusBadge status={task.status} />
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Progress bar — only if tasks exist */}
         {stats.total > 0 && (
