@@ -176,6 +176,47 @@ export default function MonthlyPanelPage() {
 
         {/* Painel do dia selecionado */}
         {selectedDay && (
+          <div className="rounded-xl border overflow-hidden" style={{ background: "#111", borderColor: "#9fd4dc" }}>
+            <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(159,212,220,0.2)", background: "rgba(36,100,108,0.15)" }}>
+              <span className="text-sm font-semibold" style={{ color: "#9fd4dc" }}>
+                📅 Dia {selectedDay} de {MONTHS[month - 1]} — {selectedDayTasks.length} tarefa{selectedDayTasks.length !== 1 ? "s" : ""}
+              </span>
+              <button onClick={() => setSelectedDay(null)} className="text-xs hover:underline" style={{ color: "#52525b" }}>Fechar ×</button>
+            </div>
+            {selectedDayTasks.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm" style={{ color: "#52525b" }}>Nenhuma tarefa neste dia</div>
+            ) : (
+              <div className="divide-y" style={{ borderColor: "rgba(30,79,92,0.3)" }}>
+                {selectedDayTasks.map((task) => {
+                  const due = new Date(task.dueDate);
+                  const isOverdue = due < today && task.status !== "CONCLUIDA" && task.status !== "CANCELADA";
+                  return (
+                    <Link key={task.taskId} href={`/tarefas/${task.taskId}`}>
+                      <div className="flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors cursor-pointer">
+                        <div className="flex items-center gap-3">
+                          <TaskTypeBadge type={task.taskType} />
+                          <div>
+                            <p className="text-sm font-medium" style={{ color: "#e5e5e5" }}>{task.title}</p>
+                            <p className="text-xs mt-0.5" style={{ color: "#a1a1aa" }}>{task.clientName}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-xs" style={{ color: isOverdue ? "#f87171" : "#52525b" }}>
+                            {due.toLocaleDateString("pt-BR")}
+                          </span>
+                          <StatusBadge status={task.status} />
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Painel do dia selecionado */}
+        {selectedDay && (
           <div className="rounded-xl border overflow-hidden" style={{ background: "#111", borderColor: "#1e4f5c" }}>
             <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid #1e4f5c", background: "rgba(36,100,108,0.1)" }}>
               <span className="text-sm font-semibold" style={{ color: "#9fd4dc" }}>

@@ -372,12 +372,13 @@ const filesRouter = router({
       const fileKey = `tasks/${input.taskId}/${Date.now()}-${input.filename}`;
       const { url } = await storagePut(fileKey, buffer, input.mimeType || "application/pdf");
       
-      // Reconhecer tipo de documento via OCR
+      // Reconhecer tipo de documento via OCR (não-bloqueante, não impede o upload)
       let documentType = "UNKNOWN";
       let confidence = 0;
       try {
         const { recognizeDocument } = await import("./ocr");
-        const recognition = await recognizeDocument(url, input.mimeType || "application/pdf");
+        // Passa o base64 diretamente para o OCR usar Anthropic/regex sem precisar de URL pública
+        const recognition = await recognizeDocument(url, input.mimeType || "application/pdf", input.base64);
         documentType = recognition.documentType;
         confidence = recognition.confidence;
       } catch (error) {

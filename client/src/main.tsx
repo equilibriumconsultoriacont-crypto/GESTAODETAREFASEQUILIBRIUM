@@ -1,7 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { httpBatchLink, TRPCClientError } from "@trpc/client";
+import { httpBatchLink, httpLink, splitLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
@@ -37,17 +37,29 @@ queryClient.getMutationCache().subscribe(event => {
   }
 });
 
+const fetchWithCredentials = (input: RequestInfo | URL, init?: RequestInit) =>
+  globalThis.fetch(input, { ...(init ?? {}), credentials: "include" });
+
 const trpcClient = trpc.createClient({
   links: [
-    httpBatchLink({
-      url: "/api/trpc",
-      transformer: superjson,
-      fetch(input, init) {
-        return globalThis.fetch(input, {
-          ...(init ?? {}),
-          credentials: "include",
-        });
-      },
+    // Mutations de upload e smartUpload usam link simples (sem batch) para evitar
+    // problemas com payloads grandes (base64 de PDFs)
+    splitLink({
+      condition: (op) =>
+        op.type === "mutation" &&
+        (op.path.startsWith("files.upload") ||
+          op.path.startsWith("smartUpload.process") ||
+          op.path.startsWith("email.sendGuia")),
+      true: httpLink({
+        url: "/api/trpc",
+        transformer: superjson,
+        fetch: fetchWithCredentials,
+      }),
+      false: httpBatchLink({
+        url: "/api/trpc",
+        transformer: superjson,
+        fetch: fetchWithCredentials,
+      }),
     }),
   ],
 });

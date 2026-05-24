@@ -173,7 +173,7 @@ export default function Tasks() {
               <thead>
                 <tr style={{ borderBottom: "1px solid #1e4f5c" }}>
                   <th className="text-left px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa" }}>Tarefa</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium hidden md:table-cell" style={{ color: "#a1a1aa" }}>Cliente</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa" }}>Cliente</th>
                   <th className="text-left px-4 py-3 text-xs font-medium hidden lg:table-cell" style={{ color: "#a1a1aa" }}>Depto</th>
                   <th className="text-left px-4 py-3 text-xs font-medium hidden sm:table-cell" style={{ color: "#a1a1aa" }}>Vencimento</th>
                   <th className="text-left px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa" }}>Status</th>
@@ -198,8 +198,10 @@ export default function Tasks() {
                           <p className="text-xs mt-0.5 ml-9" style={{ color: "#52525b" }}>{task.competencia}</p>
                         </Link>
                       </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <p className="text-xs" style={{ color: "#a1a1aa" }}>{client?.name ?? "—"}</p>
+                      <td className="px-4 py-3">
+                        <Link href={`/clientes/${task.clientId}`}>
+                          <p className="text-xs hover:underline cursor-pointer" style={{ color: "#9fd4dc" }}>{client?.name ?? "—"}</p>
+                        </Link>
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell">
                         <DepartmentBadge department={(task as any).department ?? "GERAL"} />
