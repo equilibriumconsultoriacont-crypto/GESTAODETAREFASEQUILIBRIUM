@@ -24,7 +24,7 @@ export default function PendingSendsPage() {
       const { sent, failed } = result.guias;
       if (sent > 0) toast.success(`✅ ${sent} guia(s) enviada(s) com sucesso!`);
       if (failed > 0) toast.error(`❌ ${failed} falha(s) no envio`);
-      if (sent === 0 && failed === 0) toast.info("Nenhuma guia pendente de envio no momento");
+      if (sent === 0 && failed === 0) toast.info("Nenhum arquivo pendente de envio");
       refetch();
       utils.tasks.list.invalidate();
       utils.tasks.dashboard.invalidate();
@@ -54,7 +54,7 @@ export default function PendingSendsPage() {
           <div>
             <h1 className="text-xl font-bold" style={{ color: "#e5e5e5" }}>Guias Pendentes de Envio</h1>
             <p className="text-sm mt-0.5" style={{ color: "#a1a1aa" }}>
-              Tarefas com arquivo anexado mas e-mail ainda não enviado ao cliente.
+              Arquivos anexados às tarefas que ainda não foram enviados por e-mail ao cliente.
               O sistema dispara automaticamente a cada 1 hora.
             </p>
           </div>
@@ -121,7 +121,7 @@ export default function PendingSendsPage() {
                       </span>
                     </Link>
                     <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(248,113,113,0.15)", color: "#f87171" }}>
-                      {group.tasks.length} pendente{group.tasks.length !== 1 ? "s" : ""}
+                      {group.tasks.length} arquivo{group.tasks.length !== 1 ? "s" : ""} pendente{group.tasks.length !== 1 ? "s" : ""}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 text-xs" style={{ color: "#a1a1aa" }}>

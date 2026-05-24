@@ -588,24 +588,30 @@ const autoSendRouter = router({
     return { guias: sendResult, alerts: alertResult };
   }),
 
-  // Listar tarefas com arquivo anexado mas sem e-mail enviado (pendentes de envio)
+  // Listar arquivos anexados que ainda não foram enviados por e-mail ao cliente
+  // Lógica: cada arquivo (taskFile) individualmente — se não há email_log
+  // ENVIADO com aquele taskFileId específico, o arquivo é pendente de envio.
+  // Isso garante que um envio de teste sem arquivo não "oculte" a guia real.
   pendingGuias: protectedProcedure.query(async () => {
-    const db = await getDb();
-    if (!db) return [];
-    // Tarefas que têm arquivo anexado mas nenhum e-mail enviado com sucesso
     const pool = getPool();
     const [rows] = await pool.query(`
       SELECT 
         t.id as taskId, t.title, t.taskType, t.competencia, t.dueDate, t.status,
         t.clientId,
         c.name as clientName, c.email as clientEmail,
-        f.id as fileId, f.filename, f.uploadedAt,
-        (SELECT COUNT(*) FROM email_logs el WHERE el.taskId = t.id AND el.status = 'ENVIADO') as emailsSent
-      FROM tasks t
-      INNER JOIN task_files f ON f.taskId = t.id
+        f.id as fileId, f.filename, f.uploadedAt, f.mimeType,
+        f.fileKey, f.fileUrl
+      FROM task_files f
+      INNER JOIN tasks t ON t.id = f.taskId
       INNER JOIN clients c ON c.id = t.clientId
       WHERE t.status NOT IN ('CANCELADA')
-      AND (SELECT COUNT(*) FROM email_logs el WHERE el.taskId = t.id AND el.status = 'ENVIADO') = 0
+        AND c.active = 1
+        AND c.email IS NOT NULL AND c.email != ''
+        AND NOT EXISTS (
+          SELECT 1 FROM email_logs el
+          WHERE el.taskFileId = f.id
+            AND el.status = 'ENVIADO'
+        )
       ORDER BY t.dueDate ASC
       LIMIT 100
     `) as [any[], any];
