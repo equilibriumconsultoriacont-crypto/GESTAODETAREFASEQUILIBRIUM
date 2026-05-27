@@ -4,6 +4,8 @@
  * Sem dependência de IA externa — funciona 100% offline
  */
 
+import { inflateSync } from "zlib";
+
 export interface DocumentRecognition {
   documentType: string; // DAS | DAS_MEI | NFS | DCTF | SPED | OUTROS | UNKNOWN
   cnpj?: string;
@@ -30,7 +32,7 @@ function extractRawTextFromPdf(base64: string): string {
       if (pdfBuffer[i] === 0x78 && zlibHeaders.includes(pdfBuffer[i + 1]!)) {
         try {
           const chunk = pdfBuffer.slice(i, Math.min(i + 500_000, pdfBuffer.length));
-          const decompressed = (require("zlib") as any).inflateSync(chunk);
+          const decompressed = inflateSync(chunk);
           const text = decompressed.toString("latin1");
 
           // Só processa streams que contenham conteúdo relevante
@@ -277,7 +279,18 @@ export async function recognizeDocument(
       // Mas o template já separou: se SIMEI/MEI aparece no texto, vai para DAS_MEI
     }
 
-    const competencia = normalizeCompetencia(compMatch?.[0] ?? "");
+    const competencia = (() => {
+      // Prioridade 1: nome do mês por extenso (ex: "Abril/2026") — mais confiável
+      const extMatch = text.match(/(Janeiro|Fevereiro|Mar[çc]o|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro)[\/\s]*(20\d{2})/i);
+      if (extMatch) return normalizeCompetencia(extMatch[0]);
+      // Prioridade 2: "Período de Apuração" seguido de data numérica
+      const periodoMatch = text.match(/Per[íi]odo\s+de\s+Apura[çc][aã]o[^0-9]*(0[1-9]|1[0-2])[\/\-](20\d{2})/i);
+      if (periodoMatch) return `${periodoMatch[1]}/${periodoMatch[2]}`;
+      // Prioridade 3: qualquer MM/YYYY no texto
+      const numMatch = text.match(/(0[1-9]|1[0-2])[\/\-](20\d{2})/);
+      if (numMatch) return `${numMatch[1]}/${numMatch[2]}`;
+      return undefined;
+    })();
 
     // Calcula confiança baseado em quantos campos foram extraídos
     let confidence = tmpl.baseConfidence;
