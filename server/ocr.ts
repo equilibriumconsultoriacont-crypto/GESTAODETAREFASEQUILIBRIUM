@@ -1,226 +1,311 @@
 /**
- * OCR de documentos contábeis brasileiros
- * Usa Anthropic Claude (via API) para reconhecer PDFs
- * Fallback: extração por regex do texto do PDF (sem IA)
+ * Reconhecimento de documentos contábeis brasileiros
+ * Estratégia: extração de texto do PDF + templates de regex por tipo de documento
+ * Sem dependência de IA externa — funciona 100% offline
  */
 
 export interface DocumentRecognition {
-  documentType: string; // DAS, DAS_MEI, NFS, DCTF, SPED, OUTROS, UNKNOWN
+  documentType: string; // DAS | DAS_MEI | NFS | DCTF | SPED | OUTROS | UNKNOWN
   cnpj?: string;
   cpf?: string;
   competencia?: string; // MM/YYYY
   valorPrincipal?: string;
   codigoBarras?: string;
+  dataVencimento?: string;
   confidence: number; // 0-100
   extractedText?: string;
 }
 
-// ── Anthropic API direto (não depende do BUILT_IN_FORGE_API_KEY) ──────────────
-async function recognizeViaAnthropic(base64: string, mimeType: string): Promise<DocumentRecognition | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
-
+// ── Extração de texto do PDF via descompressão zlib ───────────────────────────
+function extractRawTextFromPdf(base64: string): string {
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 500,
-        messages: [{
-          role: "user",
-          content: [
-            {
-              type: "document",
-              source: {
-                type: "base64",
-                media_type: mimeType.includes("pdf") ? "application/pdf" : mimeType,
-                data: base64,
-              },
-            },
-            {
-              type: "text",
-              text: `Analise este documento contábil brasileiro e extraia as informações em JSON.
+    const pdfBuffer = Buffer.from(base64, "base64");
+    const allStrings: string[] = [];
 
-Campos obrigatórios:
-- documentType: "DAS" (Simples Nacional/PGDAS), "DAS_MEI" (contém MEI/SIMEI/CPF), "NFS" (nota fiscal serviço), "DCTF", "SPED", "OUTROS"
-- confidence: 0-100 (sua confiança na identificação)
+    // PDFs usam streams comprimidos com zlib (FlateDecode)
+    // Varre o arquivo procurando bytes de cabeçalho zlib válidos: 0x78 0x9C, 0x78 0xDA, etc.
+    const zlibHeaders = [0x9c, 0xda, 0x01, 0x5e, 0x9d, 0xdb];
+    let i = 0;
+    while (i < pdfBuffer.length - 2) {
+      if (pdfBuffer[i] === 0x78 && zlibHeaders.includes(pdfBuffer[i + 1]!)) {
+        try {
+          const chunk = pdfBuffer.slice(i, Math.min(i + 500_000, pdfBuffer.length));
+          const decompressed = (require("zlib") as any).inflateSync(chunk);
+          const text = decompressed.toString("latin1");
 
-Campos opcionais (extraia se existirem):
-- cnpj: CNPJ no formato XX.XXX.XXX/XXXX-XX
-- cpf: CPF no formato XXX.XXX.XXX-XX (comum no DAS MEI)
-- competencia: mês/ano no formato MM/YYYY
-- valorPrincipal: valor a pagar em reais (ex: "150.00")
-- codigoBarras: linha digitável se visível
-
-Dicas: DAS MEI tem "MEI", "Microempreendedor", "SIMEI" ou CPF principal. DAS Simples tem "PGDAS", "Simples Nacional", CNPJ.
-
-Responda APENAS com JSON válido sem markdown.`,
-            },
-          ],
-        }],
-      }),
-    });
-
-    if (!response.ok) {
-      console.warn("[OCR] Anthropic API error:", response.status);
-      return null;
-    }
-
-    const data = await response.json();
-    const content = data.content?.[0]?.text;
-    if (!content) return null;
-
-    const parsed = JSON.parse(content.replace(/```json\n?|\n?```/g, "").trim());
-    return {
-      documentType: parsed.documentType || "UNKNOWN",
-      cnpj: parsed.cnpj || undefined,
-      cpf: parsed.cpf || undefined,
-      competencia: parsed.competencia || undefined,
-      valorPrincipal: parsed.valorPrincipal || undefined,
-      codigoBarras: parsed.codigoBarras || undefined,
-      confidence: parsed.confidence || 50,
-    };
-  } catch (err) {
-    console.warn("[OCR] Anthropic recognition failed:", err);
-    return null;
-  }
-}
-
-// ── Extração por regex (fallback sem IA) ────────────────────────────────────
-function extractFromText(text: string): DocumentRecognition {
-  const upper = text.toUpperCase();
-
-  // Tipo de documento
-  let documentType = "OUTROS";
-  let confidence = 60;
-
-  if (upper.includes("SIMEI") || upper.includes("MEI") || upper.includes("MICROEMPREENDEDOR")) {
-    documentType = "DAS_MEI";
-    confidence = 85;
-  } else if (upper.includes("PGDAS") || upper.includes("SIMPLES NACIONAL") || upper.includes("DAS")) {
-    documentType = "DAS";
-    confidence = 85;
-  } else if (upper.includes("NOTA FISCAL") || upper.includes("NFS") || upper.includes("ISS")) {
-    documentType = "NFS";
-    confidence = 75;
-  } else if (upper.includes("DCTF") || upper.includes("DCTFWeb")) {
-    documentType = "DCTF";
-    confidence = 80;
-  } else if (upper.includes("SPED")) {
-    documentType = "SPED";
-    confidence = 80;
-  }
-
-  // CNPJ: XX.XXX.XXX/XXXX-XX
-  const cnpjMatch = text.match(/\d{2}[\.\s]?\d{3}[\.\s]?\d{3}[\/\s]?\d{4}[\-\s]?\d{2}/);
-  const cnpj = cnpjMatch ? cnpjMatch[0].replace(/\s/g, "") : undefined;
-
-  // CPF: XXX.XXX.XXX-XX
-  const cpfMatch = text.match(/\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[\-\s]?\d{2}(?!\d)/);
-  const cpf = cpfMatch && documentType === "DAS_MEI" ? cpfMatch[0] : undefined;
-
-  // Competência: MM/YYYY ou MM-YYYY
-  const compMatch = text.match(/\b(0[1-9]|1[0-2])[\/\-](20\d{2})\b/);
-  const competencia = compMatch ? `${compMatch[1]}/${compMatch[2]}` : undefined;
-
-  // Valor: R$ X.XXX,XX ou X.XXX,XX
-  const valorMatch = text.match(/R\$\s*([\d\.,]+)/);
-  const valorPrincipal = valorMatch ? valorMatch[1].replace(".", "").replace(",", ".") : undefined;
-
-  return { documentType, cnpj, cpf, competencia, valorPrincipal, confidence };
-}
-
-// ── Extração de texto de PDF base64 (sem biblioteca externa) ────────────────
-function extractTextFromPdfBase64(base64: string): string {
-  try {
-    const buffer = Buffer.from(base64, "base64");
-    const str = buffer.toString("latin1");
-    // Extrai streams de texto do PDF (objetos BT/ET com Tj/TJ)
-    const textParts: string[] = [];
-    const patterns = [
-      /\(([^)]{1,200})\)\s*Tj/g,           // (texto) Tj
-      /\[((?:[^[\]]*\([^)]*\)[^[\]]*)*)\]\s*TJ/g, // [texto] TJ
-      /<<.*?\/BaseFont\s*\/([^\s\/]+)/g,   // fontes (para contexto)
-    ];
-
-    for (const pattern of patterns) {
-      let match;
-      while ((match = pattern.exec(str)) !== null) {
-        const text = match[1]
-          .replace(/\\(\d{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)))
-          .replace(/\\n/g, " ").replace(/\\r/g, " ").replace(/\\\\/g, "\\")
-          .replace(/\\'/g, "'").replace(/\\\(/g, "(").replace(/\\\)/g, ")");
-        if (text.trim().length > 1) textParts.push(text.trim());
+          // Só processa streams que contenham conteúdo relevante
+          const hasTaxKeywords = /Simples|Arrecada|CNPJ|SENDA|Vencimento|Nota Fiscal|DCTFWeb|DARF|SPED|MEI/i.test(text);
+          if (hasTaxKeywords) {
+            // Extrai strings entre parênteses: padrão PDF para texto
+            const matches = text.match(/\(([^\)]{1,300})\)/g) ?? [];
+            for (const m of matches) {
+              const s = m.slice(1, -1).trim();
+              if (s.length > 0) allStrings.push(s);
+            }
+          }
+        } catch {
+          // Stream inválido — continua
+        }
       }
+      i++;
     }
-    return textParts.join(" ").substring(0, 3000);
-  } catch {
+
+    if (allStrings.length === 0) return "";
+
+    const result = allStrings.join(" ").slice(0, 10_000);
+    console.log(`[OCR] Extracted ${result.length} chars from PDF (${allStrings.length} strings)`);
+    return result;
+  } catch (err) {
+    console.warn("[OCR] PDF extraction error:", err);
     return "";
   }
 }
 
-// ── Função principal exportada ────────────────────────────────────────────────
+// ── Templates de reconhecimento por tipo de documento ────────────────────────
+
+interface DocTemplate {
+  name: string;
+  documentType: string;
+  // Qualquer um desses padrões no texto identifica o documento
+  identifiers: RegExp[];
+  // Extrai campos específicos do documento
+  extractors: {
+    cnpj?: RegExp;
+    cpf?: RegExp;
+    competencia?: RegExp; // retorna string MM/YYYY
+    valor?: RegExp;
+    codigoBarras?: RegExp;
+    dataVencimento?: RegExp;
+  };
+  // Peso de confiança (0-100) quando identificado
+  baseConfidence: number;
+}
+
+const DOCUMENT_TEMPLATES: DocTemplate[] = [
+  // ── DAS Simples Nacional ────────────────────────────────────────────────────
+  {
+    name: "DAS Simples Nacional",
+    documentType: "DAS",
+    identifiers: [
+      /Documento de Arrecada[çc][aã]o\s+do\s+Simples Nacional/i,
+      /PGDAS/i,
+      /Simples Nacional/i,
+      /SENDA/i, // software que gera o DAS
+      /DAS[\s\-]Simples/i,
+    ],
+    extractors: {
+      // CNPJ no formato XX.XXX.XXX/XXXX-XX
+      cnpj: /(\d{2}[\.\s]?\d{3}[\.\s]?\d{3}[\/\s]?\d{4}[\-\s]?\d{2})/,
+      // Competência: "Abril/2026" ou "04/2026"
+      competencia: /(Janeiro|Fevereiro|Mar[çc]o|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro)[\/\s]*(20\d{2})|(0[1-9]|1[0-2])[\/\-](20\d{2})/i,
+      // Data de vencimento: a primeira data DD/MM/YYYY encontrada após "Pagar" ou "Vencimento"
+      dataVencimento: /(?:Pagar\s+este\s+documento\s+at[eé]|Pagar\s+at[eé]|Data\s+de\s+Vencimento)[^0-9]*(\d{2}\/\d{2}\/20\d{2})/i,
+      // Valor total
+      valor: /(?:Valor\s+Total\s+do\s+Documento|Valor:)[^0-9]*([\d]{1,6}[,]\d{2})/i,
+      // Linha digitável (começa com 8 e tem muitos dígitos)
+      codigoBarras: /(\d{5}\s?\d{5}\s?\d{5}\s?\d{6}\s?\d{5}\s?\d{6}\s?\d{1}\s?\d{14}|\d{47,48})/,
+    },
+    baseConfidence: 90,
+  },
+
+  // ── DAS MEI ─────────────────────────────────────────────────────────────────
+  {
+    name: "DAS MEI / SIMEI",
+    documentType: "DAS_MEI",
+    identifiers: [
+      /SIMEI/i,
+      /Microempreendedor Individual/i,
+      /MEI[\s\-]/i,
+      /CCMEI/i,
+    ],
+    extractors: {
+      cpf: /(\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[\-\s]?\d{2})(?!\d)/,
+      cnpj: /(\d{2}[\.\s]?\d{3}[\.\s]?\d{3}[\/\s]?\d{4}[\-\s]?\d{2})/,
+      competencia: /(?:Jan(?:eiro)?|Fev(?:ereiro)?|Mar(?:[çc]o)?|Abr(?:il)?|Mai(?:o)?|Jun(?:ho)?|Jul(?:ho)?|Ago(?:sto)?|Set(?:embro)?|Out(?:ubro)?|Nov(?:embro)?|Dez(?:embro)?)[\/\s]?(20\d{2})|(0[1-9]|1[0-2])[\/\-](20\d{2})/i,
+      dataVencimento: /(?:Pagar at[eé]|vencimento)[:\s]*(\d{2}\/\d{2}\/20\d{2})/i,
+      valor: /(?:Valor Total|Valor:)[:\s]*([\d\.]+,\d{2})/i,
+      codigoBarras: /(\d{5}\s?\d{5}\s?\d{5}\s?\d{6}\s?\d{5}\s?\d{6}\s?\d{1}\s?\d{14}|\d{47,48})/,
+    },
+    baseConfidence: 90,
+  },
+
+  // ── DCTFWeb / DARF ──────────────────────────────────────────────────────────
+  {
+    name: "DCTFWeb / DARF",
+    documentType: "DCTF",
+    identifiers: [
+      /DCTFWeb/i,
+      /DCTF[\s\-]/i,
+      /Documento de Arrecada[çc][aã]o de Receitas Federais/i,
+      /DARF/i,
+    ],
+    extractors: {
+      cnpj: /(\d{2}[\.\s]?\d{3}[\.\s]?\d{3}[\/\s]?\d{4}[\-\s]?\d{2})/,
+      competencia: /(0[1-9]|1[0-2])[\/\-](20\d{2})/,
+      dataVencimento: /(?:Vencimento|Data)[:\s]*(\d{2}\/\d{2}\/20\d{2})/i,
+      valor: /(?:Valor Principal|Valor Total|Valor)[:\s]*([\d\.]+,\d{2})/i,
+      codigoBarras: /(\d{47,48})/,
+    },
+    baseConfidence: 85,
+  },
+
+  // ── NFS-e / Nota Fiscal de Serviço ──────────────────────────────────────────
+  {
+    name: "NFS-e / ISS",
+    documentType: "NFS",
+    identifiers: [
+      /Nota Fiscal Eletr[oô]nica de Servi[çc]os/i,
+      /NFS-?e/i,
+      /ISS[\s\-]/i,
+      /Imposto Sobre Servi[çc]os/i,
+    ],
+    extractors: {
+      cnpj: /(?:Prestador|CNPJ)[:\s]*(\d{2}[\.\s]?\d{3}[\.\s]?\d{3}[\/\s]?\d{4}[\-\s]?\d{2})/i,
+      competencia: /(0[1-9]|1[0-2])[\/\-](20\d{2})/,
+      valor: /(?:Valor do ISS|ISS a Recolher|Valor)[:\s]*([\d\.]+,\d{2})/i,
+      dataVencimento: /(?:Vencimento|Pagar at[eé])[:\s]*(\d{2}\/\d{2}\/20\d{2})/i,
+    },
+    baseConfidence: 80,
+  },
+
+  // ── SPED ────────────────────────────────────────────────────────────────────
+  {
+    name: "SPED",
+    documentType: "SPED",
+    identifiers: [
+      /SPED[\s\-]/i,
+      /Escritura[çc][aã]o Cont[áa]bil\s+Digital/i,
+      /ECD[\s\-]/i,
+      /ECF[\s\-]/i,
+    ],
+    extractors: {
+      cnpj: /(\d{2}[\.\s]?\d{3}[\.\s]?\d{3}[\/\s]?\d{4}[\-\s]?\d{2})/,
+      competencia: /(0[1-9]|1[0-2])[\/\-](20\d{2})/,
+    },
+    baseConfidence: 80,
+  },
+];
+
+// ── Normaliza competência para MM/YYYY ────────────────────────────────────────
+const MONTHS_PT: Record<string, string> = {
+  janeiro: "01", fevereiro: "02", março: "03", marco: "03",
+  abril: "04", maio: "05", junho: "06", julho: "07",
+  agosto: "08", setembro: "09", outubro: "10", novembro: "11", dezembro: "12",
+  jan: "01", fev: "02", mar: "03", abr: "04", mai: "05", jun: "06",
+  jul: "07", ago: "08", set: "09", out: "10", nov: "11", dez: "12",
+};
+
+function normalizeCompetencia(matchText: string): string | undefined {
+  if (!matchText) return undefined;
+
+  // Formato numérico: 04/2026
+  const numericMatch = matchText.match(/(0[1-9]|1[0-2])[\/\-](20\d{2})/);
+  if (numericMatch) return `${numericMatch[1]}/${numericMatch[2]}`;
+
+  // Formato por extenso: Abril/2026, Abril 2026, etc.
+  const extMatch = matchText.match(/(Janeiro|Fevereiro|Mar[çc]o|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro)[\/\s]*(20\d{2})/i);
+  if (extMatch) {
+    const monthKey = extMatch[1]!.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove acentos
+      .replace("ç", "c");
+    const mm = MONTHS_PT[monthKey];
+    if (mm) return `${mm}/${extMatch[2]}`;
+  }
+
+  return undefined;
+}
+
+function cleanCnpj(raw: string): string {
+  return raw.replace(/\D/g, "").slice(0, 14);
+}
+
+function cleanCpf(raw: string): string {
+  return raw.replace(/\D/g, "").slice(0, 11);
+}
+
+function formatCnpj(digits: string): string {
+  if (digits.length !== 14) return digits;
+  return `${digits.slice(0,2)}.${digits.slice(2,5)}.${digits.slice(5,8)}/${digits.slice(8,12)}-${digits.slice(12,14)}`;
+}
+
+// ── Função principal de reconhecimento ────────────────────────────────────────
 export async function recognizeDocument(
-  fileUrlOrBase64: string,
-  mimeType: string,
-  rawBase64?: string // base64 bruto para Anthropic (mais eficiente)
+  _fileUrl: string,
+  _mimeType: string,
+  rawBase64?: string
 ): Promise<DocumentRecognition> {
-  try {
-    // Estratégia 1: usar Anthropic API se disponível (mais preciso)
-    const base64ToUse = rawBase64 || (fileUrlOrBase64.startsWith("data:") ? fileUrlOrBase64.split(",")[1] : null);
 
-    if (base64ToUse) {
-      const anthropicResult = await recognizeViaAnthropic(base64ToUse, mimeType);
-      if (anthropicResult && anthropicResult.confidence >= 40) {
-        console.log(`[OCR] Anthropic recognized: ${anthropicResult.documentType} (${anthropicResult.confidence}%)`);
-        return anthropicResult;
-      }
-    }
-
-    // Estratégia 2: extração de texto do PDF por regex (sem IA)
-    const pdfBase64 = base64ToUse || "";
-    if (pdfBase64) {
-      const text = extractTextFromPdfBase64(pdfBase64);
-      if (text.length > 20) {
-        const result = extractFromText(text);
-        console.log(`[OCR] Regex extracted: ${result.documentType} (${result.confidence}%)`);
-        return { ...result, extractedText: text.substring(0, 500) };
-      }
-    }
-
-    // Estratégia 3: usar forge API legada se configurada
-    if (process.env.BUILT_IN_FORGE_API_KEY) {
-      const { invokeLLM } = await import("./_core/llm");
-      const response = await invokeLLM({
-        messages: [
-          {
-            role: "system",
-            content: `Você é um especialista em documentos contábeis brasileiros. Analise o documento e responda APENAS com JSON: {documentType, cnpj, cpf, competencia, valorPrincipal, codigoBarras, confidence}`,
-          },
-          {
-            role: "user",
-            content: [{ type: "file_url", file_url: { url: fileUrlOrBase64, detail: "high" } } as any],
-          },
-        ],
-        response_format: { type: "json_schema", json_schema: { name: "doc_recognition", strict: true, schema: { type: "object", properties: { documentType: { type: "string" }, cnpj: { type: "string" }, cpf: { type: "string" }, competencia: { type: "string" }, valorPrincipal: { type: "string" }, codigoBarras: { type: "string" }, confidence: { type: "integer" } }, required: ["documentType", "confidence"], additionalProperties: false } } },
-      });
-      const content = typeof response.choices[0]?.message?.content === "string" ? response.choices[0].message.content : JSON.stringify(response.choices[0]?.message?.content);
-      if (content) {
-        const parsed = JSON.parse(content);
-        return { documentType: parsed.documentType || "UNKNOWN", cnpj: parsed.cnpj, cpf: parsed.cpf, competencia: parsed.competencia, valorPrincipal: parsed.valorPrincipal, codigoBarras: parsed.codigoBarras, confidence: parsed.confidence || 0 };
-      }
-    }
-
-    return { documentType: "UNKNOWN", confidence: 0 };
-  } catch (error) {
-    console.error("[OCR] Error recognizing document:", error);
+  if (!rawBase64) {
     return { documentType: "UNKNOWN", confidence: 0 };
   }
+
+  // Extrai texto do PDF
+  const text = extractRawTextFromPdf(rawBase64);
+
+  if (text.length < 10) {
+    console.warn("[OCR] Could not extract text from PDF (possibly scanned/image-only)");
+    return { documentType: "UNKNOWN", confidence: 0, extractedText: "" };
+  }
+
+  console.log(`[OCR] Extracted ${text.length} chars from PDF`);
+
+  // Tenta cada template na ordem
+  for (const tmpl of DOCUMENT_TEMPLATES) {
+    const matched = tmpl.identifiers.some(rx => rx.test(text));
+    if (!matched) continue;
+
+    console.log(`[OCR] Matched template: ${tmpl.name}`);
+
+    // Extrai campos
+    const cnpjMatch = tmpl.extractors.cnpj ? text.match(tmpl.extractors.cnpj) : null;
+    const cpfMatch  = tmpl.extractors.cpf  ? text.match(tmpl.extractors.cpf)  : null;
+    const compMatch = tmpl.extractors.competencia ? text.match(tmpl.extractors.competencia) : null;
+    const valorMatch = tmpl.extractors.valor ? text.match(tmpl.extractors.valor) : null;
+    const cbMatch = tmpl.extractors.codigoBarras ? text.match(tmpl.extractors.codigoBarras) : null;
+    const vencMatch = tmpl.extractors.dataVencimento ? text.match(tmpl.extractors.dataVencimento) : null;
+
+    const cnpjRaw = cnpjMatch?.[1] ?? cnpjMatch?.[0];
+    const cnpjDigits = cnpjRaw ? cleanCnpj(cnpjRaw) : undefined;
+    const cpfRaw = cpfMatch?.[1] ?? cpfMatch?.[0];
+    const cpfDigits = cpfRaw ? cleanCpf(cpfRaw) : undefined;
+
+    // Para DAS MEI: verifica se o CNPJ encontrado é MEI (termina em /0001)
+    // e se há CPF do titular — se tiver CPF, aumenta confiança para DAS_MEI
+    let docType = tmpl.documentType;
+    if (docType === "DAS" && cpfDigits && cpfDigits.length === 11) {
+      // Presença de CPF junto com DAS pode indicar MEI
+      // Mas o template já separou: se SIMEI/MEI aparece no texto, vai para DAS_MEI
+    }
+
+    const competencia = normalizeCompetencia(compMatch?.[0] ?? "");
+
+    // Calcula confiança baseado em quantos campos foram extraídos
+    let confidence = tmpl.baseConfidence;
+    if (!cnpjDigits && !cpfDigits) confidence -= 20; // sem identificador do contribuinte
+    if (!competencia)              confidence -= 15; // sem período de apuração
+    if (!valorMatch)               confidence -= 5;  // sem valor (menos crítico)
+    confidence = Math.max(0, Math.min(100, confidence));
+
+    return {
+      documentType: docType,
+      cnpj: cnpjDigits ? formatCnpj(cnpjDigits) : undefined,
+      cpf: cpfDigits && cpfDigits.length === 11 ? cpfDigits : undefined,
+      competencia,
+      valorPrincipal: valorMatch?.[1]?.replace(/\./g, "").replace(",", "."),
+      codigoBarras: cbMatch?.[0]?.replace(/\s/g, ""),
+      dataVencimento: vencMatch?.[1],
+      confidence,
+      extractedText: text.slice(0, 500),
+    };
+  }
+
+  // Nenhum template reconheceu
+  console.warn("[OCR] No template matched. Text sample:", text.slice(0, 200));
+  return {
+    documentType: "UNKNOWN",
+    confidence: 0,
+    extractedText: text.slice(0, 300),
+  };
 }
 
 export function mapDocumentTypeToTaskType(documentType: string): string {
@@ -228,11 +313,8 @@ export function mapDocumentTypeToTaskType(documentType: string): string {
     DAS: "DAS Simples Nacional",
     DAS_MEI: "DAS MEI",
     NFS: "Emissão de Nota de Serviço",
-    DCTF: "DCTF - Declaração de Débitos e Créditos",
+    DCTF: "DCTF / DCTFWeb",
     SPED: "SPED Fiscal",
-    IRPF: "IRPF - Imposto de Renda",
-    ECF: "ECF - Escrituração Contábil Fiscal",
-    RPA: "RPA - Recibo de Pagamento Autônomo",
   };
   return mapping[documentType] || documentType;
 }
