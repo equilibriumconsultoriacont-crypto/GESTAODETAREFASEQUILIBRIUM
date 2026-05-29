@@ -331,29 +331,22 @@ export default function SmartUploadPage() {
                   </div>
 
                   {/* Notifications */}
-                  <div className="flex gap-3">
+                  <div className="flex gap-3 flex-wrap">
                     <div
                       className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg"
                       style={item.result.emailSent
                         ? { background: "rgba(74,222,128,0.1)", color: "#4ade80", border: "1px solid rgba(74,222,128,0.2)" }
-                        : { background: "rgba(248,113,113,0.1)", color: "#f87171", border: "1px solid rgba(248,113,113,0.2)" }}
+                        : { background: "rgba(251,146,60,0.1)", color: "#fb923c", border: "1px solid rgba(251,146,60,0.2)" }}
                     >
                       <Mail size={11} />
-                      {item.result.emailSent ? "E-mail enviado" : "E-mail falhou"}
-                    </div>
-                    <div
-                      className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg"
-                      style={item.result.whatsappSent
-                        ? { background: "rgba(74,222,128,0.1)", color: "#4ade80", border: "1px solid rgba(74,222,128,0.2)" }
-                        : { background: "rgba(82,82,91,0.15)", color: "#a1a1aa", border: "1px solid rgba(82,82,91,0.3)" }}
-                    >
-                      <MessageCircle size={11} />
-                      {item.result.whatsappSent ? "WhatsApp enviado" : "WhatsApp pendente"}
+                      {item.result.emailSent ? "✅ E-mail enviado" : "📋 Pendente de envio"}
                     </div>
                   </div>
 
-                  {item.result.emailWarning && (
-                    <p className="text-xs" style={{ color: "#f87171" }}>⚠ {item.result.emailWarning}</p>
+                  {!item.result.emailSent && (
+                    <p className="text-xs mt-1" style={{ color: "#a1a1aa" }}>
+                      🕐 Será enviado automaticamente na próxima hora cheia. Acesse <strong>Pendentes Envio</strong> para disparar agora.
+                    </p>
                   )}
                 </div>
               )}

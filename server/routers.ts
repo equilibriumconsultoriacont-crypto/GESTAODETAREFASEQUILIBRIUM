@@ -752,79 +752,9 @@ const smartUploadRouter = router({
         await updateTask(matchedTask.id, { status: "EM_ANDAMENTO" });
       }
 
-      // 8. Enviar e-mail ao cliente com a guia em anexo
-      let emailSent = false;
-      let emailWarning: string | undefined;
-      try {
-        const { buildGuiaEmailHtml } = await import("./email");
-        const subject = `Guia ${recognition.documentType === "DAS_MEI" ? "DAS MEI" : "DAS"} — Competência ${recognition.competencia} | Equilibrium Consultoria`;
-        const html = buildGuiaEmailHtml({
-          clientName: matchedClient.name,
-          taskTitle: matchedTask.title,
-          competencia: recognition.competencia,
-          dueDate: new Date(matchedTask.dueDate),
-          notes: recognition.valorPrincipal ? `Valor: R$ ${recognition.valorPrincipal}` : undefined,
-        });
-
-        // Buscar buffer para anexo via presigned URL
-        const attachments: any[] = [];
-        try {
-          const buf = await storageGetBuffer(finalFileKey, finalUrl);
-          if (buf) {
-            attachments.push({
-              filename: input.filename,
-              content: buf,
-              contentType: input.mimeType || "application/pdf",
-            });
-          }
-        } catch (e) {
-          console.warn("[SmartUpload] Could not load attachment:", e);
-        }
-
-        await sendEmail({ to: matchedClient.email, subject, html, attachments });
-        emailSent = true;
-
-        // Log do envio
-        await createEmailLog({
-          taskId: matchedTask.id,
-          clientId: matchedClient.id,
-          taskFileId: fileId,
-          recipientEmail: matchedClient.email,
-          subject,
-          body: html,
-          status: "ENVIADO",
-          sentBy: ctx.user?.id,
-        });
-      } catch (emailErr) {
-        emailWarning = `E-mail não enviado: ${emailErr instanceof Error ? emailErr.message : String(emailErr)}`;
-        console.warn("[SmartUpload] Email failed:", emailErr);
-        await createEmailLog({
-          taskId: matchedTask.id,
-          clientId: matchedClient.id,
-          taskFileId: fileId,
-          recipientEmail: matchedClient.email,
-          subject: `Guia DAS — ${recognition.competencia}`,
-          body: "",
-          status: "FALHOU",
-          errorMessage: emailWarning,
-          sentBy: ctx.user?.id,
-        });
-      }
-
-      // 9. Enviar WhatsApp (não bloqueia)
-      let whatsappSent = false;
-      try {
-        if (matchedClient.phone) {
-          const wppResult = await sendGuiaConfirmationWhatsApp(
-            matchedClient.phone,
-            matchedTask.title,
-            matchedClient.name
-          );
-          whatsappSent = wppResult.success;
-        }
-      } catch (wppErr) {
-        console.warn("[SmartUpload] WhatsApp failed:", wppErr);
-      }
+      // 8. Arquivo salvo — vai para Pendentes de Envio para o ciclo automático disparar
+      // O e-mail NÃO é enviado aqui. O scheduler de 1h verifica pendentes e dispara.
+      console.log(`[SmartUpload] Arquivo ${fileId} salvo. Aguardando ciclo de envio automático.`);
 
       return {
         success: true,
@@ -832,9 +762,9 @@ const smartUploadRouter = router({
         client: { id: matchedClient.id, name: matchedClient.name },
         task: { id: matchedTask.id, title: matchedTask.title, competencia: matchedTask.competencia },
         fileId,
-        emailSent,
-        emailWarning,
-        whatsappSent,
+        emailSent: false,
+        pendingEmail: true,
+        message: "Guia anexada com sucesso! Será enviada ao cliente no próximo ciclo automático.",
       };
     }),
 });

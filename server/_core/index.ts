@@ -251,8 +251,14 @@ startServer().catch((err) => {
 // ── Agendador automático ──────────────────────────────────────────────────────
 // Roda após o servidor iniciar, sem bloquear o startup
 
+// ── Agendador automático em horário fixo ─────────────────────────────────────
+// Roda no início de cada hora cheia: 08:00, 09:00, 10:00...
+// Não usa setInterval de 1h (que derivaria) — recalcula sempre o próximo :00
+
 async function runScheduledJobs() {
-  // 1. Marcar tarefas vencidas (PENDENTE/EM_ANDAMENTO com dueDate < agora)
+  console.log(`[Scheduler] Iniciando ciclo — ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`);
+
+  // 1. Marcar tarefas vencidas
   try {
     const { markOverdueTasks } = await import("../db");
     const count = await markOverdueTasks();
@@ -261,18 +267,39 @@ async function runScheduledJobs() {
     console.warn("[Scheduler] markOverdue error:", err);
   }
 
-  // 2. Auto-envio de guias com arquivo anexado mas não enviadas
+  // 2. Disparar e-mails de guias pendentes de envio
   try {
     const { autoSendPendingGuias } = await import("../autoSend");
     const result = await autoSendPendingGuias();
-    if (result.sent > 0) console.log(`[Scheduler] AutoSend: ${result.sent} enviada(s), ${result.failed} falha(s)`);
+    if (result.sent > 0 || result.failed > 0) {
+      console.log(`[Scheduler] AutoSend: ${result.sent} enviada(s), ${result.failed} falha(s)`);
+    }
   } catch (err) {
     console.warn("[Scheduler] autoSend error:", err);
   }
 }
 
-// Roda imediatamente ao iniciar (depois de 30s para o servidor estar estável)
+function scheduleNextHour() {
+  const now = new Date();
+  // Calcula quantos ms faltam para a próxima hora cheia (xx:00:00)
+  const msUntilNextHour =
+    (60 - now.getMinutes()) * 60 * 1000
+    - now.getSeconds() * 1000
+    - now.getMilliseconds();
+
+  console.log(
+    `[Scheduler] Próximo ciclo em ${Math.round(msUntilNextHour / 60000)} min ` +
+    `(${new Date(Date.now() + msUntilNextHour).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" })})`
+  );
+
+  setTimeout(async () => {
+    await runScheduledJobs();
+    scheduleNextHour(); // agenda o próximo
+  }, msUntilNextHour);
+}
+
+// Roda uma vez ao iniciar (depois de 30s para o servidor estar estável)
 setTimeout(runScheduledJobs, 30_000);
 
-// Roda a cada 1 hora
-setInterval(runScheduledJobs, 60 * 60 * 1_000);
+// Agenda o ciclo em horário fixo (próxima hora cheia)
+scheduleNextHour();
