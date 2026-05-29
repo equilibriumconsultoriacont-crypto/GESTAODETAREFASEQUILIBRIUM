@@ -334,12 +334,12 @@ export async function getTasksDueSoon(daysAhead = 7): Promise<Task[]> {
 export async function markOverdueTasks(): Promise<number> {
   try {
     const pool = getPool();
-    const now = new Date();
+    // Usa CURDATE() para comparar só a data (sem hora), evitando problema de timezone
+    // Marca como VENCIDA tarefas cuja data de vencimento já passou (dia anterior ou antes)
     const [result] = await pool.query(
-      `UPDATE tasks SET status = 'VENCIDA' 
-       WHERE status IN ('PENDENTE', 'EM_ANDAMENTO', 'AGUARDANDO_CLIENTE', 'EM_REVISAO') 
-       AND dueDate < ?`,
-      [now]
+      `UPDATE tasks SET status = 'VENCIDA'
+       WHERE status IN ('PENDENTE', 'EM_ANDAMENTO', 'AGUARDANDO_CLIENTE', 'EM_REVISAO')
+       AND DATE(dueDate) < CURDATE()`,
     ) as [any, any];
     return result.affectedRows ?? 0;
   } catch (err) {

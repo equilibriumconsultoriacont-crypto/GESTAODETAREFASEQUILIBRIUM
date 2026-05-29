@@ -298,8 +298,8 @@ function scheduleNextHour() {
   }, msUntilNextHour);
 }
 
-// Roda uma vez ao iniciar (depois de 30s para o servidor estar estável)
-setTimeout(runScheduledJobs, 30_000);
+// Roda imediatamente ao iniciar (marca vencidas sem esperar)
+runScheduledJobs();
 
 // Agenda o ciclo em horário fixo (próxima hora cheia)
 scheduleNextHour();

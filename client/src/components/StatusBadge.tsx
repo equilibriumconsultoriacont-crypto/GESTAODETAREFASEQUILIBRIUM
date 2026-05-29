@@ -55,16 +55,46 @@ function resolveLabel(
   const base = STATUS_CONFIG[status];
   const active: TaskStatus[] = ["PENDENTE", "EM_ANDAMENTO", "AGUARDANDO_CLIENTE", "EM_REVISAO"];
 
-  // Tarefa ativa mas já passou do vencimento
   if (active.includes(status) && dueDate) {
-    const due = new Date(dueDate);
-    if (due < new Date()) {
+    // Normaliza dueDate para meia-noite no horário local (evita problema de timezone)
+    const rawDue = new Date(dueDate);
+    const due = new Date(rawDue.getFullYear(), rawDue.getMonth(), rawDue.getDate());
+
+    // Hoje à meia-noite (para comparação por dia, não por hora)
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Já venceu (dia do vencimento já passou)
+    if (due < today) {
       return {
         label: `${base.label} Vencida`,
         bg: "rgba(239,68,68,0.12)",
         color: "#f87171",
         border: "rgba(239,68,68,0.3)",
         emoji: "🚨",
+      };
+    }
+
+    // Vence hoje
+    if (due.getTime() === today.getTime()) {
+      return {
+        label: `${base.label} — Vence Hoje`,
+        bg: "rgba(239,68,68,0.15)",
+        color: "#f87171",
+        border: "rgba(239,68,68,0.4)",
+        emoji: "⚠️",
+      };
+    }
+
+    // Próxima do vencimento (nos próximos 5 dias)
+    const diffDays = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays <= 5) {
+      return {
+        label: `${base.label} — Vence em ${diffDays}d`,
+        bg: "rgba(251,146,60,0.12)",
+        color: "#fb923c",
+        border: "rgba(251,146,60,0.3)",
+        emoji: "⏰",
       };
     }
   }
