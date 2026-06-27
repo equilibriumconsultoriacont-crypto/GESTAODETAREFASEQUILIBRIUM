@@ -208,6 +208,68 @@ async function startServer() {
     }
   });
 
+  // ── Restaurar dados de backup ─────────────────────────────────────────────
+  // Recebe SQL (INSERTs) no corpo e executa no banco. Limpa as tabelas antes.
+  // POST /admin/restore  body: { secret, sql, truncate: true }
+  app.post("/admin/restore", async (req, res) => {
+    const secret = process.env.MIGRATE_SECRET || "equilibrium-migrate-2024";
+    const provided = req.headers["x-migrate-secret"] || req.query.secret || (req.body && req.body.secret);
+    if (provided !== secret) return res.status(403).json({ error: "Forbidden" });
+
+    const sql: string = req.body && req.body.sql;
+    if (!sql || typeof sql !== "string") {
+      return res.status(400).json({ error: "Forneça o SQL no campo 'sql' do body" });
+    }
+
+    try {
+      const mysql = await import("mysql2/promise");
+      const conn = await mysql.default.createConnection({
+        uri: process.env.DATABASE_URL!,
+        multipleStatements: false,
+      });
+
+      // Desabilitar checagem de FK durante a restauração
+      await conn.query("SET FOREIGN_KEY_CHECKS = 0");
+
+      // Limpar tabelas antes (na ordem inversa de dependência) se truncate=true
+      const results: string[] = [];
+      if (req.body.truncate) {
+        const tablesToClear = [
+          "email_logs", "activity_logs", "task_files", "tasks",
+          "recurring_tasks", "client_task_templates", "catalog_templates",
+          "task_templates", "task_catalogs", "clients", "users"
+        ];
+        for (const t of tablesToClear) {
+          try { await conn.query(`TRUNCATE TABLE \`${t}\``); results.push(`🗑 ${t} limpa`); }
+          catch (err: any) { results.push(`⚠ truncate ${t}: ${err.message?.slice(0,60)}`); }
+        }
+      }
+
+      // Separar os INSERTs por linha (cada um termina com ; e quebra de linha)
+      // Cada statement está em uma linha própria no nosso arquivo
+      const statements = sql.split(/;\s*\n/).map(s => s.trim()).filter(s => s.length > 5);
+
+      let ok = 0, fail = 0;
+      for (const stmt of statements) {
+        try {
+          await conn.query(stmt);
+          ok++;
+        } catch (err: any) {
+          fail++;
+          const table = (stmt.match(/INSERT INTO `(\w+)`/) || [])[1] || "?";
+          results.push(`✗ ${table}: ${err.message?.slice(0, 120)}`);
+        }
+      }
+
+      await conn.query("SET FOREIGN_KEY_CHECKS = 1");
+      await conn.end();
+
+      res.json({ success: true, executados: ok, falhas: fail, results });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message });
+    }
+  });
+
   // ── Teste de SMTP ────────────────────────────────────────────────────────
   app.get("/admin/test-email", async (req, res) => {
     const secret = process.env.MIGRATE_SECRET || "equilibrium-migrate-2024";
