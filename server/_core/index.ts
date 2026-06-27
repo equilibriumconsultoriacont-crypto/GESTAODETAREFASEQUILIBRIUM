@@ -143,6 +143,71 @@ async function startServer() {
     }
   });
 
+  // ── Setup inicial: cria TODAS as tabelas do zero + usuário admin ──────────
+  // Usar quando o banco está vazio (ex: migração para novo provedor)
+  // POST /admin/setup?secret=XXX&email=...&password=...&name=...
+  app.post("/admin/setup", async (req, res) => {
+    const secret = process.env.MIGRATE_SECRET || "equilibrium-migrate-2024";
+    const provided = req.headers["x-migrate-secret"] || req.query.secret;
+    if (provided !== secret) return res.status(403).json({ error: "Forbidden" });
+
+    try {
+      const mysql = await import("mysql2/promise");
+      const conn = await mysql.default.createConnection({ uri: process.env.DATABASE_URL! });
+
+      const createStatements = [
+        "CREATE TABLE IF NOT EXISTS `users` (`id` int AUTO_INCREMENT NOT NULL, `openId` varchar(64), `name` text, `email` varchar(320) NOT NULL, `passwordHash` varchar(255), `loginMethod` varchar(64) NOT NULL DEFAULT 'local', `role` enum('user','admin','client') NOT NULL DEFAULT 'user', `clientId` int, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, `lastSignedIn` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `users_id` PRIMARY KEY(`id`), CONSTRAINT `users_openId_unique` UNIQUE(`openId`), CONSTRAINT `users_email_unique` UNIQUE(`email`))",
+        "CREATE TABLE IF NOT EXISTS `clients` (`id` int AUTO_INCREMENT NOT NULL, `name` varchar(255) NOT NULL, `cnpj` varchar(18) NOT NULL, `cpf` varchar(14), `documentType` enum('CNPJ','CPF') NOT NULL DEFAULT 'CNPJ', `email` varchar(320) NOT NULL, `phone` varchar(20), `notes` text, `active` boolean NOT NULL DEFAULT true, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `clients_id` PRIMARY KEY(`id`), CONSTRAINT `clients_cnpj_unique` UNIQUE(`cnpj`))",
+        "CREATE TABLE IF NOT EXISTS `task_catalogs` (`id` int AUTO_INCREMENT NOT NULL, `name` varchar(255) NOT NULL, `description` text, `active` boolean NOT NULL DEFAULT true, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `task_catalogs_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `catalog_templates` (`id` int AUTO_INCREMENT NOT NULL, `catalogId` int NOT NULL, `taskTemplateId` int NOT NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `catalog_templates_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `task_templates` (`id` int AUTO_INCREMENT NOT NULL, `title` varchar(255) NOT NULL, `description` text, `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS') NOT NULL, `dueDayOfMonth` int NOT NULL, `ocrKeywords` text, `department` enum('FISCAL','CONTABIL','DP','SOCIETARIO','FINANCEIRO','GERAL') NOT NULL DEFAULT 'GERAL', `active` boolean NOT NULL DEFAULT true, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `task_templates_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `client_task_templates` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `taskTemplateId` int NOT NULL, `catalogId` int, `active` boolean NOT NULL DEFAULT true, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `client_task_templates_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `recurring_tasks` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `taskTemplateId` int, `title` varchar(255) NOT NULL, `description` text, `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS') NOT NULL, `dueDayOfMonth` int NOT NULL, `active` boolean NOT NULL DEFAULT true, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `recurring_tasks_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `tasks` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `recurringTaskId` int, `title` varchar(255) NOT NULL, `description` text, `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS') NOT NULL, `competencia` varchar(7) NOT NULL, `dueDate` timestamp NOT NULL, `status` enum('PENDENTE','EM_ANDAMENTO','AGUARDANDO_CLIENTE','EM_REVISAO','CONCLUIDA','CANCELADA','VENCIDA') NOT NULL DEFAULT 'PENDENTE', `priority` enum('BAIXA','NORMAL','ALTA','URGENTE') NOT NULL DEFAULT 'NORMAL', `department` enum('FISCAL','CONTABIL','DP','SOCIETARIO','FINANCEIRO','GERAL') NOT NULL DEFAULT 'GERAL', `assignedTo` int, `internalDeadline` timestamp NULL, `waitingSince` timestamp NULL, `startedAt` timestamp NULL, `notes` text, `completedAt` timestamp NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `tasks_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `task_files` (`id` int AUTO_INCREMENT NOT NULL, `taskId` int NOT NULL, `clientId` int NOT NULL, `filename` varchar(255) NOT NULL, `fileKey` varchar(512) NOT NULL, `fileUrl` mediumtext NOT NULL, `mimeType` varchar(100), `fileSize` bigint, `uploadedBy` int, `uploadedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `task_files_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `activity_logs` (`id` int AUTO_INCREMENT NOT NULL, `entityType` varchar(50) NOT NULL, `entityId` int NOT NULL, `action` varchar(100) NOT NULL, `before` text, `after` text, `userId` int, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `activity_logs_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `email_logs` (`id` int AUTO_INCREMENT NOT NULL, `taskId` int NOT NULL, `clientId` int NOT NULL, `taskFileId` int, `recipientEmail` varchar(320) NOT NULL, `subject` varchar(500) NOT NULL, `body` text, `status` enum('ENVIADO','FALHOU') NOT NULL DEFAULT 'ENVIADO', `errorMessage` text, `sentBy` int, `sentAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `email_logs_id` PRIMARY KEY(`id`))",
+      ];
+
+      const results: string[] = [];
+      for (const stmt of createStatements) {
+        try { await conn.query(stmt); results.push("\u2713 tabela criada"); }
+        catch (err: any) { results.push(`\u2717 ${err.message?.slice(0, 120)}`); }
+      }
+
+      // Criar usuário admin se email/senha fornecidos
+      let adminMsg = "Admin não criado (forneça email e password)";
+      const email = (req.query.email as string) || (req.body && req.body.email);
+      const password = (req.query.password as string) || (req.body && req.body.password);
+      const name = (req.query.name as string) || (req.body && req.body.name) || "Administrador";
+
+      if (email && password) {
+        try {
+          const bcrypt = await import("bcryptjs");
+          const hash = await bcrypt.default.hash(password, 10);
+          const [existing] = await conn.query("SELECT id FROM users WHERE email = ?", [email]) as [any[], any];
+          if (existing.length > 0) {
+            await conn.query("UPDATE users SET passwordHash = ?, role = 'admin', name = ? WHERE email = ?", [hash, name, email]);
+            adminMsg = `Admin atualizado: ${email}`;
+          } else {
+            await conn.query(
+              "INSERT INTO users (email, name, passwordHash, loginMethod, role) VALUES (?, ?, ?, 'local', 'admin')",
+              [email, name, hash]
+            );
+            adminMsg = `Admin criado: ${email}`;
+          }
+        } catch (err: any) {
+          adminMsg = `Erro ao criar admin: ${err.message?.slice(0, 120)}`;
+        }
+      }
+
+      await conn.end();
+      res.json({ success: true, tables: createStatements.length, results, admin: adminMsg });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message });
+    }
+  });
+
   // ── Teste de SMTP ────────────────────────────────────────────────────────
   app.get("/admin/test-email", async (req, res) => {
     const secret = process.env.MIGRATE_SECRET || "equilibrium-migrate-2024";
