@@ -8,6 +8,7 @@ import {
   ChevronRight,
   CloudUpload,
   KeyRound,
+  LogOut,
   Menu,
   RefreshCw,
   SendHorizonal,
@@ -34,7 +35,7 @@ const navItems = [
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   // Configurações só aparece para admin
   const items = user?.role === "admin"
@@ -88,16 +89,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="px-3 py-4" style={{ borderTop: "1px solid #1e4f5c" }}>
+        <div className="px-3 py-4 space-y-2" style={{ borderTop: "1px solid #1e4f5c" }}>
           <div className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ background: "rgba(36,100,108,0.1)" }}>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: "#24646c", color: "#fff" }}>
-              EQ
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: "#24646c", color: "#fff" }}>
+              {(user?.name ?? "EQ").charAt(0).toUpperCase()}
             </div>
-            <div>
-              <p className="text-xs font-medium" style={{ color: "#e5e5e5" }}>Administrador</p>
-              <p className="text-xs" style={{ color: "#a1a1aa" }}>Equilibrium</p>
+            <div className="min-w-0">
+              <p className="text-xs font-medium truncate" style={{ color: "#e5e5e5" }}>{user?.name ?? "Usuário"}</p>
+              <p className="text-xs truncate" style={{ color: "#a1a1aa" }}>
+                {user?.role === "admin" ? "Administrador" : "Colaborador"}
+              </p>
             </div>
           </div>
+          <button
+            onClick={() => logout()}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-red-900/20"
+            style={{ color: "#f87171", border: "1px solid rgba(248,113,113,0.2)" }}
+          >
+            <LogOut size={14} /> Sair da conta
+          </button>
         </div>
       </aside>
 
@@ -106,7 +116,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <button onClick={() => setMobileOpen(true)} style={{ color: "#a1a1aa" }}>
             <Menu size={20} />
           </button>
-          <span className="font-semibold text-sm" style={{ color: "#e5e5e5" }}>Equilibrium</span>
+          <span className="font-semibold text-sm flex-1" style={{ color: "#e5e5e5" }}>Equilibrium</span>
+          <button onClick={() => logout()} className="flex items-center gap-1 text-xs" style={{ color: "#f87171" }} title="Sair">
+            <LogOut size={16} />
+          </button>
         </header>
         <main className="flex-1 overflow-auto p-4 lg:p-6">
           {children}
