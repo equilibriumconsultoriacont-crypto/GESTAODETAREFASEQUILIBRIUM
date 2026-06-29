@@ -11,10 +11,12 @@ import {
   Menu,
   RefreshCw,
   SendHorizonal,
+  Settings,
   X,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: BarChart3 },
@@ -32,6 +34,12 @@ const navItems = [
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { user } = useAuth();
+
+  // Configurações só aparece para admin
+  const items = user?.role === "admin"
+    ? [...navItems, { href: "/configuracoes", label: "Configurações", icon: Settings }]
+    : navItems;
 
   return (
     <div className="min-h-screen flex" style={{ background: "#0a0a0a" }}>
@@ -59,7 +67,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-          {navItems.map(({ href, label, icon: Icon }) => {
+          {items.map(({ href, label, icon: Icon }) => {
             const isActive = href === "/" ? location === "/" : location.startsWith(href);
             return (
               <Link key={href} href={href} onClick={() => setMobileOpen(false)}>
