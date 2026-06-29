@@ -4,7 +4,7 @@ import { randomUUID } from "crypto"; // Node 18 não tem crypto global
 import { COOKIE_NAME, SESSION_DURATION_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   addClientTaskTemplate,
   applyCatalogToClient,
@@ -1118,6 +1118,120 @@ const healthRouter = router({
   }),
 });
 
+// ─── Departments Router ───────────────────────────────────────────────────────
+const departmentsRouter = router({
+  list: protectedProcedure.query(async () => {
+    const { listDepartments } = await import("./db");
+    return listDepartments(false);
+  }),
+
+  listAll: adminProcedure.query(async () => {
+    const { listDepartments } = await import("./db");
+    return listDepartments(true);
+  }),
+
+  create: adminProcedure
+    .input(z.object({ name: z.string().min(1).max(100), color: z.string().optional() }))
+    .mutation(async ({ input }) => {
+      const { createDepartment } = await import("./db");
+      const id = await createDepartment(input);
+      return { id };
+    }),
+
+  update: adminProcedure
+    .input(z.object({ id: z.number(), name: z.string().optional(), color: z.string().optional(), active: z.boolean().optional() }))
+    .mutation(async ({ input }) => {
+      const { updateDepartment } = await import("./db");
+      const { id, ...data } = input;
+      await updateDepartment(id, data);
+      return { success: true };
+    }),
+
+  delete: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const { deleteDepartment } = await import("./db");
+      await deleteDepartment(input.id);
+      return { success: true };
+    }),
+});
+
+// ─── Users Management Router (admin only) ─────────────────────────────────────
+const usersRouter = router({
+  list: adminProcedure.query(async () => {
+    const { listUsers, getUserDepartments, getUserClients } = await import("./db");
+    const users = await listUsers();
+    // Enriquecer com departamentos e empresas de cada usuário
+    const enriched = await Promise.all(users.map(async (u) => ({
+      ...u,
+      passwordHash: undefined, // nunca expor o hash
+      departmentIds: await getUserDepartments(u.id),
+      clientIds: await getUserClients(u.id),
+    })));
+    return enriched;
+  }),
+
+  create: adminProcedure
+    .input(z.object({
+      name: z.string().min(1),
+      email: z.string().email(),
+      password: z.string().min(6),
+      role: z.enum(["admin", "user"]).default("user"),
+      departmentIds: z.array(z.number()).default([]),
+      clientIds: z.array(z.number()).default([]),
+    }))
+    .mutation(async ({ input }) => {
+      const { createLocalUser, setUserDepartments, setUserClients, getUserByEmail } = await import("./db");
+      const bcryptjs = (await import("bcryptjs")).default;
+
+      const existing = await getUserByEmail(input.email);
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "Já existe um usuário com esse e-mail" });
+
+      const passwordHash = await bcryptjs.hash(input.password, 10);
+      const userId = await createLocalUser({
+        name: input.name, email: input.email, passwordHash, role: input.role,
+      });
+      await setUserDepartments(userId, input.departmentIds);
+      await setUserClients(userId, input.clientIds);
+      return { id: userId };
+    }),
+
+  update: adminProcedure
+    .input(z.object({
+      id: z.number(),
+      name: z.string().optional(),
+      email: z.string().email().optional(),
+      password: z.string().min(6).optional(),
+      role: z.enum(["admin", "user"]).optional(),
+      departmentIds: z.array(z.number()).optional(),
+      clientIds: z.array(z.number()).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { updateUserBasic, setUserDepartments, setUserClients } = await import("./db");
+      const bcryptjs = (await import("bcryptjs")).default;
+
+      const basic: any = {};
+      if (input.name !== undefined) basic.name = input.name;
+      if (input.email !== undefined) basic.email = input.email;
+      if (input.role !== undefined) basic.role = input.role;
+      if (input.password) basic.passwordHash = await bcryptjs.hash(input.password, 10);
+      if (Object.keys(basic).length > 0) await updateUserBasic(input.id, basic);
+
+      if (input.departmentIds !== undefined) await setUserDepartments(input.id, input.departmentIds);
+      if (input.clientIds !== undefined) await setUserClients(input.id, input.clientIds);
+      return { success: true };
+    }),
+
+  delete: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      if (input.id === ctx.user?.id) throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível excluir a si mesmo" });
+      const { deleteUser } = await import("./db");
+      await deleteUser(input.id);
+      return { success: true };
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -1207,6 +1321,8 @@ export const appRouter = router({
   clientTemplates: clientTemplatesRouter,
   monthlyPanel: monthlyPanelRouter,
   smartUpload: smartUploadRouter,
+  departments: departmentsRouter,
+  usersAdmin: usersRouter,
   clientPortal: clientPortalRouter,
   clientAccess: clientAccessRouter,
 });

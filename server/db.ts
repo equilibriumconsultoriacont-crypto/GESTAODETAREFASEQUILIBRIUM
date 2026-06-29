@@ -27,12 +27,15 @@ import {
   catalogTemplates,
   clientTaskTemplates,
   clients,
+  departments,
   emailLogs,
   recurringTasks,
   taskCatalogs,
   taskFiles,
   taskTemplates,
   tasks,
+  userClients,
+  userDepartments,
   users,
 } from "../drizzle/schema";
 
@@ -655,4 +658,102 @@ export async function getMonthlyPanel(month: number, year: number) {
     console.error("[DB] getMonthlyPanel error:", err);
     return [];
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DEPARTAMENTOS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function listDepartments(includeInactive = false) {
+  const db = await getDb();
+  if (!db) return [];
+  if (includeInactive) return db.select().from(departments).orderBy(departments.name);
+  return db.select().from(departments).where(eq(departments.active, true)).orderBy(departments.name);
+}
+
+export async function createDepartment(data: { name: string; color?: string }): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB indisponível");
+  const result = await db.insert(departments).values({ name: data.name, color: data.color ?? "#a1a1aa" });
+  return result[0].insertId;
+}
+
+export async function updateDepartment(id: number, data: { name?: string; color?: string; active?: boolean }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(departments).set(data).where(eq(departments.id, id));
+}
+
+export async function deleteDepartment(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  // Remove vínculos primeiro
+  await db.delete(userDepartments).where(eq(userDepartments.departmentId, id));
+  await db.delete(departments).where(eq(departments.id, id));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// USUÁRIOS — vínculos com departamentos e empresas
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function listUsers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(users).orderBy(users.name);
+}
+
+export async function getUserDepartments(userId: number): Promise<number[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select().from(userDepartments).where(eq(userDepartments.userId, userId));
+  return rows.map((r) => r.departmentId);
+}
+
+export async function getUserClients(userId: number): Promise<number[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select().from(userClients).where(eq(userClients.userId, userId));
+  return rows.map((r) => r.clientId);
+}
+
+export async function setUserDepartments(userId: number, departmentIds: number[]) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(userDepartments).where(eq(userDepartments.userId, userId));
+  if (departmentIds.length > 0) {
+    await db.insert(userDepartments).values(departmentIds.map((departmentId) => ({ userId, departmentId })));
+  }
+}
+
+export async function setUserClients(userId: number, clientIds: number[]) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(userClients).where(eq(userClients.userId, userId));
+  if (clientIds.length > 0) {
+    await db.insert(userClients).values(clientIds.map((clientId) => ({ userId, clientId })));
+  }
+}
+
+export async function createLocalUser(data: { name: string; email: string; passwordHash: string; role: "admin" | "user" }): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB indisponível");
+  const result = await db.insert(users).values({
+    name: data.name, email: data.email, passwordHash: data.passwordHash,
+    role: data.role, loginMethod: "local",
+  });
+  return result[0].insertId;
+}
+
+export async function deleteUser(userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(userDepartments).where(eq(userDepartments.userId, userId));
+  await db.delete(userClients).where(eq(userClients.userId, userId));
+  await db.delete(users).where(eq(users.id, userId));
+}
+
+export async function updateUserBasic(userId: number, data: { name?: string; email?: string; role?: "admin" | "user"; passwordHash?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set(data).where(eq(users.id, userId));
 }

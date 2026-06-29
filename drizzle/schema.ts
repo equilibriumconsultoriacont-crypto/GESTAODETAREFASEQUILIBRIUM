@@ -201,3 +201,38 @@ export const emailLogs = mysqlTable("email_logs", {
 
 export type EmailLog = typeof emailLogs.$inferSelect;
 export type InsertEmailLog = typeof emailLogs.$inferInsert;
+
+// ─── Departamentos (gerenciáveis) ────────────────────────────────────────────
+export const departments = mysqlTable("departments", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull().unique(),
+  color: varchar("color", { length: 20 }).default("#a1a1aa").notNull(),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Department = typeof departments.$inferSelect;
+export type InsertDepartment = typeof departments.$inferInsert;
+
+// ─── Vínculo Usuário ↔ Departamentos (N:N) ───────────────────────────────────
+export const userDepartments = mysqlTable("user_departments", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  departmentId: int("departmentId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type UserDepartment = typeof userDepartments.$inferSelect;
+export type InsertUserDepartment = typeof userDepartments.$inferInsert;
+
+// ─── Vínculo Usuário ↔ Empresas/Clientes (N:N) ───────────────────────────────
+// Define de quais empresas o usuário é responsável
+export const userClients = mysqlTable("user_clients", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  clientId: int("clientId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type UserClient = typeof userClients.$inferSelect;
+export type InsertUserClient = typeof userClients.$inferInsert;

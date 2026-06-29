@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft, BookOpen, Building2, Calendar, FileText,
-  Mail, Package, Phone, PlusCircle, RefreshCw, Send, Trash2, Upload, X, Zap
+  Ban, Check, Mail, Package, Phone, PlusCircle, RefreshCw, Send, Trash2, Upload, X, Zap
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -66,6 +66,7 @@ export default function ClientDetail() {
   const sendEmailMutation = trpc.email.sendGuia.useMutation();
   const generateMonthly = trpc.tasks.generateMonthly.useMutation();
   const deleteTaskMutation = trpc.tasks.delete.useMutation();
+  const updateStatusMutation = trpc.tasks.updateStatus.useMutation();
   const utils = trpc.useUtils();
 
   const client = clients.find((c) => c.id === clientId);
@@ -132,6 +133,25 @@ export default function ClientDetail() {
       refetchTasks();
       utils.tasks.dashboard.invalidate();
     } catch (err: any) { toast.error(err?.message ?? "Erro ao excluir tarefa"); }
+  };
+
+  const handleCompleteTask = async (taskId: number, taskTitle: string) => {
+    try {
+      await updateStatusMutation.mutateAsync({ id: taskId, status: "CONCLUIDA" });
+      toast.success(`"${taskTitle}" concluída!`);
+      refetchTasks();
+      utils.tasks.dashboard.invalidate();
+    } catch (err: any) { toast.error(err?.message ?? "Erro ao concluir"); }
+  };
+
+  const handleDismissTask = async (taskId: number, taskTitle: string) => {
+    if (!confirm(`Desconsiderar a tarefa "${taskTitle}"?\n\nEla será marcada como cancelada (use para tarefas que não se aplicam neste mês).`)) return;
+    try {
+      await updateStatusMutation.mutateAsync({ id: taskId, status: "CANCELADA" });
+      toast.success(`"${taskTitle}" desconsiderada`);
+      refetchTasks();
+      utils.tasks.dashboard.invalidate();
+    } catch (err: any) { toast.error(err?.message ?? "Erro ao desconsiderar"); }
   };
   const openUpload = (taskId: number, taskTitle: string) => {
     setSelectedTaskId(taskId);
@@ -386,6 +406,26 @@ export default function ClientDetail() {
                       <td className="px-4 py-3"><StatusBadge status={task.status} dueDate={task.dueDate} completedAt={(task as any).completedAt} /></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
+                          {task.status !== "CONCLUIDA" && task.status !== "CANCELADA" && (
+                            <>
+                              <button
+                                onClick={() => handleCompleteTask(task.id, task.title)}
+                                className="flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors hover:bg-green-900/30"
+                                style={{ color: "#4ade80", border: "1px solid rgba(74,222,128,0.3)" }}
+                                title="Marcar como concluída"
+                              >
+                                <Check size={11} /> Concluir
+                              </button>
+                              <button
+                                onClick={() => handleDismissTask(task.id, task.title)}
+                                className="flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors hover:bg-zinc-700/30"
+                                style={{ color: "#a1a1aa", border: "1px solid rgba(82,82,91,0.4)" }}
+                                title="Desconsiderar (não se aplica este mês)"
+                              >
+                                <Ban size={11} /> Dispensar
+                              </button>
+                            </>
+                          )}
                           <button
                             onClick={() => openUpload(task.id, task.title)}
                             className="flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors hover:bg-teal-900/30"
