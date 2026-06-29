@@ -434,3 +434,19 @@ runScheduledJobs();
 
 // Agenda o ciclo em horário fixo (próxima hora cheia)
 scheduleNextHour();
+
+// ── Keep-alive do banco ───────────────────────────────────────────────────────
+// O Aiven free desliga o banco por inatividade. Para evitar isso, fazemos um
+// ping leve (SELECT 1) a cada 4 minutos, mantendo conexões constantes.
+// Isso complementa o UptimeRobot apontado para /health/db.
+setInterval(async () => {
+  try {
+    const { checkDbHealth } = await import("../db");
+    const result = await checkDbHealth();
+    if (!result.ok) {
+      console.warn("[KeepAlive] Banco não respondeu:", result.error);
+    }
+  } catch (err) {
+    console.warn("[KeepAlive] Erro no ping do banco:", err);
+  }
+}, 4 * 60 * 1000); // a cada 4 minutos
