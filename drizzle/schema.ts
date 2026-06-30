@@ -78,7 +78,7 @@ export const taskTemplates = mysqlTable("task_templates", {
   taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).notNull(),
   dueDayOfMonth: int("dueDayOfMonth").notNull(), // dia do mês que vence
   ocrKeywords: text("ocrKeywords"), // palavras-chave para reconhecimento de documento
-  department: mysqlEnum("department", ["FISCAL", "CONTABIL", "DP", "SOCIETARIO", "FINANCEIRO", "GERAL"]).default("GERAL").notNull(),
+  department: varchar("department", { length: 100 }).default("Geral").notNull(),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -108,6 +108,7 @@ export const recurringTasks = mysqlTable("recurring_tasks", {
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
   taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).notNull(),
+  department: varchar("department", { length: 100 }).default("Geral").notNull(),
   dueDayOfMonth: int("dueDayOfMonth").notNull(), // dia do mês que vence
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -137,7 +138,7 @@ export const tasks = mysqlTable("tasks", {
     "VENCIDA",
   ]).default("PENDENTE").notNull(),
   priority: mysqlEnum("priority", ["BAIXA", "NORMAL", "ALTA", "URGENTE"]).default("NORMAL").notNull(),
-  department: mysqlEnum("department", ["FISCAL", "CONTABIL", "DP", "SOCIETARIO", "FINANCEIRO", "GERAL"]).default("GERAL").notNull(),
+  department: varchar("department", { length: 100 }).default("Geral").notNull(),
   assignedTo: int("assignedTo"), // FK users.id
   internalDeadline: timestamp("internalDeadline"), // prazo interno (antes do vencimento fiscal)
   waitingSince: timestamp("waitingSince"), // quando entrou em AGUARDANDO_CLIENTE

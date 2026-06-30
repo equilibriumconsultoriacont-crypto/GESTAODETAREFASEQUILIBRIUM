@@ -171,6 +171,10 @@ async function startServer() {
         "CREATE TABLE IF NOT EXISTS `user_departments` (`id` int AUTO_INCREMENT NOT NULL, `userId` int NOT NULL, `departmentId` int NOT NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `user_departments_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `user_clients` (`id` int AUTO_INCREMENT NOT NULL, `userId` int NOT NULL, `clientId` int NOT NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `user_clients_id` PRIMARY KEY(`id`))",
         "INSERT IGNORE INTO `departments` (name, color) VALUES ('Fiscal','#9fd4dc'),('Contábil','#c084fc'),('Pessoal','#fb923c'),('Societário','#4ade80'),('Financeiro','#facc15'),('Geral','#a1a1aa')",
+        // Converter department de enum para varchar (aceita departamentos gerenciáveis)
+        "ALTER TABLE `tasks` MODIFY COLUMN `department` varchar(100) NOT NULL DEFAULT 'Geral'",
+        "ALTER TABLE `task_templates` MODIFY COLUMN `department` varchar(100) NOT NULL DEFAULT 'Geral'",
+        "ALTER TABLE `recurring_tasks` ADD COLUMN `department` varchar(100) NOT NULL DEFAULT 'Geral'",
       ];
 
       const results: string[] = [];

@@ -327,6 +327,7 @@ const tasksRouter = router({
           title: rt.title,
           description: rt.description ?? undefined,
           taskType: rt.taskType,
+          department: (rt as any).department ?? "Geral",
           competencia,
           dueDate,
           status: "PENDENTE",
@@ -876,9 +877,10 @@ const taskTemplatesRouter = router({
       taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS"]),
       dueDayOfMonth: z.number().min(1).max(31),
       ocrKeywords: z.string().optional(),
+      department: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const id = await createTaskTemplate({ ...input, active: true });
+      const id = await createTaskTemplate({ ...input, active: true } as any);
       return { id };
     }),
 
@@ -890,11 +892,12 @@ const taskTemplatesRouter = router({
       taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).optional(),
       dueDayOfMonth: z.number().min(1).max(31).optional(),
       ocrKeywords: z.string().optional(),
+      department: z.string().optional(),
       active: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
-      await updateTaskTemplate(id, data);
+      await updateTaskTemplate(id, data as any);
       return { success: true };
     }),
 
@@ -938,6 +941,7 @@ const clientTemplatesRouter = router({
             title: template.title,
             description: template.description ?? undefined,
             taskType: template.taskType,
+            department: (template as any).department ?? "Geral",
             dueDayOfMonth: template.dueDayOfMonth,
             active: true,
           });

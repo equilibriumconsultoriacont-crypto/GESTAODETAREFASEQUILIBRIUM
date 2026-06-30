@@ -617,6 +617,7 @@ export async function applyCatalogToClient(clientId: number, catalogId: number):
         title: tmpl.title,
         description: tmpl.description ?? undefined,
         taskType: tmpl.taskType,
+        department: (tmpl as any).department ?? "Geral",
         dueDayOfMonth: tmpl.dueDayOfMonth,
         active: true,
       });

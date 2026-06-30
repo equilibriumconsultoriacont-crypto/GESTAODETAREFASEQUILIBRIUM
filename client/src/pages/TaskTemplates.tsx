@@ -24,6 +24,7 @@ const emptyForm = {
   dueDayOfMonth: "20",
   description: "",
   ocrKeywords: "",
+  department: "Geral",
 };
 
 export default function TaskTemplatesPage() {
@@ -32,6 +33,7 @@ export default function TaskTemplatesPage() {
   const [form, setForm] = useState(emptyForm);
 
   const { data: templates = [], isLoading, refetch } = trpc.taskTemplates.list.useQuery({ activeOnly: false });
+  const { data: departments = [] } = trpc.departments.list.useQuery();
   const createMutation = trpc.taskTemplates.create.useMutation();
   const updateMutation = trpc.taskTemplates.update.useMutation();
   const toggleMutation = trpc.taskTemplates.toggle.useMutation();
@@ -51,6 +53,7 @@ export default function TaskTemplatesPage() {
       dueDayOfMonth: String(t.dueDayOfMonth),
       description: t.description ?? "",
       ocrKeywords: t.ocrKeywords ?? "",
+      department: (t as any).department ?? "Geral",
     });
     setDialogOpen(true);
   };
@@ -66,6 +69,7 @@ export default function TaskTemplatesPage() {
           dueDayOfMonth: Number(form.dueDayOfMonth),
           description: form.description || undefined,
           ocrKeywords: form.ocrKeywords || undefined,
+          department: form.department,
         });
         toast.success("Template atualizado!");
       } else {
@@ -75,6 +79,7 @@ export default function TaskTemplatesPage() {
           dueDayOfMonth: Number(form.dueDayOfMonth),
           description: form.description || undefined,
           ocrKeywords: form.ocrKeywords || undefined,
+          department: form.department,
         });
         toast.success("Template criado!");
       }
@@ -271,6 +276,24 @@ export default function TaskTemplatesPage() {
                   style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }}
                 />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label style={{ color: "#a1a1aa" }}>Departamento *</Label>
+              <Select value={form.department} onValueChange={(v) => setForm({ ...form, department: v })}>
+                <SelectTrigger style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+                  <SelectValue placeholder="Selecione o departamento" />
+                </SelectTrigger>
+                <SelectContent style={{ background: "#111", borderColor: "#1e4f5c" }}>
+                  {departments.map((d) => (
+                    <SelectItem key={d.id} value={d.name} style={{ color: "#e5e5e5" }}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {departments.length === 0 && (
+                <p className="text-xs" style={{ color: "#fb923c" }}>
+                  Nenhum departamento cadastrado. Crie em Configurações → Departamentos.
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label style={{ color: "#a1a1aa" }}>Descrição</Label>
