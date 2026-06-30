@@ -66,7 +66,7 @@ const clientsRouter = router({
     .input(z.object({ includeInactive: z.boolean().optional() }))
     .query(({ input }) => listClients(input.includeInactive)),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(
       z.object({
         name: z.string().min(2),
@@ -83,7 +83,7 @@ const clientsRouter = router({
       return { id };
     }),
 
-  update: protectedProcedure
+  update: adminProcedure
     .input(
       z.object({
         id: z.number().positive(),
@@ -111,7 +111,7 @@ const recurringTasksRouter = router({
     .input(z.object({ clientId: z.number().optional() }))
     .query(({ input }) => listRecurringTasks(input.clientId)),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(
       z.object({
         clientId: z.number(),
@@ -126,14 +126,14 @@ const recurringTasksRouter = router({
       return { id };
     }),
 
-  toggle: protectedProcedure
+  toggle: adminProcedure
     .input(z.object({ id: z.number(), active: z.boolean() }))
     .mutation(async ({ input }) => {
       await updateRecurringTask(input.id, { active: input.active });
       return { success: true };
     }),
 
-  update: protectedProcedure
+  update: adminProcedure
     .input(
       z.object({
         id: z.number(),
@@ -161,7 +161,30 @@ const tasksRouter = router({
         competencia: z.string().optional(),
       })
     )
-    .query(({ input }) => listTasks(input)),
+    .query(async ({ input, ctx }) => {
+      const tasks = await listTasks(input);
+
+      // Admin vê tudo. Colaborador vê só tarefas das empresas vinculadas
+      // E dos departamentos que ele faz parte.
+      if (ctx.user?.role === "admin") return tasks;
+
+      const { getUserClients, getUserDepartments, listDepartments } = await import("./db");
+      const userId = ctx.user!.id;
+      const allowedClientIds = new Set(await getUserClients(userId));
+      const userDeptIds = await getUserDepartments(userId);
+
+      // Converter IDs de departamento para NOMES (a tarefa guarda o nome)
+      const allDepts = await listDepartments(true);
+      const allowedDeptNames = new Set(
+        allDepts.filter((d) => userDeptIds.includes(d.id)).map((d) => d.name)
+      );
+
+      return tasks.filter((t) => {
+        const clientOk = allowedClientIds.has(t.clientId);
+        const deptOk = allowedDeptNames.has((t as any).department ?? "Geral");
+        return clientOk && deptOk;
+      });
+    }),
 
   getById: protectedProcedure
     .input(z.object({ id: z.number() }))
@@ -171,7 +194,7 @@ const tasksRouter = router({
       return task;
     }),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(
       z.object({
         clientId: z.number(),
@@ -244,7 +267,7 @@ const tasksRouter = router({
       return { success: true };
     }),
 
-  delete: protectedProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await deleteTask(input.id);
@@ -263,7 +286,7 @@ const tasksRouter = router({
   dashboard: protectedProcedure.query(() => getDashboardStats()),
 
   // Generate tasks for a specific month from all active recurring tasks of active clients
-  generateMonthly: protectedProcedure
+  generateMonthly: adminProcedure
     .input(
       z.object({
         month: z.number().min(1).max(12),
@@ -777,7 +800,7 @@ const taskCatalogsRouter = router({
     .input(z.object({ activeOnly: z.boolean().default(true) }))
     .query(({ input }) => listTaskCatalogs(input.activeOnly)),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(z.object({
       name: z.string().min(2),
       description: z.string().optional(),
@@ -787,7 +810,7 @@ const taskCatalogsRouter = router({
       return { id };
     }),
 
-  update: protectedProcedure
+  update: adminProcedure
     .input(z.object({
       id: z.number(),
       name: z.string().optional(),
@@ -818,7 +841,7 @@ const taskCatalogsRouter = router({
       return { success: true };
     }),
 
-  applyToClient: protectedProcedure
+  applyToClient: adminProcedure
     .input(z.object({ clientId: z.number(), catalogId: z.number() }))
     .mutation(async ({ input }) => {
       const added = await applyCatalogToClient(input.clientId, input.catalogId);
@@ -870,7 +893,7 @@ const taskTemplatesRouter = router({
     .input(z.object({ activeOnly: z.boolean().default(true) }))
     .query(({ input }) => listTaskTemplates(input.activeOnly)),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(z.object({
       title: z.string().min(2),
       description: z.string().optional(),
@@ -884,7 +907,7 @@ const taskTemplatesRouter = router({
       return { id };
     }),
 
-  update: protectedProcedure
+  update: adminProcedure
     .input(z.object({
       id: z.number(),
       title: z.string().optional(),
@@ -901,7 +924,7 @@ const taskTemplatesRouter = router({
       return { success: true };
     }),
 
-  toggle: protectedProcedure
+  toggle: adminProcedure
     .input(z.object({ id: z.number(), active: z.boolean() }))
     .mutation(async ({ input }) => {
       await updateTaskTemplate(input.id, { active: input.active });
@@ -915,7 +938,7 @@ const clientTemplatesRouter = router({
     .input(z.object({ clientId: z.number() }))
     .query(({ input }) => listClientTaskTemplates(input.clientId)),
 
-  add: protectedProcedure
+  add: adminProcedure
     .input(z.object({ clientId: z.number(), taskTemplateId: z.number() }))
     .mutation(async ({ input }) => {
       // Verificar se já existe
@@ -950,7 +973,7 @@ const clientTemplatesRouter = router({
       return { id };
     }),
 
-  remove: protectedProcedure
+  remove: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await removeClientTaskTemplate(input.id);
