@@ -77,6 +77,13 @@ export const taskTemplates = mysqlTable("task_templates", {
   description: text("description"),
   taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).notNull(),
   dueDayOfMonth: int("dueDayOfMonth").notNull(), // dia do mês que vence
+  // Periodicidade da obrigação: MENSAL, TRIMESTRAL ou ANUAL
+  periodicity: mysqlEnum("periodicity", ["MENSAL", "TRIMESTRAL", "ANUAL"]).default("MENSAL").notNull(),
+  // Defasagem: quantos meses o VENCIMENTO fica à frente da COMPETÊNCIA
+  // Ex: DAS=1 (compet. junho, vence julho), Parcelamento=0, EFD Contrib.=2
+  competenciaOffset: int("competenciaOffset").default(1).notNull(),
+  // Para ANUAL: em qual mês (1-12) a obrigação vence. Ex: DEFIS vence em maio → 5
+  annualMonth: int("annualMonth"),
   ocrKeywords: text("ocrKeywords"), // palavras-chave para reconhecimento de documento
   department: varchar("department", { length: 100 }).default("Geral").notNull(),
   active: boolean("active").default(true).notNull(),
@@ -110,6 +117,9 @@ export const recurringTasks = mysqlTable("recurring_tasks", {
   taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).notNull(),
   department: varchar("department", { length: 100 }).default("Geral").notNull(),
   dueDayOfMonth: int("dueDayOfMonth").notNull(), // dia do mês que vence
+  periodicity: mysqlEnum("periodicity", ["MENSAL", "TRIMESTRAL", "ANUAL"]).default("MENSAL").notNull(),
+  competenciaOffset: int("competenciaOffset").default(1).notNull(),
+  annualMonth: int("annualMonth"),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

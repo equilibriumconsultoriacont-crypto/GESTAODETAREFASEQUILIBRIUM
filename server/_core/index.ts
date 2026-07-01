@@ -175,6 +175,12 @@ async function startServer() {
         "ALTER TABLE `tasks` MODIFY COLUMN `department` varchar(100) NOT NULL DEFAULT 'Geral'",
         "ALTER TABLE `task_templates` MODIFY COLUMN `department` varchar(100) NOT NULL DEFAULT 'Geral'",
         "ALTER TABLE `recurring_tasks` ADD COLUMN `department` varchar(100) NOT NULL DEFAULT 'Geral'",
+        "ALTER TABLE `task_templates` ADD COLUMN `periodicity` enum('MENSAL','TRIMESTRAL','ANUAL') NOT NULL DEFAULT 'MENSAL'",
+        "ALTER TABLE `task_templates` ADD COLUMN `competenciaOffset` int NOT NULL DEFAULT 1",
+        "ALTER TABLE `task_templates` ADD COLUMN `annualMonth` int NULL",
+        "ALTER TABLE `recurring_tasks` ADD COLUMN `periodicity` enum('MENSAL','TRIMESTRAL','ANUAL') NOT NULL DEFAULT 'MENSAL'",
+        "ALTER TABLE `recurring_tasks` ADD COLUMN `competenciaOffset` int NOT NULL DEFAULT 1",
+        "ALTER TABLE `recurring_tasks` ADD COLUMN `annualMonth` int NULL",
       ];
 
       const results: string[] = [];
@@ -411,6 +417,15 @@ async function runScheduledJobs() {
     }
   } catch (err) {
     console.warn("[Scheduler] autoSend error:", err);
+  }
+
+  // 3. Geração automática: mantém 3 meses de tarefas geradas à frente
+  // Quando vira o mês, o próximo mês de competência é gerado sozinho.
+  try {
+    const { ensureUpcomingTasksGenerated } = await import("../taskGenerator");
+    await ensureUpcomingTasksGenerated(3);
+  } catch (err) {
+    console.warn("[Scheduler] autoGen error:", err);
   }
 }
 

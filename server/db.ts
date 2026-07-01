@@ -618,6 +618,9 @@ export async function applyCatalogToClient(clientId: number, catalogId: number):
         description: tmpl.description ?? undefined,
         taskType: tmpl.taskType,
         department: (tmpl as any).department ?? "Geral",
+        periodicity: (tmpl as any).periodicity ?? "MENSAL",
+        competenciaOffset: (tmpl as any).competenciaOffset ?? 1,
+        annualMonth: (tmpl as any).annualMonth ?? null,
         dueDayOfMonth: tmpl.dueDayOfMonth,
         active: true,
       });
