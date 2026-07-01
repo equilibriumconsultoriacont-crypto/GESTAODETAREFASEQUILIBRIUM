@@ -285,6 +285,18 @@ const tasksRouter = router({
 
   dashboard: protectedProcedure.query(() => getDashboardStats()),
 
+  // Dashboard gerencial: admin vê visão do escritório + equipe; colaborador vê o dele
+  managerialDashboard: protectedProcedure
+    .input(z.object({ competencia: z.string().optional() }).optional())
+    .query(async ({ input, ctx }) => {
+      const { getAdminDashboard, getCollaboratorDashboard } = await import("./db");
+      const competencia = input?.competencia;
+      if (ctx.user?.role === "admin") {
+        return { role: "admin" as const, ...(await getAdminDashboard(competencia)) };
+      }
+      return { role: "collaborator" as const, ...(await getCollaboratorDashboard(ctx.user!.id, competencia)) };
+    }),
+
   // Generate tasks for a specific month from all active recurring tasks of active clients
   generateMonthly: adminProcedure
     .input(

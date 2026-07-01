@@ -758,3 +758,201 @@ export async function updateUserBasic(userId: number, data: { name?: string; ema
   if (!db) return;
   await db.update(users).set(data).where(eq(users.id, userId));
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DASHBOARD GERENCIAL
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Normaliza uma data para meia-noite local (comparação por dia) */
+function toLocalMidnight(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/**
+ * Dashboard do ADMIN: visão geral do escritório + desempenho por funcionário
+ * e por departamento. Baseado na competência informada (ou mês anterior).
+ */
+export async function getAdminDashboard(competencia?: string) {
+  try {
+    const pool = getPool();
+    const [taskRows] = await pool.query(
+      "SELECT id, clientId, title, taskType, department, competencia, dueDate, status, completedAt FROM tasks"
+    ) as [any[], any];
+    const [clientRows] = await pool.query("SELECT id, name, active FROM clients") as [any[], any];
+    const [userRows] = await pool.query("SELECT id, name, email, role FROM users WHERE role != 'client'") as [any[], any];
+    const [udRows] = await pool.query("SELECT userId, departmentId FROM user_departments") as [any[], any];
+    const [ucRows] = await pool.query("SELECT userId, clientId FROM user_clients") as [any[], any];
+    const [deptRows] = await pool.query("SELECT id, name, color FROM departments") as [any[], any];
+
+    const today = toLocalMidnight(new Date());
+    const allTasks = taskRows as any[];
+
+    // Filtra por competência se informada
+    const tasks = competencia ? allTasks.filter(t => t.competencia === competencia) : allTasks;
+
+    // Helpers de classificação
+    const isDone = (t: any) => t.status === "CONCLUIDA";
+    const isCancelled = (t: any) => t.status === "CANCELADA";
+    const isOverdue = (t: any) => {
+      if (isDone(t) || isCancelled(t)) return false;
+      return toLocalMidnight(new Date(t.dueDate)) < today;
+    };
+    const isOpen = (t: any) => !isDone(t) && !isCancelled(t);
+
+    // ── Visão geral ──
+    const overview = {
+      total: tasks.length,
+      abertas: tasks.filter(isOpen).length,
+      concluidas: tasks.filter(isDone).length,
+      vencidas: tasks.filter(isOverdue).length,
+      clientesAtivos: (clientRows as any[]).filter(c => c.active).length,
+      // SLA: % de entregas no prazo (concluídas dentro do vencimento / total concluídas)
+      slaNoPrazo: (() => {
+        const done = tasks.filter(isDone);
+        if (done.length === 0) return null;
+        const onTime = done.filter(t => {
+          if (!t.completedAt) return true;
+          return toLocalMidnight(new Date(t.completedAt)) <= toLocalMidnight(new Date(t.dueDate));
+        }).length;
+        return Math.round((onTime / done.length) * 100);
+      })(),
+    };
+
+    // ── Desempenho por funcionário ──
+    // Mapa userId → clientes e departamentos vinculados
+    const userClientsMap = new Map<number, Set<number>>();
+    for (const uc of ucRows as any[]) {
+      if (!userClientsMap.has(uc.userId)) userClientsMap.set(uc.userId, new Set());
+      userClientsMap.get(uc.userId)!.add(uc.clientId);
+    }
+    const deptById = new Map((deptRows as any[]).map(d => [d.id, d]));
+    const userDeptNamesMap = new Map<number, Set<string>>();
+    for (const ud of udRows as any[]) {
+      if (!userDeptNamesMap.has(ud.userId)) userDeptNamesMap.set(ud.userId, new Set());
+      const dept = deptById.get(ud.departmentId);
+      if (dept) userDeptNamesMap.get(ud.userId)!.add(dept.name);
+    }
+
+    const byUser = (userRows as any[]).map(u => {
+      const isAdminUser = u.role === "admin";
+      // Admin "vê" todas; colaborador só as vinculadas
+      const allowedClients = userClientsMap.get(u.id) ?? new Set();
+      const allowedDepts = userDeptNamesMap.get(u.id) ?? new Set();
+
+      const userTasks = isAdminUser
+        ? tasks
+        : tasks.filter(t => allowedClients.has(t.clientId) && allowedDepts.has(t.department ?? "Geral"));
+
+      return {
+        userId: u.id,
+        name: u.name,
+        role: u.role,
+        departments: Array.from(allowedDepts),
+        clientCount: allowedClients.size,
+        aEntregar: userTasks.filter(isOpen).length,
+        entregues: userTasks.filter(isDone).length,
+        atrasadas: userTasks.filter(isOverdue).length,
+        total: userTasks.length,
+      };
+    }).filter(u => u.role !== "admin"); // dashboard de equipe mostra só colaboradores
+
+    // ── Por departamento ──
+    const byDepartment = (deptRows as any[]).map(d => {
+      const deptTasks = tasks.filter(t => (t.department ?? "Geral") === d.name);
+      return {
+        name: d.name,
+        color: d.color,
+        abertas: deptTasks.filter(isOpen).length,
+        concluidas: deptTasks.filter(isDone).length,
+        atrasadas: deptTasks.filter(isOverdue).length,
+        total: deptTasks.length,
+      };
+    }).filter(d => d.total > 0);
+
+    // ── Clientes com mais pendências (gargalos) ──
+    const clientById = new Map((clientRows as any[]).map(c => [c.id, c]));
+    const clientPendMap = new Map<number, number>();
+    for (const t of tasks.filter(isOpen)) {
+      clientPendMap.set(t.clientId, (clientPendMap.get(t.clientId) ?? 0) + 1);
+    }
+    const topClientesPendencias = Array.from(clientPendMap.entries())
+      .map(([clientId, count]) => ({ clientId, name: clientById.get(clientId)?.name ?? "—", pendencias: count }))
+      .sort((a, b) => b.pendencias - a.pendencias)
+      .slice(0, 5);
+
+    return { overview, byUser, byDepartment, topClientesPendencias };
+  } catch (err) {
+    console.error("[DB] getAdminDashboard error:", err);
+    return { overview: { total: 0, abertas: 0, concluidas: 0, vencidas: 0, clientesAtivos: 0, slaNoPrazo: null }, byUser: [], byDepartment: [], topClientesPendencias: [] };
+  }
+}
+
+/**
+ * Dashboard do COLABORADOR: apenas empresas e tarefas dele.
+ * Filtra por clientes vinculados E departamentos do usuário.
+ */
+export async function getCollaboratorDashboard(userId: number, competencia?: string) {
+  try {
+    const pool = getPool();
+    const [taskRows] = await pool.query(
+      "SELECT id, clientId, title, taskType, department, competencia, dueDate, status, completedAt FROM tasks"
+    ) as [any[], any];
+    const [clientRows] = await pool.query("SELECT id, name FROM clients") as [any[], any];
+    const [deptRows] = await pool.query("SELECT id, name, color FROM departments") as [any[], any];
+
+    const allowedClientIds = new Set((await getUserClients(userId)));
+    const userDeptIds = await getUserDepartments(userId);
+    const deptById = new Map((deptRows as any[]).map(d => [d.id, d]));
+    const allowedDeptNames = new Set(userDeptIds.map(id => deptById.get(id)?.name).filter(Boolean));
+
+    const today = toLocalMidnight(new Date());
+    let tasks = (taskRows as any[]).filter(t =>
+      allowedClientIds.has(t.clientId) && allowedDeptNames.has(t.department ?? "Geral")
+    );
+    if (competencia) tasks = tasks.filter(t => t.competencia === competencia);
+
+    const isDone = (t: any) => t.status === "CONCLUIDA";
+    const isCancelled = (t: any) => t.status === "CANCELADA";
+    const isOverdue = (t: any) => !isDone(t) && !isCancelled(t) && toLocalMidnight(new Date(t.dueDate)) < today;
+    const isOpen = (t: any) => !isDone(t) && !isCancelled(t);
+
+    const clientById = new Map((clientRows as any[]).map(c => [c.id, c]));
+
+    // Minhas empresas com contagem de pendências
+    const myClients = Array.from(allowedClientIds).map(cid => {
+      const clientTasks = tasks.filter(t => t.clientId === cid);
+      return {
+        clientId: cid,
+        name: clientById.get(cid)?.name ?? "—",
+        abertas: clientTasks.filter(isOpen).length,
+        atrasadas: clientTasks.filter(isOverdue).length,
+        total: clientTasks.length,
+      };
+    }).filter(c => c.total > 0);
+
+    // Próximas a vencer (abertas, ordenadas por vencimento)
+    const proximasVencer = tasks.filter(isOpen)
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+      .slice(0, 8)
+      .map(t => ({
+        id: t.id, title: t.title, taskType: t.taskType,
+        clientName: clientById.get(t.clientId)?.name ?? "—",
+        department: t.department, dueDate: t.dueDate, status: t.status,
+      }));
+
+    return {
+      overview: {
+        aEntregar: tasks.filter(isOpen).length,
+        entregues: tasks.filter(isDone).length,
+        atrasadas: tasks.filter(isOverdue).length,
+        minhasEmpresas: myClients.length,
+        meusDepartamentos: Array.from(allowedDeptNames),
+      },
+      myClients,
+      proximasVencer,
+    };
+  } catch (err) {
+    console.error("[DB] getCollaboratorDashboard error:", err);
+    return { overview: { aEntregar: 0, entregues: 0, atrasadas: 0, minhasEmpresas: 0, meusDepartamentos: [] }, myClients: [], proximasVencer: [] };
+  }
+}
