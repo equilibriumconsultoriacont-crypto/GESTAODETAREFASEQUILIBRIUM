@@ -54,9 +54,11 @@ export default function MonthlyPanelPage() {
   const daysInMonth = new Date(year, month, 0).getDate();
 
   // Map tasks by day
+  // O servidor (Render) roda em UTC e salva o vencimento à meia-noite UTC
+  // (ex: new Date(2026, 6, 20) → 2026-07-20T00:00:00Z). Por isso usamos
+  // getUTCDate() para pegar o dia correto sem deslocamento de fuso.
   const tasksByDay = new Map<number, typeof allTasks>();
   allTasks.forEach((t) => {
-    // Use UTC date to avoid timezone day-shift
     const d = new Date(t.dueDate).getUTCDate();
     if (!tasksByDay.has(d)) tasksByDay.set(d, []);
     tasksByDay.get(d)!.push(t);

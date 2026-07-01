@@ -635,10 +635,16 @@ export async function applyCatalogToClient(clientId: number, catalogId: number):
 export async function getMonthlyPanel(month: number, year: number) {
   try {
     const pool = getPool();
-    const competencia = `${String(month).padStart(2, "0")}/${year}`;
+    // O Painel Mensal é um CALENDÁRIO DE VENCIMENTOS: os dias marcados são
+    // os dias em que guias vencem. Por isso filtramos por MÊS DE VENCIMENTO
+    // (dueDate), não por competência — uma guia de competência 06 pode vencer
+    // em 07 (defasagem), e deve aparecer no calendário de julho.
     const [[clientRows], [taskRows]] = await Promise.all([
       pool.query("SELECT id, name FROM clients WHERE active = 1 ORDER BY name") as Promise<[any[], any]>,
-      pool.query("SELECT id, clientId, title, taskType, status, dueDate, competencia FROM tasks WHERE competencia = ?", [competencia]) as Promise<[any[], any]>,
+      pool.query(
+        "SELECT id, clientId, title, taskType, status, dueDate, competencia FROM tasks WHERE MONTH(dueDate) = ? AND YEAR(dueDate) = ?",
+        [month, year]
+      ) as Promise<[any[], any]>,
     ]);
     const allClients = clientRows as { id: number; name: string }[];
     const allTasks = taskRows as any[];
