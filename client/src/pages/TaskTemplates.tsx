@@ -26,6 +26,9 @@ const emptyForm = {
   description: "",
   ocrKeywords: "",
   department: "Geral",
+  periodicity: "MENSAL",
+  competenciaOffset: "1",
+  annualMonth: "1",
 };
 
 export default function TaskTemplatesPage() {
@@ -56,6 +59,9 @@ export default function TaskTemplatesPage() {
       description: t.description ?? "",
       ocrKeywords: t.ocrKeywords ?? "",
       department: (t as any).department ?? "Geral",
+      periodicity: (t as any).periodicity ?? "MENSAL",
+      competenciaOffset: String((t as any).competenciaOffset ?? 1),
+      annualMonth: String((t as any).annualMonth ?? 1),
     });
     setDialogOpen(true);
   };
@@ -72,6 +78,9 @@ export default function TaskTemplatesPage() {
           description: form.description || undefined,
           ocrKeywords: form.ocrKeywords || undefined,
           department: form.department,
+          periodicity: form.periodicity as any,
+          competenciaOffset: Number(form.competenciaOffset),
+          annualMonth: form.periodicity === "ANUAL" ? Number(form.annualMonth) : undefined,
         });
         toast.success("Template atualizado!");
       } else {
@@ -82,6 +91,9 @@ export default function TaskTemplatesPage() {
           description: form.description || undefined,
           ocrKeywords: form.ocrKeywords || undefined,
           department: form.department,
+          periodicity: form.periodicity as any,
+          competenciaOffset: Number(form.competenciaOffset),
+          annualMonth: form.periodicity === "ANUAL" ? Number(form.annualMonth) : undefined,
         });
         toast.success("Template criado!");
       }
@@ -304,6 +316,57 @@ export default function TaskTemplatesPage() {
                   Nenhum departamento cadastrado. Crie em Configurações → Departamentos.
                 </p>
               )}
+            </div>
+
+            {/* Periodicidade e defasagem de competência */}
+            <div className="rounded-lg border p-3 space-y-3" style={{ borderColor: "rgba(30,79,92,0.5)", background: "rgba(13,31,34,0.5)" }}>
+              <div className="space-y-1.5">
+                <Label style={{ color: "#a1a1aa" }}>Periodicidade *</Label>
+                <Select value={form.periodicity} onValueChange={(v) => setForm({ ...form, periodicity: v })}>
+                  <SelectTrigger style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent style={{ background: "#111", borderColor: "#1e4f5c" }}>
+                    <SelectItem value="MENSAL" style={{ color: "#e5e5e5" }}>Mensal</SelectItem>
+                    <SelectItem value="TRIMESTRAL" style={{ color: "#e5e5e5" }}>Trimestral (mar/jun/set/dez)</SelectItem>
+                    <SelectItem value="ANUAL" style={{ color: "#e5e5e5" }}>Anual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {form.periodicity === "ANUAL" ? (
+                <div className="space-y-1.5">
+                  <Label style={{ color: "#a1a1aa" }}>Mês de competência (quando é apurada) *</Label>
+                  <Select value={form.annualMonth} onValueChange={(v) => setForm({ ...form, annualMonth: v })}>
+                    <SelectTrigger style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent style={{ background: "#111", borderColor: "#1e4f5c" }}>
+                      {[["1","Janeiro"],["2","Fevereiro"],["3","Março"],["4","Abril"],["5","Maio"],["6","Junho"],["7","Julho"],["8","Agosto"],["9","Setembro"],["10","Outubro"],["11","Novembro"],["12","Dezembro"]].map(([v, l]) => (
+                        <SelectItem key={v} value={v} style={{ color: "#e5e5e5" }}>{l}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+
+              <div className="space-y-1.5">
+                <Label style={{ color: "#a1a1aa" }}>Vencimento em relação à competência *</Label>
+                <Select value={form.competenciaOffset} onValueChange={(v) => setForm({ ...form, competenciaOffset: v })}>
+                  <SelectTrigger style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent style={{ background: "#111", borderColor: "#1e4f5c" }}>
+                    <SelectItem value="0" style={{ color: "#e5e5e5" }}>No mesmo mês da competência</SelectItem>
+                    <SelectItem value="1" style={{ color: "#e5e5e5" }}>1 mês depois (ex: DAS)</SelectItem>
+                    <SelectItem value="2" style={{ color: "#e5e5e5" }}>2 meses depois (ex: EFD Contribuições)</SelectItem>
+                    <SelectItem value="3" style={{ color: "#e5e5e5" }}>3 meses depois</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs" style={{ color: "#52525b" }}>
+                  Ex: competência 06/2026 + "1 mês depois" = vence em julho/2026
+                </p>
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label style={{ color: "#a1a1aa" }}>Descrição</Label>

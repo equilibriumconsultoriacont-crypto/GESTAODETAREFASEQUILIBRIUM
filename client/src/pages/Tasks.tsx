@@ -58,6 +58,7 @@ export default function Tasks() {
   const [statusFilter, setStatusFilter] = useState("ACTIVE"); // padrão: em aberto
   const [clientFilter, setClientFilter] = useState("ALL");
   const [deptFilter, setDeptFilter] = useState("ALL");
+  const [filterMode, setFilterMode] = useState<"competencia" | "vencimento">("competencia");
   const [showFilters, setShowFilters] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -80,11 +81,19 @@ export default function Tasks() {
 
   const clientMap = new Map(clients.map((c) => [c.id, c]));
 
-  // Filtra por competência primeiro
-  const tasksByComp = useMemo(() =>
-    allTasks.filter((t) => t.competencia === competenciaFilter),
-    [allTasks, competenciaFilter]
-  );
+  // Filtra por competência OU por mês de vencimento, conforme o modo
+  const tasksByComp = useMemo(() => {
+    if (filterMode === "competencia") {
+      return allTasks.filter((t) => t.competencia === competenciaFilter);
+    }
+    // Modo vencimento: tarefas cujo dueDate cai no mês/ano selecionado
+    return allTasks.filter((t) => {
+      const d = new Date(t.dueDate);
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const yyyy = String(d.getFullYear());
+      return mm === compMm && yyyy === compYyyy;
+    });
+  }, [allTasks, competenciaFilter, filterMode, compMm, compYyyy]);
 
   // Aplica filtros de status e departamento
   const filteredTasks = useMemo(() => {
@@ -154,7 +163,7 @@ export default function Tasks() {
           <div>
             <h1 className="text-xl font-bold" style={{ color: "#e5e5e5" }}>Fila de Tarefas</h1>
             <p className="text-sm mt-0.5" style={{ color: "#a1a1aa" }}>
-              Competência <strong style={{ color: "#9fd4dc" }}>{compMm}/{compYyyy}</strong> — {filteredTasks.length} tarefa(s)
+              {filterMode === "competencia" ? "Competência" : "Vencimento em"} <strong style={{ color: "#9fd4dc" }}>{compMm}/{compYyyy}</strong> — {filteredTasks.length} tarefa(s)
             </p>
           </div>
           <Button onClick={() => setDialogOpen(true)} className="gap-2" style={{ background: "#24646c", color: "#fff" }}>
@@ -187,8 +196,20 @@ export default function Tasks() {
         <div className="rounded-xl border p-4 space-y-3" style={{ background: "#111", borderColor: "#1e4f5c" }}>
           {/* Linha 1: Competência + botão filtros */}
           <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium" style={{ color: "#a1a1aa" }}>Competência:</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Toggle: filtrar por competência ou por vencimento */}
+              <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #1e4f5c" }}>
+                <button onClick={() => setFilterMode("competencia")}
+                  className="px-2.5 py-1 text-xs font-medium transition-colors"
+                  style={{ background: filterMode === "competencia" ? "#24646c" : "transparent", color: filterMode === "competencia" ? "#fff" : "#52525b" }}>
+                  Competência
+                </button>
+                <button onClick={() => setFilterMode("vencimento")}
+                  className="px-2.5 py-1 text-xs font-medium transition-colors"
+                  style={{ background: filterMode === "vencimento" ? "#24646c" : "transparent", color: filterMode === "vencimento" ? "#fff" : "#52525b" }}>
+                  Vencimento
+                </button>
+              </div>
               <select value={compMm} onChange={(e) => setCompMm(e.target.value)}
                 className="rounded px-2 py-1 text-sm"
                 style={{ background: "#0d1f22", border: "1px solid #1e4f5c", color: "#e5e5e5", outline: "none" }}>
