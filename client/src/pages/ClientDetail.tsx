@@ -10,6 +10,7 @@ import {
   ArrowLeft, BookOpen, Building2, Calendar, FileText,
   Ban, Check, Mail, Package, Phone, PlusCircle, RefreshCw, Send, Trash2, Upload, X, Zap
 } from "lucide-react";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Link, useParams } from "wouter";
@@ -24,6 +25,7 @@ const currentYear = new Date().getFullYear();
 const YEARS = [currentYear - 1, currentYear, currentYear + 1];
 
 export default function ClientDetail() {
+  const isAdmin = useIsAdmin();
   const params = useParams<{ id: string }>();
   const clientId = Number(params.id);
 
@@ -291,13 +293,15 @@ export default function ClientDetail() {
           </div>
           {/* Botão gerar tarefas — visível logo no topo do perfil */}
           <div className="mt-4 pt-4 flex justify-end" style={{ borderTop: "1px solid #1e4f5c" }}>
-            <Button
-              onClick={() => setGenOpen(true)}
-              className="gap-2"
-              style={{ background: "#24646c", color: "#fff" }}
-            >
-              <Zap size={14} /> Gerar tarefas do mês
-            </Button>
+            {isAdmin && (
+              <Button
+                onClick={() => setGenOpen(true)}
+                className="gap-2"
+                style={{ background: "#24646c", color: "#fff" }}
+              >
+                <Zap size={14} /> Gerar tarefas do mês
+              </Button>
+            )}
           </div>
         </div>
 
@@ -309,16 +313,18 @@ export default function ClientDetail() {
               <span className="text-sm font-medium" style={{ color: "#e5e5e5" }}>Obrigações ({clientTemplates.length})</span>
             </div>
             <div className="flex gap-2">
-              {catalogs.length > 0 && (
+              {isAdmin && catalogs.length > 0 && (
                 <Button onClick={() => setApplyCatalogOpen(true)} className="gap-1.5 text-xs h-7 px-3"
                   style={{ background: "rgba(36,100,108,0.1)", color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.2)" }}>
                   <Package size={12} /> Catálogo
                 </Button>
               )}
-              <Button onClick={() => setAddTemplateOpen(true)} className="gap-1.5 text-xs h-7 px-3"
-                style={{ background: "rgba(36,100,108,0.2)", color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)" }}>
-                <PlusCircle size={12} /> Adicionar
-              </Button>
+              {isAdmin && (
+                <Button onClick={() => setAddTemplateOpen(true)} className="gap-1.5 text-xs h-7 px-3"
+                  style={{ background: "rgba(36,100,108,0.2)", color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)" }}>
+                  <PlusCircle size={12} /> Adicionar
+                </Button>
+              )}
             </div>
           </div>
           {clientTemplates.length === 0 ? (
@@ -442,14 +448,16 @@ export default function ClientDetail() {
                           >
                             <Mail size={11} /> Enviar
                           </button>
-                          <button
-                            onClick={() => handleDeleteTask(task.id, task.title)}
-                            className="flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors hover:bg-red-900/30"
-                            style={{ color: "#f87171", border: "1px solid rgba(248,113,113,0.3)" }}
-                            title="Excluir tarefa"
-                          >
-                            <Trash2 size={11} />
-                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDeleteTask(task.id, task.title)}
+                              className="flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors hover:bg-red-900/30"
+                              style={{ color: "#f87171", border: "1px solid rgba(248,113,113,0.3)" }}
+                              title="Excluir tarefa"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

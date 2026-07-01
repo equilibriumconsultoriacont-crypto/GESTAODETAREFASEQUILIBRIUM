@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { Building2, Edit2, PlusCircle, Search, ToggleLeft, ToggleRight, User } from "lucide-react";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -29,6 +30,7 @@ function formatCPF(v: string) {
 const emptyForm = { name: "", cnpj: "", cpf: "", documentType: "CNPJ" as "CNPJ" | "CPF", email: "", phone: "", notes: "" };
 
 export default function Clients() {
+  const isAdmin = useIsAdmin();
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -108,9 +110,11 @@ export default function Clients() {
             <h1 className="text-xl font-bold" style={{ color: "#e5e5e5" }}>Clientes</h1>
             <p className="text-sm mt-0.5" style={{ color: "#a1a1aa" }}>{clients.length} cliente{clients.length !== 1 ? "s" : ""} cadastrado{clients.length !== 1 ? "s" : ""}</p>
           </div>
-          <Button onClick={openCreate} className="gap-2" style={{ background: "#24646c", color: "#fff" }}>
-            <PlusCircle size={15} /> Novo Cliente
-          </Button>
+          {isAdmin && (
+            <Button onClick={openCreate} className="gap-2" style={{ background: "#24646c", color: "#fff" }}>
+              <PlusCircle size={15} /> Novo Cliente
+            </Button>
+          )}
         </div>
 
         {/* Filters */}
@@ -202,17 +206,23 @@ export default function Clients() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
-                        <button onClick={() => openEdit(client)} className="p-1.5 rounded hover:bg-white/5 transition-colors" style={{ color: "#9fd4dc" }} title="Editar">
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={() => toggleActive(client)}
-                          className="p-1.5 rounded hover:bg-white/5 transition-colors"
-                          style={{ color: client.active ? "#f87171" : "#4ade80" }}
-                          title={client.active ? "Desativar" : "Reativar"}
-                        >
-                          {client.active ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
-                        </button>
+                        {isAdmin ? (
+                          <>
+                            <button onClick={() => openEdit(client)} className="p-1.5 rounded hover:bg-white/5 transition-colors" style={{ color: "#9fd4dc" }} title="Editar">
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              onClick={() => toggleActive(client)}
+                              className="p-1.5 rounded hover:bg-white/5 transition-colors"
+                              style={{ color: client.active ? "#f87171" : "#4ade80" }}
+                              title={client.active ? "Desativar" : "Reativar"}
+                            >
+                              {client.active ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-xs" style={{ color: "#52525b" }}>Ver detalhes →</span>
+                        )}
                       </div>
                     </td>
                   </tr>

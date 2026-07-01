@@ -25,11 +25,11 @@ const navItems = [
   { href: "/tarefas", label: "Tarefas", icon: CheckSquare },
   { href: "/upload-inteligente", label: "Upload Guias", icon: CloudUpload },
   { href: "/pendentes-envio", label: "Pendentes Envio", icon: SendHorizonal },
-  { href: "/catalogos", label: "Catálogos", icon: Package },
-  { href: "/catalogo", label: "Tarefas Base", icon: BookOpen },
-  { href: "/painel-mensal", label: "Painel Mensal", icon: CalendarDays },
-  { href: "/recorrentes", label: "Recorrentes", icon: RefreshCw },
-  { href: "/acessos-clientes", label: "Portal Clientes", icon: KeyRound },
+  { href: "/catalogos", label: "Catálogos", icon: Package, adminOnly: true },
+  { href: "/catalogo", label: "Tarefas Base", icon: BookOpen, adminOnly: true },
+  { href: "/painel-mensal", label: "Painel Mensal", icon: CalendarDays, adminOnly: true },
+  { href: "/recorrentes", label: "Recorrentes", icon: RefreshCw, adminOnly: true },
+  { href: "/acessos-clientes", label: "Portal Clientes", icon: KeyRound, adminOnly: true },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -37,10 +37,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, logout } = useAuth();
 
+  const isAdmin = user?.role === "admin";
+
+  // Colaborador não vê itens administrativos (Catálogos, Tarefas Base, etc.)
+  const visibleItems = navItems.filter((item) => !(item as any).adminOnly || isAdmin);
+
   // Configurações só aparece para admin
-  const items = user?.role === "admin"
-    ? [...navItems, { href: "/configuracoes", label: "Configurações", icon: Settings }]
-    : navItems;
+  const items = isAdmin
+    ? [...visibleItems, { href: "/configuracoes", label: "Configurações", icon: Settings }]
+    : visibleItems;
 
   return (
     <div className="min-h-screen flex" style={{ background: "#0a0a0a" }}>

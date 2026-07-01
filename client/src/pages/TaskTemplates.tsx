@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { BookOpen, CalendarDays, FileText, PlusCircle, ToggleLeft, ToggleRight } from "lucide-react";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -28,6 +29,7 @@ const emptyForm = {
 };
 
 export default function TaskTemplatesPage() {
+  const isAdmin = useIsAdmin();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -110,9 +112,11 @@ export default function TaskTemplatesPage() {
               Tarefas globais que podem ser atribuídas a qualquer cliente
             </p>
           </div>
-          <Button onClick={openCreate} className="gap-2" style={{ background: "#24646c", color: "#fff" }}>
-            <PlusCircle size={15} /> Nova Tarefa
-          </Button>
+          {isAdmin && (
+            <Button onClick={openCreate} className="gap-2" style={{ background: "#24646c", color: "#fff" }}>
+              <PlusCircle size={15} /> Nova Tarefa
+            </Button>
+          )}
         </div>
 
         {/* Info */}
@@ -206,21 +210,27 @@ export default function TaskTemplatesPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => openEdit(t)}
-                          className="px-2.5 py-1 rounded text-xs hover:bg-white/5 transition-colors"
-                          style={{ color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)" }}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleToggle(t.id, t.active)}
-                          className="p-1.5 rounded hover:bg-white/5 transition-colors"
-                          style={{ color: t.active ? "#f87171" : "#4ade80" }}
-                          title={t.active ? "Desativar" : "Reativar"}
-                        >
-                          {t.active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-                        </button>
+                        {isAdmin ? (
+                          <>
+                            <button
+                              onClick={() => openEdit(t)}
+                              className="px-2.5 py-1 rounded text-xs hover:bg-white/5 transition-colors"
+                              style={{ color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)" }}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => handleToggle(t.id, t.active)}
+                              className="p-1.5 rounded hover:bg-white/5 transition-colors"
+                              style={{ color: t.active ? "#f87171" : "#4ade80" }}
+                              title={t.active ? "Desativar" : "Reativar"}
+                            >
+                              {t.active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-xs" style={{ color: "#52525b" }}>—</span>
+                        )}
                       </div>
                     </td>
                   </tr>
