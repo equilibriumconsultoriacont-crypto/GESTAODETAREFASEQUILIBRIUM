@@ -51,7 +51,6 @@ export default function ClientDetail() {
 
   const { data: clients = [] } = trpc.clients.list.useQuery({ includeInactive: true });
   const { data: tasks = [], isLoading: tasksLoading, refetch: refetchTasks } = trpc.tasks.list.useQuery({ clientId });
-  const { data: emailLogs = [], refetch: refetchEmailLogs } = trpc.email.logs.useQuery({ clientId });
   const { data: recurring = [] } = trpc.recurringTasks.list.useQuery({ clientId });
   const { data: clientTemplates = [] } = trpc.clientTemplates.listByClient.useQuery({ clientId });
   const { data: allTemplates = [] } = trpc.taskTemplates.list.useQuery({ activeOnly: true });
@@ -220,7 +219,6 @@ export default function ClientDetail() {
       });
       toast.success("E-mail enviado com sucesso! ✉️");
       setEmailDialogOpen(false);
-      refetchEmailLogs();
     } catch (err: any) {
       toast.error("Falha ao enviar: " + (err?.message ?? "Erro desconhecido"));
     }
@@ -490,37 +488,6 @@ export default function ClientDetail() {
                         : { background: "rgba(82,82,91,0.2)", color: "#a1a1aa", border: "1px solid rgba(82,82,91,0.4)" }}>
                       {rt.active ? "Ativa" : "Inativa"}
                     </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Histórico e-mails ── */}
-        {emailLogs.length > 0 && (
-          <div className="rounded-xl border" style={{ background: "#111", borderColor: "#1e4f5c" }}>
-            <div className="flex items-center gap-2 px-5 py-4" style={{ borderBottom: "1px solid #1e4f5c" }}>
-              <Mail size={15} style={{ color: "#9fd4dc" }} />
-              <span className="text-sm font-medium" style={{ color: "#e5e5e5" }}>Histórico de E-mails ({emailLogs.length})</span>
-            </div>
-            <div className="divide-y" style={{ borderColor: "rgba(30,79,92,0.4)" }}>
-              {emailLogs.slice(0, 15).map((log) => (
-                <div key={log.id} className="flex items-center justify-between px-5 py-3">
-                  <div>
-                    <p className="text-sm" style={{ color: "#e5e5e5" }}>{log.subject}</p>
-                    <p className="text-xs mt-0.5" style={{ color: "#a1a1aa" }}>{log.recipientEmail}</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs"
-                      style={log.status === "ENVIADO"
-                        ? { background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)" }
-                        : { background: "rgba(239,68,68,0.12)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }}>
-                      {log.status === "ENVIADO" ? "✓ Enviado" : "✗ Falhou"}
-                    </span>
-                    <p className="text-xs mt-1" style={{ color: "#52525b" }}>
-                      {new Date(log.sentAt).toLocaleDateString("pt-BR")}
-                    </p>
                   </div>
                 </div>
               ))}

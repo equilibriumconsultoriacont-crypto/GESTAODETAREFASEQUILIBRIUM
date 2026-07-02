@@ -29,6 +29,7 @@ const emptyForm = {
   periodicity: "MENSAL",
   competenciaOffset: "1",
   annualMonth: "1",
+  sendToClient: true,
 };
 
 export default function TaskTemplatesPage() {
@@ -62,6 +63,7 @@ export default function TaskTemplatesPage() {
       periodicity: (t as any).periodicity ?? "MENSAL",
       competenciaOffset: String((t as any).competenciaOffset ?? 1),
       annualMonth: String((t as any).annualMonth ?? 1),
+      sendToClient: (t as any).sendToClient ?? true,
     });
     setDialogOpen(true);
   };
@@ -81,6 +83,7 @@ export default function TaskTemplatesPage() {
           periodicity: form.periodicity as any,
           competenciaOffset: Number(form.competenciaOffset),
           annualMonth: form.periodicity === "ANUAL" ? Number(form.annualMonth) : undefined,
+          sendToClient: form.sendToClient,
         });
         toast.success("Template atualizado!");
       } else {
@@ -94,6 +97,7 @@ export default function TaskTemplatesPage() {
           periodicity: form.periodicity as any,
           competenciaOffset: Number(form.competenciaOffset),
           annualMonth: form.periodicity === "ANUAL" ? Number(form.annualMonth) : undefined,
+          sendToClient: form.sendToClient,
         });
         toast.success("Template criado!");
       }
@@ -368,6 +372,29 @@ export default function TaskTemplatesPage() {
                 </p>
               </div>
             </div>
+
+            {/* Envia para o cliente? */}
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, sendToClient: !form.sendToClient })}
+              className="w-full flex items-center justify-between rounded-lg border p-3 transition-colors"
+              style={{
+                background: form.sendToClient ? "rgba(36,100,108,0.1)" : "rgba(82,82,91,0.08)",
+                borderColor: form.sendToClient ? "rgba(36,100,108,0.4)" : "rgba(82,82,91,0.3)",
+              }}
+            >
+              <div className="text-left">
+                <div className="text-sm font-medium" style={{ color: "#e5e5e5" }}>Envia para o cliente</div>
+                <div className="text-xs mt-0.5" style={{ color: "#52525b" }}>
+                  {form.sendToClient
+                    ? "Esta obrigação gera guia/documento que é enviado ao cliente"
+                    : "Tarefa interna — não é enviada ao cliente (ex: conferência, lembrete)"}
+                </div>
+              </div>
+              <div className="w-11 h-6 rounded-full relative transition-colors shrink-0 ml-3" style={{ background: form.sendToClient ? "#24646c" : "#3f3f46" }}>
+                <div className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all" style={{ left: form.sendToClient ? "22px" : "2px" }} />
+              </div>
+            </button>
             <div className="space-y-1.5">
               <Label style={{ color: "#a1a1aa" }}>Descrição</Label>
               <Input

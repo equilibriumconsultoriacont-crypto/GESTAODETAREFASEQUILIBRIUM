@@ -37,6 +37,7 @@ export async function autoSendPendingGuias(): Promise<{
       INNER JOIN tasks t ON t.id = f.taskId
       INNER JOIN clients c ON c.id = t.clientId
       WHERE t.status NOT IN ('CANCELADA')
+        AND t.sendToClient = 1
         AND c.active = 1
         AND c.email IS NOT NULL AND c.email != ''
         AND NOT EXISTS (

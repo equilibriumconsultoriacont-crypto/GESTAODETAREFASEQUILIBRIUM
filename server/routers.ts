@@ -862,6 +862,7 @@ const taskTemplatesRouter = router({
       periodicity: z.enum(["MENSAL", "TRIMESTRAL", "ANUAL"]).optional(),
       competenciaOffset: z.number().min(0).max(12).optional(),
       annualMonth: z.number().min(1).max(12).optional(),
+      sendToClient: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
       const id = await createTaskTemplate({ ...input, active: true } as any);
@@ -880,6 +881,7 @@ const taskTemplatesRouter = router({
       periodicity: z.enum(["MENSAL", "TRIMESTRAL", "ANUAL"]).optional(),
       competenciaOffset: z.number().min(0).max(12).optional(),
       annualMonth: z.number().min(1).max(12).optional(),
+      sendToClient: z.boolean().optional(),
       active: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
@@ -932,6 +934,7 @@ const clientTemplatesRouter = router({
             periodicity: (template as any).periodicity ?? "MENSAL",
             competenciaOffset: (template as any).competenciaOffset ?? 1,
             annualMonth: (template as any).annualMonth ?? null,
+            sendToClient: (template as any).sendToClient ?? true,
             dueDayOfMonth: template.dueDayOfMonth,
             active: true,
           });

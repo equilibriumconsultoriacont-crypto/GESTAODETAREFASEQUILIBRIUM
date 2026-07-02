@@ -621,6 +621,7 @@ export async function applyCatalogToClient(clientId: number, catalogId: number):
         periodicity: (tmpl as any).periodicity ?? "MENSAL",
         competenciaOffset: (tmpl as any).competenciaOffset ?? 1,
         annualMonth: (tmpl as any).annualMonth ?? null,
+        sendToClient: (tmpl as any).sendToClient ?? true,
         dueDayOfMonth: tmpl.dueDayOfMonth,
         active: true,
       });

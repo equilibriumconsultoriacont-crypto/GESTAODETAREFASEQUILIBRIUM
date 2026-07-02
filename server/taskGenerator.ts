@@ -112,6 +112,7 @@ export async function generateTasksForCompetencia(
       description: rt.description ?? undefined,
       taskType: rt.taskType,
       department: rt.department ?? "Geral",
+      sendToClient: rt.sendToClient ?? true,
       competencia,
       dueDate,
       status: "PENDENTE",

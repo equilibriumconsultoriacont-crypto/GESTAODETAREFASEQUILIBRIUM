@@ -84,6 +84,8 @@ export const taskTemplates = mysqlTable("task_templates", {
   competenciaOffset: int("competenciaOffset").default(1).notNull(),
   // Para ANUAL: em qual mês (1-12) a obrigação vence. Ex: DEFIS vence em maio → 5
   annualMonth: int("annualMonth"),
+  // Se esta obrigação é enviada ao cliente (guia/documento) ou é só interna
+  sendToClient: boolean("sendToClient").default(true).notNull(),
   ocrKeywords: text("ocrKeywords"), // palavras-chave para reconhecimento de documento
   department: varchar("department", { length: 100 }).default("Geral").notNull(),
   active: boolean("active").default(true).notNull(),
@@ -120,6 +122,7 @@ export const recurringTasks = mysqlTable("recurring_tasks", {
   periodicity: mysqlEnum("periodicity", ["MENSAL", "TRIMESTRAL", "ANUAL"]).default("MENSAL").notNull(),
   competenciaOffset: int("competenciaOffset").default(1).notNull(),
   annualMonth: int("annualMonth"),
+  sendToClient: boolean("sendToClient").default(true).notNull(),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -149,6 +152,7 @@ export const tasks = mysqlTable("tasks", {
   ]).default("PENDENTE").notNull(),
   priority: mysqlEnum("priority", ["BAIXA", "NORMAL", "ALTA", "URGENTE"]).default("NORMAL").notNull(),
   department: varchar("department", { length: 100 }).default("Geral").notNull(),
+  sendToClient: boolean("sendToClient").default(true).notNull(),
   assignedTo: int("assignedTo"), // FK users.id
   internalDeadline: timestamp("internalDeadline"), // prazo interno (antes do vencimento fiscal)
   waitingSince: timestamp("waitingSince"), // quando entrou em AGUARDANDO_CLIENTE

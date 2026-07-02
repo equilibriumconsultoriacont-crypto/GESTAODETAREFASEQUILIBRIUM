@@ -181,6 +181,9 @@ async function startServer() {
         "ALTER TABLE `recurring_tasks` ADD COLUMN `periodicity` enum('MENSAL','TRIMESTRAL','ANUAL') NOT NULL DEFAULT 'MENSAL'",
         "ALTER TABLE `recurring_tasks` ADD COLUMN `competenciaOffset` int NOT NULL DEFAULT 1",
         "ALTER TABLE `recurring_tasks` ADD COLUMN `annualMonth` int NULL",
+        "ALTER TABLE `task_templates` ADD COLUMN `sendToClient` boolean NOT NULL DEFAULT true",
+        "ALTER TABLE `recurring_tasks` ADD COLUMN `sendToClient` boolean NOT NULL DEFAULT true",
+        "ALTER TABLE `tasks` ADD COLUMN `sendToClient` boolean NOT NULL DEFAULT true",
       ];
 
       const results: string[] = [];
