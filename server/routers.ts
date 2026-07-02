@@ -194,6 +194,13 @@ const tasksRouter = router({
       return task;
     }),
 
+  history: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      const { getTaskHistory } = await import("./db");
+      return getTaskHistory(input.id);
+    }),
+
   create: adminProcedure
     .input(
       z.object({

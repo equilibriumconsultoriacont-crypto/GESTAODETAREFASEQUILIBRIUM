@@ -965,3 +965,90 @@ export async function getCollaboratorDashboard(userId: number, competencia?: str
     return { overview: { aEntregar: 0, entregues: 0, atrasadas: 0, minhasEmpresas: 0, meusDepartamentos: [] }, myClients: [], proximasVencer: [] };
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HISTÓRICO UNIFICADO DA TAREFA (linha do tempo)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface TaskHistoryEvent {
+  type: "created" | "status" | "file" | "email";
+  date: string; // ISO
+  // status
+  fromStatus?: string;
+  toStatus?: string;
+  // file
+  fileId?: number;
+  fileName?: string;
+  fileUrl?: string;
+  fileSize?: number;
+  // email
+  recipientEmail?: string;
+  subject?: string;
+  emailStatus?: string;
+  taskFileId?: number;
+}
+
+/**
+ * Monta o histórico unificado de uma tarefa: criação, mudanças de status
+ * (concluída/dispensada/etc), arquivos anexados e e-mails enviados,
+ * tudo ordenado do mais recente para o mais antigo.
+ */
+export async function getTaskHistory(taskId: number): Promise<TaskHistoryEvent[]> {
+  try {
+    const pool = getPool();
+    const [[taskRows], [logRows], [fileRows], [emailRows]] = await Promise.all([
+      pool.query("SELECT id, createdAt FROM tasks WHERE id = ?", [taskId]) as Promise<[any[], any]>,
+      pool.query("SELECT action, before, after, createdAt FROM activity_logs WHERE entityType = 'task' AND entityId = ? ORDER BY createdAt", [taskId]) as Promise<[any[], any]>,
+      pool.query("SELECT id, filename, fileUrl, fileSize, uploadedAt FROM task_files WHERE taskId = ? ORDER BY uploadedAt", [taskId]) as Promise<[any[], any]>,
+      pool.query("SELECT id, recipientEmail, subject, status, taskFileId, sentAt FROM email_logs WHERE taskId = ? ORDER BY sentAt", [taskId]) as Promise<[any[], any]>,
+    ]);
+
+    const events: TaskHistoryEvent[] = [];
+
+    // Criação
+    const task = (taskRows as any[])[0];
+    if (task?.createdAt) {
+      events.push({ type: "created", date: new Date(task.createdAt).toISOString() });
+    }
+
+    // Mudanças de status
+    for (const log of logRows as any[]) {
+      if (log.action === "status_changed") {
+        let fromStatus, toStatus;
+        try { fromStatus = JSON.parse(log.before ?? "{}").status; } catch {}
+        try { toStatus = JSON.parse(log.after ?? "{}").status; } catch {}
+        events.push({
+          type: "status",
+          date: new Date(log.createdAt).toISOString(),
+          fromStatus, toStatus,
+        });
+      }
+    }
+
+    // Arquivos anexados
+    for (const f of fileRows as any[]) {
+      events.push({
+        type: "file",
+        date: new Date(f.uploadedAt).toISOString(),
+        fileId: f.id, fileName: f.filename, fileUrl: f.fileUrl, fileSize: f.fileSize,
+      });
+    }
+
+    // E-mails enviados
+    for (const e of emailRows as any[]) {
+      events.push({
+        type: "email",
+        date: new Date(e.sentAt).toISOString(),
+        recipientEmail: e.recipientEmail, subject: e.subject,
+        emailStatus: e.status, taskFileId: e.taskFileId,
+      });
+    }
+
+    // Ordena do mais recente para o mais antigo
+    events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return events;
+  } catch (err) {
+    console.error("[DB] getTaskHistory error:", err);
+    return [];
+  }
+}

@@ -8,11 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft,
+  Ban,
   CheckCircle2,
   Clock,
   Download,
+  FilePlus,
   FileText,
   Mail,
+  PlusCircle,
   Trash2,
   Paperclip,
   Send,
@@ -37,6 +40,7 @@ export default function TaskDetail() {
   const { data: task, isLoading, refetch } = trpc.tasks.getById.useQuery({ id: taskId });
   const { data: files = [], refetch: refetchFiles } = trpc.files.listByTask.useQuery({ taskId });
   const { data: emailLogs = [] } = trpc.email.logs.useQuery({ taskId });
+  const { data: history = [], refetch: refetchHistory } = trpc.tasks.history.useQuery({ id: taskId });
   const { data: clients = [] } = trpc.clients.list.useQuery({ includeInactive: true });
 
   const uploadMutation = trpc.files.upload.useMutation(); // kept for type compat
@@ -49,6 +53,7 @@ export default function TaskDetail() {
       await deleteFileMutation.mutateAsync({ fileId });
       toast.success("Arquivo removido com sucesso");
       refetchFiles();
+      refetchHistory();
     } catch (err: any) {
       toast.error(err?.message ?? "Erro ao remover arquivo");
     }
@@ -86,6 +91,7 @@ export default function TaskDetail() {
       setUploadDialogOpen(false);
       setSelectedFile(null);
       refetchFiles();
+      refetchHistory();
     } catch (err: any) {
       toast.error(err?.message ?? "Erro ao fazer upload");
     } finally {
@@ -117,6 +123,7 @@ export default function TaskDetail() {
     await updateStatusMutation.mutateAsync({ id: task.id, status });
     toast.success("Status atualizado");
     refetch();
+    refetchHistory();
     utils.tasks.dashboard.invalidate();
   };
 
@@ -297,37 +304,23 @@ export default function TaskDetail() {
           )}
         </div>
 
-        {/* Email history */}
+        {/* Histórico unificado (timeline) */}
         <div className="rounded-xl border" style={{ background: "#111", borderColor: "#1e4f5c" }}>
           <div className="flex items-center gap-2 px-5 py-4" style={{ borderBottom: "1px solid #1e4f5c" }}>
-            <Mail size={15} style={{ color: "#9fd4dc" }} />
-            <span className="text-sm font-medium" style={{ color: "#e5e5e5" }}>Histórico de Envios ({emailLogs.length})</span>
+            <Clock size={15} style={{ color: "#9fd4dc" }} />
+            <span className="text-sm font-medium" style={{ color: "#e5e5e5" }}>Histórico da Tarefa ({history.length})</span>
           </div>
-          {emailLogs.length === 0 ? (
+          {history.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-sm" style={{ color: "#a1a1aa" }}>Nenhum e-mail enviado</p>
+              <p className="text-sm" style={{ color: "#a1a1aa" }}>Nenhum evento registrado ainda</p>
             </div>
           ) : (
-            <div className="divide-y" style={{ borderColor: "rgba(30,79,92,0.4)" }}>
-              {emailLogs.map((log) => (
-                <div key={log.id} className="px-5 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm" style={{ color: "#e5e5e5" }}>{log.recipientEmail}</p>
-                    <p className="text-xs mt-0.5" style={{ color: "#a1a1aa" }}>{log.subject}</p>
-                  </div>
-                  <div className="text-right">
-                    <span
-                      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                      style={log.status === "ENVIADO"
-                        ? { background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)" }
-                        : { background: "rgba(239,68,68,0.12)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }}
-                    >
-                      {log.status === "ENVIADO" ? "Enviado" : "Falhou"}
-                    </span>
-                    <p className="text-xs mt-1" style={{ color: "#52525b" }}>{new Date(log.sentAt).toLocaleString("pt-BR")}</p>
-                  </div>
-                </div>
-              ))}
+            <div className="p-5">
+              <div className="space-y-0">
+                {history.map((ev: any, idx: number) => (
+                  <TimelineItem key={idx} ev={ev} isLast={idx === history.length - 1} />
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -437,5 +430,82 @@ function RefreshCwIcon({ size }: { size: number }) {
       <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
       <path d="M8 16H3v5" />
     </svg>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Item da linha do tempo (histórico unificado)
+// ═══════════════════════════════════════════════════════════════════
+const STATUS_LABELS: Record<string, string> = {
+  PENDENTE: "Pendente",
+  EM_ANDAMENTO: "Em andamento",
+  AGUARDANDO_CLIENTE: "Aguardando cliente",
+  EM_REVISAO: "Em revisão",
+  CONCLUIDA: "Concluída",
+  CANCELADA: "Dispensada",
+  VENCIDA: "Vencida",
+};
+
+function TimelineItem({ ev, isLast }: { ev: any; isLast: boolean }) {
+  const date = new Date(ev.date);
+  const dateStr = date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+  // Define ícone, cor e texto conforme o tipo de evento
+  let icon: any = Clock;
+  let color = "#a1a1aa";
+  let title = "";
+  let detail: React.ReactNode = null;
+
+  if (ev.type === "created") {
+    icon = PlusCircle; color = "#60a5fa";
+    title = "Tarefa criada";
+  } else if (ev.type === "status") {
+    const to = ev.toStatus;
+    if (to === "CONCLUIDA") { icon = CheckCircle2; color = "#4ade80"; title = "Tarefa concluída"; }
+    else if (to === "CANCELADA") { icon = Ban; color = "#a1a1aa"; title = "Tarefa dispensada"; }
+    else if (to === "VENCIDA") { icon = XCircle; color = "#f87171"; title = "Marcada como vencida"; }
+    else { icon = Clock; color = "#facc15"; title = `Status: ${STATUS_LABELS[to] ?? to}`; }
+  } else if (ev.type === "file") {
+    icon = FilePlus; color = "#9fd4dc";
+    title = "Arquivo anexado";
+    detail = (
+      <a href={ev.fileUrl} target="_blank" rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 mt-1 px-2 py-1 rounded text-xs hover:bg-white/5 transition-colors"
+        style={{ color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)" }}>
+        <FileText size={12} /> {ev.fileName}
+        {ev.fileSize ? <span style={{ color: "#52525b" }}>· {(ev.fileSize / 1024).toFixed(0)} KB</span> : null}
+        <Download size={11} />
+      </a>
+    );
+  } else if (ev.type === "email") {
+    const ok = ev.emailStatus === "ENVIADO";
+    icon = Mail; color = ok ? "#4ade80" : "#f87171";
+    title = ok ? "E-mail enviado" : "Falha no envio de e-mail";
+    detail = (
+      <div className="mt-1 text-xs" style={{ color: "#a1a1aa" }}>
+        <span style={{ color: "#e5e5e5" }}>{ev.recipientEmail}</span>
+        {ev.subject ? <span> · {ev.subject}</span> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-3">
+      {/* Linha vertical + ícone */}
+      <div className="flex flex-col items-center">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: `${color}18`, border: `1px solid ${color}44` }}>
+          {(() => { const Icon = icon; return <Icon size={15} style={{ color }} />; })()}
+        </div>
+        {!isLast && <div className="w-px flex-1 my-1" style={{ background: "rgba(255,255,255,0.08)", minHeight: 16 }} />}
+      </div>
+      {/* Conteúdo */}
+      <div className="pb-4 flex-1">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-sm font-medium" style={{ color: "#e5e5e5" }}>{title}</span>
+          <span className="text-xs" style={{ color: "#52525b" }}>{dateStr}</span>
+        </div>
+        {detail}
+      </div>
+    </div>
   );
 }
