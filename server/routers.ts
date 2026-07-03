@@ -579,7 +579,7 @@ const autoSendRouter = router({
     const [rows] = await pool.query(`
       SELECT 
         t.id as taskId, t.title, t.taskType, t.competencia, t.dueDate, t.status,
-        t.clientId,
+        t.clientId, t.department,
         c.name as clientName, c.email as clientEmail,
         f.id as fileId, f.filename, f.uploadedAt, f.mimeType,
         f.fileKey, f.fileUrl
@@ -587,6 +587,7 @@ const autoSendRouter = router({
       INNER JOIN tasks t ON t.id = f.taskId
       INNER JOIN clients c ON c.id = t.clientId
       WHERE t.status NOT IN ('CANCELADA')
+        AND t.sendToClient = 1
         AND c.active = 1
         AND c.email IS NOT NULL AND c.email != ''
         AND NOT EXISTS (

@@ -1,5 +1,5 @@
 import AppLayout from "@/components/AppLayout";
-import { StatusBadge, TaskTypeBadge } from "@/components/StatusBadge";
+import { DepartmentBadge, StatusBadge, TaskTypeBadge } from "@/components/StatusBadge";
 import { trpc } from "@/lib/trpc";
 import { AlertCircle, CheckCircle2, Clock, Mail, RefreshCw, Send, Zap } from "lucide-react";
 import { useState } from "react";
@@ -35,16 +35,16 @@ export default function PendingSendsPage() {
     }
   };
 
-  // Agrupar por cliente
-  const byClient = new Map<string, { clientId: number; clientName: string; clientEmail: string; tasks: any[] }>();
+  // Agrupar por departamento/setor (ex: DAS → Fiscal)
+  const byDept = new Map<string, { department: string; tasks: any[] }>();
   for (const row of pending) {
-    const key = String(row.clientId);
-    if (!byClient.has(key)) {
-      byClient.set(key, { clientId: row.clientId, clientName: row.clientName, clientEmail: row.clientEmail, tasks: [] });
+    const key = (row.department ?? "Geral") || "Geral";
+    if (!byDept.has(key)) {
+      byDept.set(key, { department: key, tasks: [] });
     }
-    byClient.get(key)!.tasks.push(row);
+    byDept.get(key)!.tasks.push(row);
   }
-  const grouped = Array.from(byClient.values());
+  const grouped = Array.from(byDept.values()).sort((a, b) => a.department.localeCompare(b.department));
 
   return (
     <AppLayout>
@@ -109,24 +109,15 @@ export default function PendingSendsPage() {
         ) : (
           <div className="space-y-4">
             {grouped.map((group) => (
-              <div key={group.clientId} className="rounded-xl border overflow-hidden" style={{ background: "#111", borderColor: "#f87171" }}>
-                {/* Client header */}
+              <div key={group.department} className="rounded-xl border overflow-hidden" style={{ background: "#111", borderColor: "#1e4f5c" }}>
+                {/* Department header */}
                 <div className="flex items-center justify-between px-4 py-3"
-                  style={{ borderBottom: "1px solid rgba(248,113,113,0.2)", background: "rgba(248,113,113,0.06)" }}>
+                  style={{ borderBottom: "1px solid rgba(36,100,108,0.3)", background: "rgba(36,100,108,0.08)" }}>
                   <div className="flex items-center gap-2">
-                    <AlertCircle size={14} style={{ color: "#f87171" }} />
-                    <Link href={`/clientes/${group.clientId}`}>
-                      <span className="text-sm font-semibold hover:underline cursor-pointer" style={{ color: "#e5e5e5" }}>
-                        {group.clientName}
-                      </span>
-                    </Link>
-                    <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(248,113,113,0.15)", color: "#f87171" }}>
-                      {group.tasks.length} arquivo{group.tasks.length !== 1 ? "s" : ""} pendente{group.tasks.length !== 1 ? "s" : ""}
+                    <DepartmentBadge department={group.department} />
+                    <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(159,212,220,0.15)", color: "#9fd4dc" }}>
+                      {group.tasks.length} guia{group.tasks.length !== 1 ? "s" : ""} na fila
                     </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs" style={{ color: "#a1a1aa" }}>
-                    <Mail size={12} />
-                    {group.clientEmail}
                   </div>
                 </div>
 
@@ -145,7 +136,10 @@ export default function PendingSendsPage() {
                                 {task.title}
                               </p>
                             </Link>
-                            <div className="flex items-center gap-3 mt-0.5">
+                            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                              <Link href={`/clientes/${task.clientId}`}>
+                                <span className="text-xs font-medium hover:underline cursor-pointer" style={{ color: "#9fd4dc" }}>{task.clientName}</span>
+                              </Link>
                               <span className="text-xs" style={{ color: "#52525b" }}>{task.competencia}</span>
                               <span className="text-xs font-medium" style={{ color: isOverdue ? "#f87171" : "#facc15" }}>
                                 {isOverdue ? "⚠ Venceu " : "Vence "}{due.toLocaleDateString("pt-BR")}

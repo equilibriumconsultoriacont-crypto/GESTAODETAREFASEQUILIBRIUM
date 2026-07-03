@@ -5,6 +5,7 @@ import {
   Building2,
   CalendarDays,
   CheckSquare,
+  ChevronDown,
   ChevronRight,
   CloudUpload,
   KeyRound,
@@ -19,17 +20,38 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 
-const navItems = [
-  { href: "/", label: "Dashboard", icon: BarChart3 },
-  { href: "/clientes", label: "Clientes", icon: Building2 },
-  { href: "/tarefas", label: "Tarefas", icon: CheckSquare },
-  { href: "/upload-inteligente", label: "Upload Guias", icon: CloudUpload },
-  { href: "/pendentes-envio", label: "Pendentes Envio", icon: SendHorizonal },
-  { href: "/catalogos", label: "Catálogos", icon: Package, adminOnly: true },
-  { href: "/catalogo", label: "Tarefas Base", icon: BookOpen, adminOnly: true },
-  { href: "/painel-mensal", label: "Painel Mensal", icon: CalendarDays, adminOnly: true },
-  { href: "/recorrentes", label: "Recorrentes", icon: RefreshCw, adminOnly: true },
-  { href: "/acessos-clientes", label: "Portal Clientes", icon: KeyRound, adminOnly: true },
+// Dashboard fica solto no topo; o resto é agrupado por assunto
+const dashboardItem = { href: "/", label: "Dashboard", icon: BarChart3 };
+
+const menuGroups = [
+  {
+    id: "operacao",
+    label: "Operação",
+    items: [
+      { href: "/tarefas", label: "Tarefas", icon: CheckSquare },
+      { href: "/upload-inteligente", label: "Upload Guias", icon: CloudUpload },
+      { href: "/pendentes-envio", label: "Pendentes Envio", icon: SendHorizonal },
+      { href: "/painel-mensal", label: "Painel Mensal", icon: CalendarDays, adminOnly: true },
+    ],
+  },
+  {
+    id: "cadastros",
+    label: "Cadastros",
+    items: [
+      { href: "/clientes", label: "Clientes", icon: Building2 },
+      { href: "/catalogo", label: "Tarefas Base", icon: BookOpen, adminOnly: true },
+      { href: "/catalogos", label: "Catálogos", icon: Package, adminOnly: true },
+      { href: "/recorrentes", label: "Recorrentes", icon: RefreshCw, adminOnly: true },
+    ],
+  },
+  {
+    id: "sistema",
+    label: "Sistema",
+    items: [
+      { href: "/acessos-clientes", label: "Portal Clientes", icon: KeyRound, adminOnly: true },
+      { href: "/configuracoes", label: "Configurações", icon: Settings, adminOnly: true },
+    ],
+  },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -39,13 +61,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const isAdmin = user?.role === "admin";
 
-  // Colaborador não vê itens administrativos (Catálogos, Tarefas Base, etc.)
-  const visibleItems = navItems.filter((item) => !(item as any).adminOnly || isAdmin);
+  // Grupos com itens filtrados por permissão; esconde grupos que ficaram vazios
+  const visibleGroups = menuGroups
+    .map((g) => ({ ...g, items: g.items.filter((it) => !(it as any).adminOnly || isAdmin) }))
+    .filter((g) => g.items.length > 0);
 
-  // Configurações só aparece para admin
-  const items = isAdmin
-    ? [...visibleItems, { href: "/configuracoes", label: "Configurações", icon: Settings }]
-    : visibleItems;
+  // Controle de expansão dos grupos (todos abertos por padrão)
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const toggleGroup = (id: string) => setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }));
 
   return (
     <div className="min-h-screen flex" style={{ background: "#0a0a0a" }}>
@@ -73,23 +96,57 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-          {items.map(({ href, label, icon: Icon }) => {
-            const isActive = href === "/" ? location === "/" : location.startsWith(href);
+          {/* Dashboard solto no topo */}
+          {(() => {
+            const isActive = location === "/";
+            const Icon = dashboardItem.icon;
             return (
-              <Link key={href} href={href} onClick={() => setMobileOpen(false)}>
-                <div
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-all"
-                  style={
-                    isActive
-                      ? { background: "rgba(36,100,108,0.25)", color: "#9fd4dc", borderLeft: "3px solid #24646c", paddingLeft: "9px" }
-                      : { color: "#a1a1aa" }
-                  }
-                >
+              <Link href={dashboardItem.href} onClick={() => setMobileOpen(false)}>
+                <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-all"
+                  style={isActive
+                    ? { background: "rgba(36,100,108,0.25)", color: "#9fd4dc", borderLeft: "3px solid #24646c", paddingLeft: "9px" }
+                    : { color: "#a1a1aa" }}>
                   <Icon size={17} />
-                  <span>{label}</span>
+                  <span>{dashboardItem.label}</span>
                   {isActive && <ChevronRight size={14} className="ml-auto" />}
                 </div>
               </Link>
+            );
+          })()}
+
+          {/* Grupos recolhíveis */}
+          {visibleGroups.map((group) => {
+            const collapsed = collapsedGroups[group.id];
+            // Um grupo está "ativo" se a rota atual pertence a ele
+            const hasActive = group.items.some((it) => location.startsWith(it.href) && it.href !== "/");
+            return (
+              <div key={group.id} className="pt-3">
+                <button onClick={() => toggleGroup(group.id)}
+                  className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors"
+                  style={{ color: hasActive ? "#9fd4dc" : "#52525b" }}>
+                  <span>{group.label}</span>
+                  {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                </button>
+                {!collapsed && (
+                  <div className="space-y-1 mt-1">
+                    {group.items.map(({ href, label, icon: Icon }) => {
+                      const isActive = location.startsWith(href) && href !== "/";
+                      return (
+                        <Link key={href} href={href} onClick={() => setMobileOpen(false)}>
+                          <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-all"
+                            style={isActive
+                              ? { background: "rgba(36,100,108,0.25)", color: "#9fd4dc", borderLeft: "3px solid #24646c", paddingLeft: "9px" }
+                              : { color: "#a1a1aa" }}>
+                            <Icon size={17} />
+                            <span>{label}</span>
+                            {isActive && <ChevronRight size={14} className="ml-auto" />}
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>
