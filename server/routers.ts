@@ -729,9 +729,21 @@ const smartUploadRouter = router({
         uploadedBy: ctx.user?.id,
       });
 
-      // 7. Atualizar status da tarefa para EM_ANDAMENTO se ainda PENDENTE
+      // 7. Atualizar dueDate com a data real da guia + status para EM_ANDAMENTO
+      const taskUpdates: Record<string, any> = {};
       if (matchedTask.status === "PENDENTE") {
-        await updateTask(matchedTask.id, { status: "EM_ANDAMENTO" });
+        taskUpdates.status = "EM_ANDAMENTO";
+      }
+      // Se o OCR extraiu dataVencimento, usa ela como dueDate real (ex: 30/06/2026)
+      if (recognition.dataVencimento) {
+        const [dd, mm, yyyy] = recognition.dataVencimento.split("/").map(Number);
+        if (dd && mm && yyyy) {
+          taskUpdates.dueDate = new Date(yyyy, mm - 1, dd);
+          console.log(`[SmartUpload] dueDate atualizado para ${recognition.dataVencimento} pela guia`);
+        }
+      }
+      if (Object.keys(taskUpdates).length > 0) {
+        await updateTask(matchedTask.id, taskUpdates);
       }
 
       // 8. Arquivo salvo — vai para Pendentes de Envio para o ciclo automático disparar

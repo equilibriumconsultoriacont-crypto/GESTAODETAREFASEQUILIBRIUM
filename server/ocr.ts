@@ -100,8 +100,8 @@ const DOCUMENT_TEMPLATES: DocTemplate[] = [
       cnpj: /(\d{2}[\.\s]?\d{3}[\.\s]?\d{3}[\/\s]?\d{4}[\-\s]?\d{2})/,
       // Competência: "Abril/2026" ou "04/2026"
       competencia: /(Janeiro|Fevereiro|Mar[çc]o|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro)[\/\s]*(20\d{2})|(0[1-9]|1[0-2])[\/\-](20\d{2})/i,
-      // Data de vencimento: a primeira data DD/MM/YYYY encontrada após "Pagar" ou "Vencimento"
-      dataVencimento: /(?:Pagar\s+este\s+documento\s+at[eé]|Pagar\s+at[eé]|Data\s+de\s+Vencimento)[^0-9]*(\d{2}\/\d{2}\/20\d{2})/i,
+      // Data de vencimento: data após "Pagar até", "Vencimento", "Data de Vencimento"
+      dataVencimento: /(?:Pagar\s+(?:este\s+documento\s+)?at[eé]|Data\s+de\s+Vencimento|Vencimento:|Pagar\s+at[eé]:?)[^\d]*(\d{2}\/\d{2}\/20\d{2})/i,
       // Valor total
       valor: /(?:Valor\s+Total\s+do\s+Documento|Valor:)[^0-9]*([\d]{1,6}[,]\d{2})/i,
       // Linha digitável (começa com 8 e tem muitos dígitos)
@@ -124,7 +124,7 @@ const DOCUMENT_TEMPLATES: DocTemplate[] = [
       cpf: /(\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[\-\s]?\d{2})(?!\d)/,
       cnpj: /(\d{2}[\.\s]?\d{3}[\.\s]?\d{3}[\/\s]?\d{4}[\-\s]?\d{2})/,
       competencia: /(?:Jan(?:eiro)?|Fev(?:ereiro)?|Mar(?:[çc]o)?|Abr(?:il)?|Mai(?:o)?|Jun(?:ho)?|Jul(?:ho)?|Ago(?:sto)?|Set(?:embro)?|Out(?:ubro)?|Nov(?:embro)?|Dez(?:embro)?)[\/\s]?(20\d{2})|(0[1-9]|1[0-2])[\/\-](20\d{2})/i,
-      dataVencimento: /(?:Pagar at[eé]|vencimento)[:\s]*(\d{2}\/\d{2}\/20\d{2})/i,
+      dataVencimento: /(?:Pagar\s+(?:este\s+documento\s+)?at[eé]|vencimento|Data\s+de\s+Vencimento)[:\s]*(\d{2}\/\d{2}\/20\d{2})/i,
       valor: /(?:Valor Total|Valor:)[:\s]*([\d\.]+,\d{2})/i,
       codigoBarras: /(\d{5}\s?\d{5}\s?\d{5}\s?\d{6}\s?\d{5}\s?\d{6}\s?\d{1}\s?\d{14}|\d{47,48})/,
     },

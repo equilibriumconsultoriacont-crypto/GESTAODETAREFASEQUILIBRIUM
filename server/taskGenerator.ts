@@ -48,20 +48,18 @@ function shouldGenerateForCompetencia(rt: any, month: number): boolean {
  * competenciaOffset = quantos meses o vencimento fica À FRENTE da competência.
  */
 function calcDueDate(compMonth: number, compYear: number, rt: any): Date {
-  const offset = rt.competenciaOffset ?? 1;
+  // offset: 0 = vence no mesmo mês da competência, 1 = mês seguinte (padrão DAS)
+  // Para parcelamentos e guias avulsas, o vencimento é no mesmo mês (offset=0)
+  const offset = rt.competenciaOffset ?? 0;
 
   // Soma a defasagem ao mês de competência (0-based para Date)
-  // compMonth é 1-based; Date usa 0-based, então compMonth-1 + offset
   const dueDateBase = new Date(compYear, (compMonth - 1) + offset, 1);
   const dueYear = dueDateBase.getFullYear();
   const dueMonth = dueDateBase.getMonth(); // 0-based
 
-  // Dia do vencimento: usa o dueDayOfMonth do template, com ajustes por tipo
+  // Dia do vencimento: sempre usa o dueDayOfMonth do template (configurado em Tarefas Base)
+  // Não sobrescreve por tipo — o usuário define o dia certo no template
   let dueDay = rt.dueDayOfMonth ?? 20;
-  if (rt.taskType === "DAS") dueDay = 20;
-  else if (rt.taskType === "NFS") dueDay = 10;
-  else if (rt.taskType === "DCTF") dueDay = 28;
-  // SPED e OUTROS usam o dueDayOfMonth cadastrado
 
   // Garante que o dia existe no mês (ex: dia 31 em fevereiro → último dia)
   const lastDayOfMonth = new Date(dueYear, dueMonth + 1, 0).getDate();
