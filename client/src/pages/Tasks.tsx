@@ -315,58 +315,93 @@ export default function Tasks() {
             )}
           </div>
         ) : (
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#1e4f5c", background: "#111" }}>
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ borderBottom: "1px solid #1e4f5c" }}>
-                  <th className="text-left px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa" }}>Tarefa</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa" }}>Cliente</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium hidden lg:table-cell" style={{ color: "#a1a1aa" }}>Depto</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium hidden sm:table-cell" style={{ color: "#a1a1aa" }}>Vencimento</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa" }}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTasks.map((task, idx) => {
-                  const client = clientMap.get(task.clientId);
-                  const due = new Date(task.dueDate);
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
-                  const isOverdue = dueDay < today && !["CONCLUIDA", "CANCELADA", "VENCIDA"].includes(task.status);
-                  const isDueToday = dueDay.getTime() === today.getTime();
-                  return (
-                    <tr key={task.id} style={{ borderBottom: idx < filteredTasks.length - 1 ? "1px solid rgba(30,79,92,0.3)" : "none" }}>
-                      <td className="px-4 py-3">
-                        <Link href={`/tarefas/${task.id}`}>
-                          <div className="flex items-center gap-2 cursor-pointer">
-                            <TaskTypeBadge type={task.taskType} />
-                            <span className="hover:underline font-medium" style={{ color: "#e5e5e5" }}>{task.title}</span>
-                          </div>
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Link href={`/clientes/${task.clientId}`}>
-                          <span className="text-xs hover:underline cursor-pointer" style={{ color: "#9fd4dc" }}>{client?.name ?? "—"}</span>
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 hidden lg:table-cell">
-                        <DepartmentBadge department={(task as any).department ?? "GERAL"} />
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <span className="text-xs" style={{ color: isOverdue ? "#f87171" : isDueToday ? "#fb923c" : "#a1a1aa", fontWeight: (isOverdue || isDueToday) ? 600 : 400 }}>
+          <>
+            {/* Mobile: cards empilhados (evita corte da coluna Status) */}
+            <div className="sm:hidden space-y-2">
+              {filteredTasks.map((task) => {
+                const client = clientMap.get(task.clientId);
+                const due = new Date(task.dueDate);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+                const isOverdue = dueDay < today && !["CONCLUIDA", "CANCELADA", "VENCIDA"].includes(task.status);
+                const isDueToday = dueDay.getTime() === today.getTime();
+                return (
+                  <Link key={task.id} href={`/tarefas/${task.id}`}>
+                    <div className="rounded-xl border p-3 cursor-pointer" style={{ borderColor: "#1e4f5c", background: "#111" }}>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <TaskTypeBadge type={task.taskType} />
+                          <span className="font-medium text-sm truncate" style={{ color: "#e5e5e5" }}>{task.title}</span>
+                        </div>
+                        <StatusBadge status={task.status} dueDate={task.dueDate} completedAt={(task as any).completedAt} />
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs truncate" style={{ color: "#9fd4dc" }}>{client?.name ?? "—"}</span>
+                        <span className="text-xs shrink-0" style={{ color: isOverdue ? "#f87171" : isDueToday ? "#fb923c" : "#a1a1aa", fontWeight: (isOverdue || isDueToday) ? 600 : 400 }}>
                           {isDueToday ? "⚡ Hoje" : due.toLocaleDateString("pt-BR")}
                         </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={task.status} dueDate={task.dueDate} completedAt={(task as any).completedAt} />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+
+            {/* Desktop: tabela */}
+            <div className="hidden sm:block rounded-xl border overflow-hidden" style={{ borderColor: "#1e4f5c", background: "#111" }}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #1e4f5c" }}>
+                    <th className="text-left px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa" }}>Tarefa</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa" }}>Cliente</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium hidden lg:table-cell" style={{ color: "#a1a1aa" }}>Depto</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa" }}>Vencimento</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa" }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTasks.map((task, idx) => {
+                    const client = clientMap.get(task.clientId);
+                    const due = new Date(task.dueDate);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+                    const isOverdue = dueDay < today && !["CONCLUIDA", "CANCELADA", "VENCIDA"].includes(task.status);
+                    const isDueToday = dueDay.getTime() === today.getTime();
+                    return (
+                      <tr key={task.id} style={{ borderBottom: idx < filteredTasks.length - 1 ? "1px solid rgba(30,79,92,0.3)" : "none" }}>
+                        <td className="px-4 py-3">
+                          <Link href={`/tarefas/${task.id}`}>
+                            <div className="flex items-center gap-2 cursor-pointer">
+                              <TaskTypeBadge type={task.taskType} />
+                              <span className="hover:underline font-medium" style={{ color: "#e5e5e5" }}>{task.title}</span>
+                            </div>
+                          </Link>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Link href={`/clientes/${task.clientId}`}>
+                            <span className="text-xs hover:underline cursor-pointer" style={{ color: "#9fd4dc" }}>{client?.name ?? "—"}</span>
+                          </Link>
+                        </td>
+                        <td className="px-4 py-3 hidden lg:table-cell">
+                          <DepartmentBadge department={(task as any).department ?? "GERAL"} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs" style={{ color: isOverdue ? "#f87171" : isDueToday ? "#fb923c" : "#a1a1aa", fontWeight: (isOverdue || isDueToday) ? 600 : 400 }}>
+                            {isDueToday ? "⚡ Hoje" : due.toLocaleDateString("pt-BR")}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={task.status} dueDate={task.dueDate} completedAt={(task as any).completedAt} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 

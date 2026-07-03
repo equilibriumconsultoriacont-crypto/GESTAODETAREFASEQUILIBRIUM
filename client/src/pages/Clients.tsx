@@ -156,7 +156,8 @@ export default function Clients() {
           </div>
         ) : (
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#1e4f5c", background: "#111" }}>
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ minWidth: 480 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #1e4f5c" }}>
                   <th className="text-left px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa" }}>Cliente</th>
@@ -229,6 +230,7 @@ export default function Clients() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>
