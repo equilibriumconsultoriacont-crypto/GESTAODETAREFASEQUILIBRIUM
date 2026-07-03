@@ -1,12 +1,13 @@
 import AppLayout from "@/components/AppLayout";
 import { DepartmentBadge, StatusBadge, TaskTypeBadge } from "@/components/StatusBadge";
+import { TaskTimeline } from "@/components/TaskTimeline";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
-import { AlertCircle, CheckSquare, ChevronDown, ChevronUp, Eye, EyeOff, Filter, PlusCircle, Users } from "lucide-react";
-import { useMemo, useState } from "react";
+import { AlertCircle, CheckSquare, ChevronDown, ChevronRight, ChevronUp, Eye, EyeOff, Filter, PlusCircle, Users } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 
@@ -60,6 +61,7 @@ export default function Tasks() {
   const [deptFilter, setDeptFilter] = useState("ALL");
   const [filterMode, setFilterMode] = useState<"competencia" | "vencimento">("competencia");
   const [showFilters, setShowFilters] = useState(false);
+  const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const [form, setForm] = useState({
@@ -327,10 +329,13 @@ export default function Tasks() {
                 const isOverdue = dueDay < today && !["CONCLUIDA", "CANCELADA", "VENCIDA"].includes(task.status);
                 const isDueToday = dueDay.getTime() === today.getTime();
                 return (
-                  <Link key={task.id} href={`/tarefas/${task.id}`}>
-                    <div className="rounded-xl border p-3 cursor-pointer" style={{ borderColor: "#1e4f5c", background: "#111" }}>
+                  <div key={task.id} className="rounded-xl border overflow-hidden" style={{ borderColor: "#1e4f5c", background: "#111" }}>
+                    <button onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)} className="w-full text-left p-3">
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div className="flex items-center gap-2 min-w-0">
+                          {expandedTaskId === task.id
+                            ? <ChevronDown size={14} style={{ color: "#9fd4dc", flexShrink: 0 }} />
+                            : <ChevronRight size={14} style={{ color: "#52525b", flexShrink: 0 }} />}
                           <TaskTypeBadge type={task.taskType} />
                           <span className="font-medium text-sm truncate" style={{ color: "#e5e5e5" }}>{task.title}</span>
                         </div>
@@ -342,8 +347,13 @@ export default function Tasks() {
                           {isDueToday ? "⚡ Hoje" : due.toLocaleDateString("pt-BR")}
                         </span>
                       </div>
-                    </div>
-                  </Link>
+                    </button>
+                    {expandedTaskId === task.id && (
+                      <div style={{ borderTop: "1px solid rgba(30,79,92,0.3)" }}>
+                        <InlineTaskHistory taskId={task.id} />
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -370,14 +380,16 @@ export default function Tasks() {
                     const isOverdue = dueDay < today && !["CONCLUIDA", "CANCELADA", "VENCIDA"].includes(task.status);
                     const isDueToday = dueDay.getTime() === today.getTime();
                     return (
-                      <tr key={task.id} style={{ borderBottom: idx < filteredTasks.length - 1 ? "1px solid rgba(30,79,92,0.3)" : "none" }}>
+                      <Fragment key={task.id}>
+                      <tr style={{ borderBottom: (expandedTaskId === task.id || idx < filteredTasks.length - 1) ? "1px solid rgba(30,79,92,0.3)" : "none" }}>
                         <td className="px-4 py-3">
-                          <Link href={`/tarefas/${task.id}`}>
-                            <div className="flex items-center gap-2 cursor-pointer">
-                              <TaskTypeBadge type={task.taskType} />
-                              <span className="hover:underline font-medium" style={{ color: "#e5e5e5" }}>{task.title}</span>
-                            </div>
-                          </Link>
+                          <button onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)} className="flex items-center gap-2 cursor-pointer text-left w-full">
+                            {expandedTaskId === task.id
+                              ? <ChevronDown size={14} style={{ color: "#9fd4dc", flexShrink: 0 }} />
+                              : <ChevronRight size={14} style={{ color: "#52525b", flexShrink: 0 }} />}
+                            <TaskTypeBadge type={task.taskType} />
+                            <span className="font-medium hover:text-white transition-colors" style={{ color: "#e5e5e5" }}>{task.title}</span>
+                          </button>
                         </td>
                         <td className="px-4 py-3">
                           <Link href={`/clientes/${task.clientId}`}>
@@ -396,6 +408,14 @@ export default function Tasks() {
                           <StatusBadge status={task.status} dueDate={task.dueDate} completedAt={(task as any).completedAt} />
                         </td>
                       </tr>
+                      {expandedTaskId === task.id && (
+                        <tr>
+                          <td colSpan={5} className="p-0" style={{ borderBottom: "1px solid rgba(30,79,92,0.3)" }}>
+                            <InlineTaskHistory taskId={task.id} />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -493,5 +513,54 @@ export default function Tasks() {
         </DialogContent>
       </Dialog>
     </AppLayout>
+  );
+}
+
+// ── Histórico inline (expandível) de uma tarefa ──
+function InlineTaskHistory({ taskId }: { taskId: number }) {
+  const { data: history = [], isLoading } = trpc.tasks.history.useQuery({ id: taskId });
+  const utils = trpc.useUtils();
+  const updateStatus = trpc.tasks.updateStatus.useMutation();
+
+  const handleComplete = async () => {
+    try {
+      await updateStatus.mutateAsync({ id: taskId, status: "CONCLUIDA" });
+      utils.tasks.history.invalidate({ id: taskId });
+      utils.tasks.list.invalidate();
+    } catch {}
+  };
+  const handleDismiss = async () => {
+    if (!confirm("Dispensar esta tarefa?")) return;
+    try {
+      await updateStatus.mutateAsync({ id: taskId, status: "CANCELADA" });
+      utils.tasks.history.invalidate({ id: taskId });
+      utils.tasks.list.invalidate();
+    } catch {}
+  };
+
+  return (
+    <div className="px-4 py-4" style={{ background: "#0d1f22" }}>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-medium uppercase tracking-wide" style={{ color: "#9fd4dc" }}>Histórico da tarefa</span>
+        <div className="flex items-center gap-2">
+          <button onClick={handleComplete} className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium hover:bg-green-900/30"
+            style={{ color: "#4ade80", border: "1px solid rgba(74,222,128,0.3)" }}>
+            ✓ Concluir
+          </button>
+          <button onClick={handleDismiss} className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium hover:bg-zinc-700/30"
+            style={{ color: "#a1a1aa", border: "1px solid rgba(82,82,91,0.4)" }}>
+            Dispensar
+          </button>
+          <a href={`/tarefas/${taskId}`} className="text-xs px-2 py-1 rounded hover:bg-white/5" style={{ color: "#9fd4dc" }}>
+            Abrir completo →
+          </a>
+        </div>
+      </div>
+      {isLoading ? (
+        <p className="text-xs" style={{ color: "#52525b" }}>Carregando...</p>
+      ) : (
+        <TaskTimeline history={history as any} />
+      )}
+    </div>
   );
 }

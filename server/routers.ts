@@ -750,6 +750,19 @@ const smartUploadRouter = router({
       // O e-mail NÃO é enviado aqui. O scheduler de 1h verifica pendentes e dispara.
       console.log(`[SmartUpload] Arquivo ${fileId} salvo. Aguardando ciclo de envio automático.`);
 
+      // Registra no histórico da tarefa que o envio foi agendado
+      try {
+        const { logActivity } = await import("./db");
+        await logActivity({
+          entityType: "task",
+          entityId: matchedTask.id,
+          action: "scheduled",
+          before: null,
+          after: JSON.stringify({ fileId, filename: input.filename }),
+          userId: ctx.user?.id,
+        });
+      } catch {}
+
       return {
         success: true,
         recognition,

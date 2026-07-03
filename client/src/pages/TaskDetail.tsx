@@ -1,5 +1,6 @@
 import AppLayout from "@/components/AppLayout";
 import { StatusBadge, TaskTypeBadge } from "@/components/StatusBadge";
+import { TaskTimeline } from "@/components/TaskTimeline";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -316,11 +317,7 @@ export default function TaskDetail() {
             </div>
           ) : (
             <div className="p-5">
-              <div className="space-y-0">
-                {history.map((ev: any, idx: number) => (
-                  <TimelineItem key={idx} ev={ev} isLast={idx === history.length - 1} />
-                ))}
-              </div>
+              <TaskTimeline history={history} />
             </div>
           )}
         </div>
@@ -436,76 +433,3 @@ function RefreshCwIcon({ size }: { size: number }) {
 // ═══════════════════════════════════════════════════════════════════
 // Item da linha do tempo (histórico unificado)
 // ═══════════════════════════════════════════════════════════════════
-const STATUS_LABELS: Record<string, string> = {
-  PENDENTE: "Pendente",
-  EM_ANDAMENTO: "Em andamento",
-  AGUARDANDO_CLIENTE: "Aguardando cliente",
-  EM_REVISAO: "Em revisão",
-  CONCLUIDA: "Concluída",
-  CANCELADA: "Dispensada",
-  VENCIDA: "Vencida",
-};
-
-function TimelineItem({ ev, isLast }: { ev: any; isLast: boolean }) {
-  const date = new Date(ev.date);
-  const dateStr = date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-
-  // Define ícone, cor e texto conforme o tipo de evento
-  let icon: any = Clock;
-  let color = "#a1a1aa";
-  let title = "";
-  let detail: React.ReactNode = null;
-
-  if (ev.type === "created") {
-    icon = PlusCircle; color = "#60a5fa";
-    title = "Tarefa criada";
-  } else if (ev.type === "status") {
-    const to = ev.toStatus;
-    if (to === "CONCLUIDA") { icon = CheckCircle2; color = "#4ade80"; title = "Tarefa concluída"; }
-    else if (to === "CANCELADA") { icon = Ban; color = "#a1a1aa"; title = "Tarefa dispensada"; }
-    else if (to === "VENCIDA") { icon = XCircle; color = "#f87171"; title = "Marcada como vencida"; }
-    else { icon = Clock; color = "#facc15"; title = `Status: ${STATUS_LABELS[to] ?? to}`; }
-  } else if (ev.type === "file") {
-    icon = FilePlus; color = "#9fd4dc";
-    title = "Arquivo anexado";
-    detail = (
-      <a href={ev.fileUrl} target="_blank" rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 mt-1 px-2 py-1 rounded text-xs hover:bg-white/5 transition-colors"
-        style={{ color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)" }}>
-        <FileText size={12} /> {ev.fileName}
-        {ev.fileSize ? <span style={{ color: "#52525b" }}>· {(ev.fileSize / 1024).toFixed(0)} KB</span> : null}
-        <Download size={11} />
-      </a>
-    );
-  } else if (ev.type === "email") {
-    const ok = ev.emailStatus === "ENVIADO";
-    icon = Mail; color = ok ? "#4ade80" : "#f87171";
-    title = ok ? "E-mail enviado" : "Falha no envio de e-mail";
-    detail = (
-      <div className="mt-1 text-xs" style={{ color: "#a1a1aa" }}>
-        <span style={{ color: "#e5e5e5" }}>{ev.recipientEmail}</span>
-        {ev.subject ? <span> · {ev.subject}</span> : null}
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex gap-3">
-      {/* Linha vertical + ícone */}
-      <div className="flex flex-col items-center">
-        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: `${color}18`, border: `1px solid ${color}44` }}>
-          {(() => { const Icon = icon; return <Icon size={15} style={{ color }} />; })()}
-        </div>
-        {!isLast && <div className="w-px flex-1 my-1" style={{ background: "rgba(255,255,255,0.08)", minHeight: 16 }} />}
-      </div>
-      {/* Conteúdo */}
-      <div className="pb-4 flex-1">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <span className="text-sm font-medium" style={{ color: "#e5e5e5" }}>{title}</span>
-          <span className="text-xs" style={{ color: "#52525b" }}>{dateStr}</span>
-        </div>
-        {detail}
-      </div>
-    </div>
-  );
-}

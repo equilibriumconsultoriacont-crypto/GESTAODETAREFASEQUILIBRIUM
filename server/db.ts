@@ -972,7 +972,7 @@ export async function getCollaboratorDashboard(userId: number, competencia?: str
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface TaskHistoryEvent {
-  type: "created" | "status" | "file" | "email";
+  type: "created" | "status" | "file" | "email" | "scheduled";
   date: string; // ISO
   // status
   fromStatus?: string;
@@ -987,6 +987,8 @@ export interface TaskHistoryEvent {
   subject?: string;
   emailStatus?: string;
   taskFileId?: number;
+  // scheduled
+  note?: string;
 }
 
 /**
@@ -1012,7 +1014,7 @@ export async function getTaskHistory(taskId: number): Promise<TaskHistoryEvent[]
       events.push({ type: "created", date: new Date(task.createdAt).toISOString() });
     }
 
-    // Mudanças de status
+    // Mudanças de status e agendamentos
     for (const log of logRows as any[]) {
       if (log.action === "status_changed") {
         let fromStatus, toStatus;
@@ -1022,6 +1024,14 @@ export async function getTaskHistory(taskId: number): Promise<TaskHistoryEvent[]
           type: "status",
           date: new Date(log.createdAt).toISOString(),
           fromStatus, toStatus,
+        });
+      } else if (log.action === "scheduled") {
+        let filename;
+        try { filename = JSON.parse(log.after ?? "{}").filename; } catch {}
+        events.push({
+          type: "scheduled",
+          date: new Date(log.createdAt).toISOString(),
+          note: filename ? `Guia "${filename}" na fila de envio automático` : "Envio automático agendado",
         });
       }
     }
