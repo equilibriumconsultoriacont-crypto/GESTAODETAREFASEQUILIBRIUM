@@ -48,10 +48,8 @@ export default function Login() {
 
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ width: 64, height: 64, borderRadius: "50%", background: "#24646c", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-            <span style={{ color: "#fff", fontSize: 24, fontWeight: "bold" }}>EQ</span>
-          </div>
-          <h1 style={{ color: "#e5e5e5", fontSize: 24, fontWeight: "bold", margin: "0 0 4px" }}>Equilibrium</h1>
+          <img src="/logo.png" alt="Equilíbrio" style={{ width: 72, height: 72, objectFit: "contain", margin: "0 auto 16px", display: "block" }} />
+          <h1 style={{ color: "#e5e5e5", fontSize: 24, fontWeight: "bold", margin: "0 0 4px" }}>Equilíbrio</h1>
           <p style={{ color: "#a1a1aa", fontSize: 14, margin: 0 }}>Gestão de Tarefas Contábeis</p>
         </div>
 

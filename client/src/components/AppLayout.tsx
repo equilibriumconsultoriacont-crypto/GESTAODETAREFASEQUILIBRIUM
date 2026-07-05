@@ -66,8 +66,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     .map((g) => ({ ...g, items: g.items.filter((it) => !(it as any).adminOnly || isAdmin) }))
     .filter((g) => g.items.length > 0);
 
-  // Controle de expansão dos grupos (todos abertos por padrão)
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  // Controle de expansão dos grupos (retraídos por padrão; expandem ao clicar)
+  // Exceção: o grupo que contém a rota atual começa aberto, para orientação
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    for (const g of menuGroups) {
+      const hasActive = g.items.some((it) => location.startsWith(it.href) && it.href !== "/");
+      initial[g.id] = !hasActive; // recolhido, exceto se tiver a rota ativa
+    }
+    return initial;
+  });
   const toggleGroup = (id: string) => setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }));
 
   return (
@@ -82,11 +90,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       >
         <div className="flex items-center justify-between px-5 py-5" style={{ borderBottom: "1px solid #1e4f5c" }}>
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm" style={{ background: "#24646c", color: "#fff" }}>
-              EQ
-            </div>
+            <img src="/logo.png" alt="Equilíbrio" className="w-9 h-9 object-contain" />
             <div>
-              <p className="font-semibold text-sm leading-tight" style={{ color: "#e5e5e5" }}>Equilibrium</p>
+              <p className="font-semibold text-sm leading-tight" style={{ color: "#e5e5e5" }}>Equilíbrio</p>
               <p className="text-xs" style={{ color: "#a1a1aa" }}>Consultoria</p>
             </div>
           </div>
@@ -178,7 +184,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <button onClick={() => setMobileOpen(true)} style={{ color: "#a1a1aa" }}>
             <Menu size={20} />
           </button>
-          <span className="font-semibold text-sm flex-1" style={{ color: "#e5e5e5" }}>Equilibrium</span>
+          <img src="/logo.png" alt="Equilíbrio" className="w-7 h-7 object-contain" />
+          <span className="font-semibold text-sm flex-1" style={{ color: "#e5e5e5" }}>Equilíbrio</span>
           <button onClick={() => logout()} className="flex items-center gap-1 text-xs" style={{ color: "#f87171" }} title="Sair">
             <LogOut size={16} />
           </button>
