@@ -4,7 +4,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
-import { Building2, Check, Pencil, PlusCircle, Shield, Trash2, UserCog, Users } from "lucide-react";
+import { Building2, Check, Key, Pencil, PlusCircle, Shield, Trash2, UserCog, Users } from "lucide-react";
+import { Link } from "wouter";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -219,6 +220,16 @@ function UsersTab() {
 
   return (
     <div className="space-y-4">
+      {/* Aviso: onde criar acesso de cliente */}
+      <div className="rounded-xl border p-3 flex items-start gap-2.5" style={{ background: "rgba(36,100,108,0.08)", borderColor: "rgba(36,100,108,0.3)" }}>
+        <Key size={15} className="mt-0.5 shrink-0" style={{ color: "#9fd4dc" }} />
+        <div className="text-xs" style={{ color: "#a1a1aa" }}>
+          Esta aba cria usuários da <strong style={{ color: "#e5e5e5" }}>equipe</strong> (administradores e colaboradores).
+          Para dar acesso a um <strong style={{ color: "#e5e5e5" }}>cliente</strong> (portal com calendário de vencimentos e download de guias da empresa dele),
+          use o menu <Link href="/acessos-clientes"><span className="underline cursor-pointer" style={{ color: "#9fd4dc" }}>Portal Clientes</span></Link>.
+        </div>
+      </div>
+
       <div className="flex justify-end">
         <Button onClick={openCreate} className="gap-2" style={{ background: "#24646c", color: "#fff" }}>
           <PlusCircle size={15} /> Novo Usuário

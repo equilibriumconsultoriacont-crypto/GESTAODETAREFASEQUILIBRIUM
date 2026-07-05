@@ -203,9 +203,7 @@ export default function ClientPortal() {
       <div className="sticky top-0 z-10 px-4 pt-safe-top" style={{ background: "#0a0a0a", borderBottom: "1px solid #1a1a1a" }}>
         <div className="flex items-center justify-between py-4">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: "#24646c", color: "#fff" }}>
-              EQ
-            </div>
+            <img src="/logo.png" alt="Equilíbrio" className="w-8 h-8 object-contain" />
             <div>
               <p className="text-sm font-semibold" style={{ color: "#e5e5e5" }}>Portal do Cliente</p>
               <p className="text-xs" style={{ color: "#52525b" }}>{user?.email}</p>
