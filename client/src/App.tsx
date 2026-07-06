@@ -21,6 +21,7 @@ import { useAuth } from "./_core/hooks/useAuth";
 import TaskCatalogsPage from "./pages/TaskCatalogs";
 import PendingSendsPage from "./pages/PendingSends";
 import AdminSettingsPage from "./pages/AdminSettings";
+import CalendarPage from "./pages/Calendar";
 import { useInactivityLogout } from "./hooks/useInactivityLogout";
 
 function Router() {
@@ -64,6 +65,7 @@ function Router() {
       <Route path="/clientes/:id" component={ClientDetail} />
       <Route path="/tarefas" component={Tasks} />
       <Route path="/tarefas/:id" component={TaskDetail} />
+      <Route path="/calendario" component={CalendarPage} />
       <Route path="/recorrentes" component={RecurringTasksPage} />
       <Route path="/catalogo" component={TaskTemplatesPage} />
       <Route path="/catalogos" component={TaskCatalogsPage} />

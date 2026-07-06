@@ -26,6 +26,8 @@ import {
   activityLogs,
   catalogTemplates,
   clientTaskTemplates,
+  calendarEvents,
+  calendarEventGuests,
   clients,
   departments,
   emailLogs,
@@ -1060,6 +1062,127 @@ export async function getTaskHistory(taskId: number): Promise<TaskHistoryEvent[]
     return events;
   } catch (err) {
     console.error("[DB] getTaskHistory error:", err);
+    return [];
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CALENDÁRIO — eventos e convites
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Lista eventos visíveis para um usuário num intervalo de datas.
+ * Inclui: eventos que ele criou + eventos para os quais foi convidado (e aceitou/pendente).
+ */
+export async function getCalendarEvents(userId: number, startISO: string, endISO: string) {
+  try {
+    const pool = getPool();
+    // Eventos próprios
+    const [ownRows] = await pool.query(
+      `SELECT e.*, 'owner' as myRole, 'ACEITO' as myStatus
+       FROM calendar_events e
+       WHERE e.ownerId = ? AND e.startAt <= ? AND e.endAt >= ?`,
+      [userId, endISO, startISO]
+    ) as [any[], any];
+
+    // Eventos como convidado
+    const [guestRows] = await pool.query(
+      `SELECT e.*, 'guest' as myRole, g.status as myStatus
+       FROM calendar_events e
+       INNER JOIN calendar_event_guests g ON g.eventId = e.id
+       WHERE g.userId = ? AND g.status != 'RECUSADO' AND e.startAt <= ? AND e.endAt >= ?`,
+      [userId, endISO, startISO]
+    ) as [any[], any];
+
+    // Buscar convidados de cada evento (para exibir participantes)
+    const allEvents = [...(ownRows as any[]), ...(guestRows as any[])];
+    const eventIds = allEvents.map((e) => e.id);
+    let guestsByEvent: Record<number, any[]> = {};
+    if (eventIds.length > 0) {
+      const placeholders = eventIds.map(() => "?").join(",");
+      const [guests] = await pool.query(
+        `SELECT g.eventId, g.userId, g.status, u.name, u.email
+         FROM calendar_event_guests g
+         INNER JOIN users u ON u.id = g.userId
+         WHERE g.eventId IN (${placeholders})`,
+        eventIds
+      ) as [any[], any];
+      for (const g of guests as any[]) {
+        if (!guestsByEvent[g.eventId]) guestsByEvent[g.eventId] = [];
+        guestsByEvent[g.eventId].push({ userId: g.userId, name: g.name, email: g.email, status: g.status });
+      }
+    }
+
+    return allEvents.map((e) => ({ ...e, guests: guestsByEvent[e.id] ?? [] }));
+  } catch (err) {
+    console.error("[DB] getCalendarEvents error:", err);
+    return [];
+  }
+}
+
+export async function createCalendarEvent(data: {
+  ownerId: number; title: string; description?: string; location?: string;
+  startAt: Date; endAt: Date; allDay?: boolean; color?: string; guestUserIds?: number[];
+}): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB indisponível");
+  const result = await db.insert(calendarEvents).values({
+    ownerId: data.ownerId, title: data.title, description: data.description,
+    location: data.location, startAt: data.startAt, endAt: data.endAt,
+    allDay: data.allDay ?? false, color: data.color ?? "#24646c",
+  });
+  const eventId = result[0].insertId;
+
+  // Adicionar convidados
+  if (data.guestUserIds && data.guestUserIds.length > 0) {
+    await db.insert(calendarEventGuests).values(
+      data.guestUserIds.map((uid) => ({ eventId, userId: uid, status: "PENDENTE" as const }))
+    );
+  }
+  return eventId;
+}
+
+export async function updateCalendarEvent(id: number, ownerId: number, data: {
+  title?: string; description?: string; location?: string;
+  startAt?: Date; endAt?: Date; allDay?: boolean; color?: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  // Só o dono edita
+  await db.update(calendarEvents).set(data).where(and(eq(calendarEvents.id, id), eq(calendarEvents.ownerId, ownerId)));
+}
+
+export async function deleteCalendarEvent(id: number, ownerId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(calendarEventGuests).where(eq(calendarEventGuests.eventId, id));
+  await db.delete(calendarEvents).where(and(eq(calendarEvents.id, id), eq(calendarEvents.ownerId, ownerId)));
+}
+
+/** Convidado responde ao convite (aceita ou recusa) */
+export async function respondToCalendarInvite(eventId: number, userId: number, status: "ACEITO" | "RECUSADO") {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(calendarEventGuests).set({ status })
+    .where(and(eq(calendarEventGuests.eventId, eventId), eq(calendarEventGuests.userId, userId)));
+}
+
+/** Convites pendentes de um usuário (para badge de notificação) */
+export async function getPendingInvites(userId: number) {
+  try {
+    const pool = getPool();
+    const [rows] = await pool.query(
+      `SELECT e.id, e.title, e.startAt, e.endAt, e.location, u.name as ownerName
+       FROM calendar_event_guests g
+       INNER JOIN calendar_events e ON e.id = g.eventId
+       INNER JOIN users u ON u.id = e.ownerId
+       WHERE g.userId = ? AND g.status = 'PENDENTE' AND e.endAt >= NOW()
+       ORDER BY e.startAt ASC`,
+      [userId]
+    ) as [any[], any];
+    return rows;
+  } catch (err) {
+    console.error("[DB] getPendingInvites error:", err);
     return [];
   }
 }

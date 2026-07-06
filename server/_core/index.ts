@@ -184,6 +184,9 @@ async function startServer() {
         "ALTER TABLE `task_templates` ADD COLUMN `sendToClient` boolean NOT NULL DEFAULT true",
         "ALTER TABLE `recurring_tasks` ADD COLUMN `sendToClient` boolean NOT NULL DEFAULT true",
         "ALTER TABLE `tasks` ADD COLUMN `sendToClient` boolean NOT NULL DEFAULT true",
+        "CREATE TABLE IF NOT EXISTS `calendar_events` (`id` int AUTO_INCREMENT NOT NULL, `ownerId` int NOT NULL, `title` varchar(255) NOT NULL, `description` text, `location` varchar(255), `startAt` timestamp NOT NULL, `endAt` timestamp NOT NULL, `allDay` boolean NOT NULL DEFAULT false, `color` varchar(20) NOT NULL DEFAULT '#24646c', `googleEventId` varchar(255), `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `calendar_events_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `calendar_event_guests` (`id` int AUTO_INCREMENT NOT NULL, `eventId` int NOT NULL, `userId` int NOT NULL, `status` enum('PENDENTE','ACEITO','RECUSADO') NOT NULL DEFAULT 'PENDENTE', `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `calendar_event_guests_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `google_calendar_tokens` (`id` int AUTO_INCREMENT NOT NULL, `userId` int NOT NULL, `accessToken` text, `refreshToken` text, `expiryDate` timestamp NULL, `connected` boolean NOT NULL DEFAULT false, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `google_calendar_tokens_id` PRIMARY KEY(`id`), CONSTRAINT `google_calendar_tokens_userId_unique` UNIQUE(`userId`))",
       ];
 
       const results: string[] = [];

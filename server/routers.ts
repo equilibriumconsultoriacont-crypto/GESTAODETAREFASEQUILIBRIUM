@@ -1255,6 +1255,102 @@ const usersRouter = router({
     }),
 });
 
+// ─── Calendar Router ──────────────────────────────────────────────────────────
+const calendarRouter = router({
+  // Lista eventos num intervalo (mês)
+  events: protectedProcedure
+    .input(z.object({ startISO: z.string(), endISO: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const { getCalendarEvents } = await import("./db");
+      return getCalendarEvents(ctx.user!.id, input.startISO, input.endISO);
+    }),
+
+  create: protectedProcedure
+    .input(z.object({
+      title: z.string().min(1),
+      description: z.string().optional(),
+      location: z.string().optional(),
+      startAt: z.string(),
+      endAt: z.string(),
+      allDay: z.boolean().optional(),
+      color: z.string().optional(),
+      guestUserIds: z.array(z.number()).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { createCalendarEvent } = await import("./db");
+      const id = await createCalendarEvent({
+        ownerId: ctx.user!.id,
+        title: input.title,
+        description: input.description,
+        location: input.location,
+        startAt: new Date(input.startAt),
+        endAt: new Date(input.endAt),
+        allDay: input.allDay,
+        color: input.color,
+        guestUserIds: input.guestUserIds,
+      });
+      return { id };
+    }),
+
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      location: z.string().optional(),
+      startAt: z.string().optional(),
+      endAt: z.string().optional(),
+      allDay: z.boolean().optional(),
+      color: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { updateCalendarEvent } = await import("./db");
+      const { id, startAt, endAt, ...rest } = input;
+      await updateCalendarEvent(id, ctx.user!.id, {
+        ...rest,
+        ...(startAt ? { startAt: new Date(startAt) } : {}),
+        ...(endAt ? { endAt: new Date(endAt) } : {}),
+      });
+      return { success: true };
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const { deleteCalendarEvent } = await import("./db");
+      await deleteCalendarEvent(input.id, ctx.user!.id);
+      return { success: true };
+    }),
+
+  respondInvite: protectedProcedure
+    .input(z.object({ eventId: z.number(), status: z.enum(["ACEITO", "RECUSADO"]) }))
+    .mutation(async ({ input, ctx }) => {
+      const { respondToCalendarInvite } = await import("./db");
+      await respondToCalendarInvite(input.eventId, ctx.user!.id, input.status);
+      return { success: true };
+    }),
+
+  pendingInvites: protectedProcedure.query(async ({ ctx }) => {
+    const { getPendingInvites } = await import("./db");
+    return getPendingInvites(ctx.user!.id);
+  }),
+
+  // Lista usuários que podem ser convidados (equipe, exceto o próprio)
+  invitableUsers: protectedProcedure.query(async ({ ctx }) => {
+    const { listUsers } = await import("./db");
+    const users = await listUsers();
+    return users
+      .filter((u) => u.id !== ctx.user!.id && u.role !== "client")
+      .map((u) => ({ id: u.id, name: u.name, email: u.email }));
+  }),
+
+  // Status da integração Google (gancho — sempre desconectado por enquanto)
+  googleStatus: protectedProcedure.query(async () => {
+    // Quando a integração for ativada, consultar google_calendar_tokens
+    return { connected: false, available: false };
+  }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -1346,6 +1442,7 @@ export const appRouter = router({
   smartUpload: smartUploadRouter,
   departments: departmentsRouter,
   usersAdmin: usersRouter,
+  calendar: calendarRouter,
   clientPortal: clientPortalRouter,
   clientAccess: clientAccessRouter,
 });

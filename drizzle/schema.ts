@@ -251,3 +251,51 @@ export const userClients = mysqlTable("user_clients", {
 
 export type UserClient = typeof userClients.$inferSelect;
 export type InsertUserClient = typeof userClients.$inferInsert;
+
+// ─── Calendário: Eventos/Compromissos ────────────────────────────────────────
+export const calendarEvents = mysqlTable("calendar_events", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerId: int("ownerId").notNull(), // usuário que criou o evento
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  location: varchar("location", { length: 255 }),
+  startAt: timestamp("startAt").notNull(),
+  endAt: timestamp("endAt").notNull(),
+  allDay: boolean("allDay").default(false).notNull(),
+  color: varchar("color", { length: 20 }).default("#24646c").notNull(),
+  // Gancho para Google Calendar (preenchido quando/se integrar)
+  googleEventId: varchar("googleEventId", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CalendarEvent = typeof calendarEvents.$inferSelect;
+export type InsertCalendarEvent = typeof calendarEvents.$inferInsert;
+
+// ─── Calendário: Convidados de um evento ─────────────────────────────────────
+export const calendarEventGuests = mysqlTable("calendar_event_guests", {
+  id: int("id").autoincrement().primaryKey(),
+  eventId: int("eventId").notNull(),
+  userId: int("userId").notNull(), // usuário convidado
+  status: mysqlEnum("status", ["PENDENTE", "ACEITO", "RECUSADO"]).default("PENDENTE").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CalendarEventGuest = typeof calendarEventGuests.$inferSelect;
+export type InsertCalendarEventGuest = typeof calendarEventGuests.$inferInsert;
+
+// ─── Integração Google Calendar (tokens OAuth por usuário) ───────────────────
+// Preparado para quando a integração for ativada. Guarda os tokens do usuário.
+export const googleCalendarTokens = mysqlTable("google_calendar_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  accessToken: text("accessToken"),
+  refreshToken: text("refreshToken"),
+  expiryDate: timestamp("expiryDate"),
+  connected: boolean("connected").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type GoogleCalendarToken = typeof googleCalendarTokens.$inferSelect;
+export type InsertGoogleCalendarToken = typeof googleCalendarTokens.$inferInsert;
