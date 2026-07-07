@@ -14,15 +14,42 @@ export default function Login() {
   const loginMutation = (trpc.auth as any).login.useMutation();
   const forgotMutation = (trpc.auth as any).forgotPassword.useMutation();
 
+  // Traduz erros do tRPC/Zod para mensagens amigáveis
+  const parseError = (err: any, fallback: string): string => {
+    const raw = err?.message ?? "";
+    // Erro de validação Zod vem como JSON (array de issues) — detectar e traduzir
+    if (raw.trim().startsWith("[") || raw.includes("too_small") || raw.includes("invalid_")) {
+      try {
+        const issues = JSON.parse(raw);
+        if (Array.isArray(issues) && issues.length > 0) {
+          const issue = issues[0];
+          const field = issue.path?.[0];
+          if (field === "password" && issue.code === "too_small") return "A senha deve ter pelo menos 6 caracteres.";
+          if (field === "email") return "Digite um e-mail válido.";
+          return "Verifique os dados informados.";
+        }
+      } catch {
+        // Não era JSON parseável — cai no tratamento genérico abaixo
+      }
+      if (raw.includes("password") && raw.includes("too_small")) return "A senha deve ter pelo menos 6 caracteres.";
+      if (raw.includes("email")) return "Digite um e-mail válido.";
+      return "Verifique os dados informados.";
+    }
+    return raw || fallback;
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    // Validação client-side (feedback imediato, evita erro cru do servidor)
+    if (!email.trim()) { setError("Digite seu e-mail."); return; }
+    if (password.length < 6) { setError("A senha deve ter pelo menos 6 caracteres."); return; }
     setLoading(true);
     try {
       await loginMutation.mutateAsync({ email: email.trim().toLowerCase(), password });
       window.location.href = "/";
     } catch (err: any) {
-      setError(err?.message || "Credenciais inválidas");
+      setError(parseError(err, "Credenciais inválidas"));
     } finally {
       setLoading(false);
     }
@@ -31,12 +58,13 @@ export default function Login() {
   const handleForgot = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (!email.trim()) { setError("Digite seu e-mail."); return; }
     setLoading(true);
     try {
       await forgotMutation.mutateAsync({ email: email.trim().toLowerCase() });
       setMode("forgot-sent");
     } catch (err: any) {
-      setError(err?.message || "Erro ao enviar e-mail");
+      setError(parseError(err, "Erro ao enviar e-mail"));
     } finally {
       setLoading(false);
     }

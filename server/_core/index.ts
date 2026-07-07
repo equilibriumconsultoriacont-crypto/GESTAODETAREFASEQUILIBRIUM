@@ -195,6 +195,17 @@ async function startServer() {
         catch (err: any) { results.push(`\u2717 ${err.message?.slice(0, 120)}`); }
       }
 
+      // Normalizar emails existentes para minúsculas (corrige logins que não
+      // encontravam o usuário por diferença de maiúsculas/minúsculas)
+      try {
+        const [normResult]: any = await conn.query(
+          "UPDATE users SET email = LOWER(TRIM(email)) WHERE email != LOWER(TRIM(email))"
+        );
+        results.push(`\u2713 ${normResult.affectedRows ?? 0} email(s) normalizado(s)`);
+      } catch (err: any) {
+        results.push(`\u2717 normalização de emails: ${err.message?.slice(0, 100)}`);
+      }
+
       // Criar usuário admin se email/senha fornecidos
       let adminMsg = "Admin não criado (forneça email e password)";
       const email = (req.query.email as string) || (req.body && req.body.email);

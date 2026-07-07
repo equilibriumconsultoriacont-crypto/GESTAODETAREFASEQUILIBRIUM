@@ -1061,11 +1061,12 @@ const clientAccessRouter = router({
       password: z.string().min(6),
     }))
     .mutation(async ({ input }) => {
+      const email = input.email.trim().toLowerCase();
       const passwordHash = await bcryptjs.hash(input.password, 10);
-      const existing = await getUserByEmail(input.email);
+      const existing = await getUserByEmail(email);
       if (existing) {
         await upsertUser({
-          email: input.email,
+          email,
           passwordHash,
           role: "client",
           clientId: input.clientId,
@@ -1074,8 +1075,8 @@ const clientAccessRouter = router({
         return { success: true, action: "updated" };
       }
       await upsertUser({
-        email: input.email,
-        name: input.email,
+        email,
+        name: email,
         passwordHash,
         role: "client",
         clientId: input.clientId,

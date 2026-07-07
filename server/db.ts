@@ -101,7 +101,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   if (!db) return;
 
   const values: Partial<typeof user> = {
-    email: user.email,
+    email: user.email.trim().toLowerCase(),
     loginMethod: user.loginMethod || "local",
   };
   const updateSet: Partial<typeof user> = {};

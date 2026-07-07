@@ -217,46 +217,6 @@ export default function MonthlyPanelPage() {
           </div>
         )}
 
-        {/* Painel do dia selecionado */}
-        {selectedDay && (
-          <div className="rounded-xl border overflow-hidden" style={{ background: "#111", borderColor: "#1e4f5c" }}>
-            <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid #1e4f5c", background: "rgba(36,100,108,0.1)" }}>
-              <span className="text-sm font-semibold" style={{ color: "#9fd4dc" }}>
-                📅 {String(selectedDay).padStart(2, "0")}/{String(month).padStart(2, "0")}/{year} — {selectedDayTasks.length} tarefa(s)
-              </span>
-              <button onClick={() => setSelectedDay(null)} style={{ color: "#52525b" }}>✕</button>
-            </div>
-            {selectedDayTasks.length === 0 ? (
-              <p className="text-sm text-center py-6" style={{ color: "#52525b" }}>Nenhuma tarefa neste dia</p>
-            ) : (
-              <div className="divide-y" style={{ borderColor: "rgba(30,79,92,0.3)" }}>
-                {selectedDayTasks.map((task) => {
-                  const due = new Date(task.dueDate);
-                  const isOverdue = due < today && task.status !== "CONCLUIDA";
-                  return (
-                    <Link key={task.taskId} href={`/tarefas/${task.taskId}`}>
-                      <div className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <TaskTypeBadge type={task.taskType} />
-                          <div>
-                            <p className="text-sm" style={{ color: "#e5e5e5" }}>{task.title}</p>
-                            <p className="text-xs mt-0.5" style={{ color: "#52525b" }}>{task.clientName}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs" style={{ color: isOverdue ? "#f87171" : "#52525b" }}>
-                            {due.toLocaleDateString("pt-BR")}
-                          </span>
-                          <StatusBadge status={task.status} dueDate={task.dueDate} />
-                        </div>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Progress bar — only if tasks exist */}
         {stats.total > 0 && (
