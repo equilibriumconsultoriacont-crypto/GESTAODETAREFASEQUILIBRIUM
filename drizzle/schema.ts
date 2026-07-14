@@ -299,3 +299,37 @@ export const googleCalendarTokens = mysqlTable("google_calendar_tokens", {
 
 export type GoogleCalendarToken = typeof googleCalendarTokens.$inferSelect;
 export type InsertGoogleCalendarToken = typeof googleCalendarTokens.$inferInsert;
+
+// ─── Plataforma: Vínculo Usuário ↔ Módulos + nível no módulo (N:N) ───────────
+// Camada 1 (acesso ao módulo) + Camada 2 (nível/papel dentro do módulo).
+// module: qual módulo da plataforma (tarefas, propostas, whatsapp)
+// level: o papel do usuário DENTRO daquele módulo
+//   - tarefas: "admin" | "colaborador"
+//   - propostas: "admin" | "editor" | "leitor"
+//   - whatsapp: "admin" | "atendente" (preparado para o futuro)
+export const userModules = mysqlTable("user_modules", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  module: varchar("module", { length: 40 }).notNull(),
+  level: varchar("level", { length: 40 }).default("colaborador").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type UserModule = typeof userModules.$inferSelect;
+export type InsertUserModule = typeof userModules.$inferInsert;
+
+// ─── Módulo Propostas: propostas salvas ──────────────────────────────────────
+export const proposals = mysqlTable("proposals", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerId: int("ownerId").notNull(), // usuário que criou
+  title: varchar("title", { length: 255 }).notNull(),
+  clientName: varchar("clientName", { length: 255 }),
+  // Documento completo da proposta (JSON com todos os campos do gerador)
+  data: text("data").notNull(),
+  status: mysqlEnum("status", ["RASCUNHO", "ENVIADA", "ACEITA", "RECUSADA"]).default("RASCUNHO").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Proposal = typeof proposals.$inferSelect;
+export type InsertProposal = typeof proposals.$inferInsert;

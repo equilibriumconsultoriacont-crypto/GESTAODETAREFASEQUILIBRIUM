@@ -28,6 +28,8 @@ import {
   clientTaskTemplates,
   calendarEvents,
   calendarEventGuests,
+  userModules,
+  proposals,
   clients,
   departments,
   emailLogs,
@@ -1185,4 +1187,97 @@ export async function getPendingInvites(userId: number) {
     console.error("[DB] getPendingInvites error:", err);
     return [];
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PLATAFORMA — módulos e permissões do usuário
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Retorna os módulos de um usuário com o nível em cada um. */
+export async function getUserModules(userId: number): Promise<{ module: string; level: string }[]> {
+  try {
+    const pool = getPool();
+    const [rows] = await pool.query(
+      "SELECT module, level FROM user_modules WHERE userId = ?", [userId]
+    ) as [any[], any];
+    return rows as { module: string; level: string }[];
+  } catch (err) {
+    console.error("[DB] getUserModules error:", err);
+    return [];
+  }
+}
+
+/** Define (substitui) os módulos de um usuário. modules = [{module, level}] */
+export async function setUserModules(userId: number, modules: { module: string; level: string }[]) {
+  const db = await getDb();
+  if (!db) return;
+  // Remove os atuais e insere os novos
+  await db.delete(userModules).where(eq(userModules.userId, userId));
+  if (modules.length > 0) {
+    await db.insert(userModules).values(
+      modules.map((m) => ({ userId, module: m.module, level: m.level }))
+    );
+  }
+}
+
+/** Verifica se o usuário tem acesso a um módulo (e opcionalmente com nível mínimo). */
+export async function userHasModule(userId: number, module: string): Promise<{ has: boolean; level: string | null }> {
+  const mods = await getUserModules(userId);
+  const found = mods.find((m) => m.module === module);
+  return { has: !!found, level: found?.level ?? null };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MÓDULO PROPOSTAS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function listProposals(userId: number, isAdmin: boolean) {
+  try {
+    const pool = getPool();
+    // Admin do módulo vê todas; demais veem as próprias
+    const [rows] = isAdmin
+      ? await pool.query(
+          `SELECT p.id, p.title, p.clientName, p.status, p.ownerId, p.createdAt, p.updatedAt, u.name as ownerName
+           FROM proposals p LEFT JOIN users u ON u.id = p.ownerId
+           ORDER BY p.updatedAt DESC`
+        ) as [any[], any]
+      : await pool.query(
+          `SELECT p.id, p.title, p.clientName, p.status, p.ownerId, p.createdAt, p.updatedAt, u.name as ownerName
+           FROM proposals p LEFT JOIN users u ON u.id = p.ownerId
+           WHERE p.ownerId = ? ORDER BY p.updatedAt DESC`, [userId]
+        ) as [any[], any];
+    return rows;
+  } catch (err) {
+    console.error("[DB] listProposals error:", err);
+    return [];
+  }
+}
+
+export async function getProposal(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(proposals).where(eq(proposals.id, id)).limit(1);
+  return result[0] ?? null;
+}
+
+export async function createProposal(data: { ownerId: number; title: string; clientName?: string; data: string; status?: any }): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB indisponível");
+  const result = await db.insert(proposals).values({
+    ownerId: data.ownerId, title: data.title, clientName: data.clientName,
+    data: data.data, status: data.status ?? "RASCUNHO",
+  });
+  return result[0].insertId;
+}
+
+export async function updateProposal(id: number, data: { title?: string; clientName?: string; data?: string; status?: any }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(proposals).set(data).where(eq(proposals.id, id));
+}
+
+export async function deleteProposal(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(proposals).where(eq(proposals.id, id));
 }

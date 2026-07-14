@@ -187,6 +187,8 @@ async function startServer() {
         "CREATE TABLE IF NOT EXISTS `calendar_events` (`id` int AUTO_INCREMENT NOT NULL, `ownerId` int NOT NULL, `title` varchar(255) NOT NULL, `description` text, `location` varchar(255), `startAt` timestamp NOT NULL, `endAt` timestamp NOT NULL, `allDay` boolean NOT NULL DEFAULT false, `color` varchar(20) NOT NULL DEFAULT '#24646c', `googleEventId` varchar(255), `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `calendar_events_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `calendar_event_guests` (`id` int AUTO_INCREMENT NOT NULL, `eventId` int NOT NULL, `userId` int NOT NULL, `status` enum('PENDENTE','ACEITO','RECUSADO') NOT NULL DEFAULT 'PENDENTE', `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `calendar_event_guests_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `google_calendar_tokens` (`id` int AUTO_INCREMENT NOT NULL, `userId` int NOT NULL, `accessToken` text, `refreshToken` text, `expiryDate` timestamp NULL, `connected` boolean NOT NULL DEFAULT false, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `google_calendar_tokens_id` PRIMARY KEY(`id`), CONSTRAINT `google_calendar_tokens_userId_unique` UNIQUE(`userId`))",
+        "CREATE TABLE IF NOT EXISTS `user_modules` (`id` int AUTO_INCREMENT NOT NULL, `userId` int NOT NULL, `module` varchar(40) NOT NULL, `level` varchar(40) NOT NULL DEFAULT 'colaborador', `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `user_modules_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `proposals` (`id` int AUTO_INCREMENT NOT NULL, `ownerId` int NOT NULL, `title` varchar(255) NOT NULL, `clientName` varchar(255), `data` text NOT NULL, `status` enum('RASCUNHO','ENVIADA','ACEITA','RECUSADA') NOT NULL DEFAULT 'RASCUNHO', `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `proposals_id` PRIMARY KEY(`id`))",
       ];
 
       const results: string[] = [];
@@ -204,6 +206,43 @@ async function startServer() {
         results.push(`\u2713 ${normResult.affectedRows ?? 0} email(s) normalizado(s)`);
       } catch (err: any) {
         results.push(`\u2717 normalização de emails: ${err.message?.slice(0, 100)}`);
+      }
+
+      // Migração dos módulos: usuários da equipe que ainda não têm módulos
+      // atribuídos recebem o padrão conforme o role:
+      //   admin       → todos os módulos como admin
+      //   colaborador → só o módulo Tarefas como colaborador
+      // (usuários-cliente não entram aqui — eles acessam via portal do cliente)
+      try {
+        const [teamUsers]: any = await conn.query(
+          "SELECT id, role FROM users WHERE role IN ('admin', 'user')"
+        );
+        let modulesCreated = 0;
+        for (const u of teamUsers as any[]) {
+          const [existing]: any = await conn.query(
+            "SELECT COUNT(*) as cnt FROM user_modules WHERE userId = ?", [u.id]
+          );
+          if (existing[0].cnt > 0) continue; // já tem módulos, não mexe
+
+          if (u.role === "admin") {
+            // Admin ganha todos os módulos como admin
+            await conn.query(
+              "INSERT INTO user_modules (userId, module, level) VALUES (?, 'tarefas', 'admin'), (?, 'propostas', 'admin'), (?, 'whatsapp', 'admin')",
+              [u.id, u.id, u.id]
+            );
+            modulesCreated += 3;
+          } else {
+            // Colaborador ganha só Tarefas como colaborador
+            await conn.query(
+              "INSERT INTO user_modules (userId, module, level) VALUES (?, 'tarefas', 'colaborador')",
+              [u.id]
+            );
+            modulesCreated += 1;
+          }
+        }
+        results.push(`\u2713 ${modulesCreated} vínculo(s) de módulo criado(s) na migração`);
+      } catch (err: any) {
+        results.push(`\u2717 migração de módulos: ${err.message?.slice(0, 100)}`);
       }
 
       // Criar usuário admin se email/senha fornecidos

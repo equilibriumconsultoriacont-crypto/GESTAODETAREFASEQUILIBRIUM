@@ -1352,10 +1352,111 @@ const calendarRouter = router({
   }),
 });
 
+// ─── Modules Router (plataforma) ──────────────────────────────────────────────
+const modulesRouter = router({
+  // Módulos do usuário logado (para montar o Hub)
+  mine: protectedProcedure.query(async ({ ctx }) => {
+    const { getUserModules } = await import("./db");
+    return getUserModules(ctx.user!.id);
+  }),
+});
+
+// ─── Proposals Router (módulo propostas) ──────────────────────────────────────
+const proposalsRouter = router({
+  list: protectedProcedure.query(async ({ ctx }) => {
+    const { getUserModules, listProposals } = await import("./db");
+    const mods = await getUserModules(ctx.user!.id);
+    const propMod = mods.find((m) => m.module === "propostas");
+    if (!propMod) throw new TRPCError({ code: "FORBIDDEN", message: "Sem acesso ao módulo Propostas" });
+    const isAdmin = propMod.level === "admin";
+    return listProposals(ctx.user!.id, isAdmin);
+  }),
+
+  get: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const { getProposal, getUserModules } = await import("./db");
+      const mods = await getUserModules(ctx.user!.id);
+      const propMod = mods.find((m) => m.module === "propostas");
+      if (!propMod) throw new TRPCError({ code: "FORBIDDEN" });
+      const p = await getProposal(input.id);
+      if (!p) throw new TRPCError({ code: "NOT_FOUND" });
+      // Leitor/editor só acessa as próprias; admin acessa todas
+      if (propMod.level !== "admin" && p.ownerId !== ctx.user!.id) {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
+      return p;
+    }),
+
+  create: protectedProcedure
+    .input(z.object({
+      title: z.string().min(1),
+      clientName: z.string().optional(),
+      data: z.string(),
+      status: z.enum(["RASCUNHO", "ENVIADA", "ACEITA", "RECUSADA"]).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { getUserModules, createProposal } = await import("./db");
+      const mods = await getUserModules(ctx.user!.id);
+      const propMod = mods.find((m) => m.module === "propostas");
+      if (!propMod || propMod.level === "leitor") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Sem permissão para criar propostas" });
+      }
+      const id = await createProposal({ ownerId: ctx.user!.id, ...input });
+      return { id };
+    }),
+
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      title: z.string().optional(),
+      clientName: z.string().optional(),
+      data: z.string().optional(),
+      status: z.enum(["RASCUNHO", "ENVIADA", "ACEITA", "RECUSADA"]).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { getUserModules, getProposal, updateProposal } = await import("./db");
+      const mods = await getUserModules(ctx.user!.id);
+      const propMod = mods.find((m) => m.module === "propostas");
+      if (!propMod || propMod.level === "leitor") throw new TRPCError({ code: "FORBIDDEN" });
+      const p = await getProposal(input.id);
+      if (!p) throw new TRPCError({ code: "NOT_FOUND" });
+      if (propMod.level !== "admin" && p.ownerId !== ctx.user!.id) throw new TRPCError({ code: "FORBIDDEN" });
+      const { id, ...data } = input;
+      await updateProposal(id, data);
+      return { success: true };
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const { getUserModules, getProposal, deleteProposal } = await import("./db");
+      const mods = await getUserModules(ctx.user!.id);
+      const propMod = mods.find((m) => m.module === "propostas");
+      if (!propMod || propMod.level === "leitor") throw new TRPCError({ code: "FORBIDDEN" });
+      const p = await getProposal(input.id);
+      if (!p) throw new TRPCError({ code: "NOT_FOUND" });
+      if (propMod.level !== "admin" && p.ownerId !== ctx.user!.id) throw new TRPCError({ code: "FORBIDDEN" });
+      await deleteProposal(input.id);
+      return { success: true };
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query((opts) => opts.ctx.user),
+    me: publicProcedure.query(async (opts) => {
+      const user = opts.ctx.user;
+      if (!user) return null;
+      // Anexa os módulos do usuário (para o Hub e o controle de acesso no front)
+      try {
+        const { getUserModules } = await import("./db");
+        const modules = await getUserModules((user as any).id);
+        return { ...user, modules };
+      } catch {
+        return { ...user, modules: [] };
+      }
+    }),
     login: publicProcedure
       .input(z.object({ email: z.string().email(), password: z.string().min(6) }))
       .mutation(async ({ input, ctx }) => {
@@ -1444,6 +1545,8 @@ export const appRouter = router({
   departments: departmentsRouter,
   usersAdmin: usersRouter,
   calendar: calendarRouter,
+  modules: modulesRouter,
+  proposals: proposalsRouter,
   clientPortal: clientPortalRouter,
   clientAccess: clientAccessRouter,
 });
