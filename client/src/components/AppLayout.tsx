@@ -22,7 +22,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 
 // Dashboard fica solto no topo; o resto é agrupado por assunto
-const dashboardItem = { href: "/", label: "Dashboard", icon: BarChart3 };
+const dashboardItem = { href: "/painel", label: "Dashboard", icon: BarChart3 };
 
 const menuGroups = [
   {
@@ -91,13 +91,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         style={{ width: 240, background: "#0d1f22", borderRight: "1px solid #1e4f5c" }}
       >
         <div className="flex items-center justify-between px-5 py-5" style={{ borderBottom: "1px solid #1e4f5c" }}>
-          <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="Equilíbrio" className="w-9 h-9 object-contain" />
-            <div>
-              <p className="font-semibold text-sm leading-tight" style={{ color: "#e5e5e5" }}>Equilíbrio</p>
-              <p className="text-xs" style={{ color: "#a1a1aa" }}>Consultoria</p>
+          <Link href="/">
+            <div className="flex items-center gap-3 cursor-pointer" title="Voltar à plataforma">
+              <img src="/logo.png" alt="Equilíbrio" className="w-9 h-9 object-contain" />
+              <div>
+                <p className="font-semibold text-sm leading-tight" style={{ color: "#e5e5e5" }}>Equilíbrio</p>
+                <p className="text-xs" style={{ color: "#9fd4dc" }}>Gestão de Tarefas</p>
+              </div>
             </div>
-          </div>
+          </Link>
           <button className="lg:hidden" onClick={() => setMobileOpen(false)} style={{ color: "#a1a1aa" }}>
             <X size={18} />
           </button>
@@ -106,7 +108,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
           {/* Dashboard solto no topo */}
           {(() => {
-            const isActive = location === "/";
+            const isActive = location === "/painel";
             const Icon = dashboardItem.icon;
             return (
               <Link href={dashboardItem.href} onClick={() => setMobileOpen(false)}>

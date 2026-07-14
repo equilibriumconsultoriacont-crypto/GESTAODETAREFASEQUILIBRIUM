@@ -22,6 +22,9 @@ import TaskCatalogsPage from "./pages/TaskCatalogs";
 import PendingSendsPage from "./pages/PendingSends";
 import AdminSettingsPage from "./pages/AdminSettings";
 import CalendarPage from "./pages/Calendar";
+import Hub from "./pages/Hub";
+import Proposals from "./pages/Proposals";
+import WhatsAppModule from "./pages/WhatsAppModule";
 import { useInactivityLogout } from "./hooks/useInactivityLogout";
 
 function Router() {
@@ -60,7 +63,11 @@ function Router() {
 
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
+      {/* Hub da plataforma — tela de seleção de módulos */}
+      <Route path="/" component={Hub} />
+
+      {/* Módulo Tarefas — /painel é o dashboard; rotas internas mantidas */}
+      <Route path="/painel" component={Dashboard} />
       <Route path="/clientes" component={Clients} />
       <Route path="/clientes/:id" component={ClientDetail} />
       <Route path="/tarefas" component={Tasks} />
@@ -74,6 +81,13 @@ function Router() {
       <Route path="/acessos-clientes" component={ClientLoginsPage} />
       <Route path="/pendentes-envio" component={PendingSendsPage} />
       <Route path="/configuracoes" component={AdminSettingsPage} />
+
+      {/* Módulo Propostas */}
+      <Route path="/propostas" component={Proposals} />
+
+      {/* Módulo WhatsApp (placeholder) */}
+      <Route path="/whatsapp" component={WhatsAppModule} />
+
       <Route component={NotFound} />
     </Switch>
   );
