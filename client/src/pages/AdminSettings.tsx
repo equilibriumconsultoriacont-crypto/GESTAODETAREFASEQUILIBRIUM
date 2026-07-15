@@ -153,13 +153,44 @@ function DepartmentsTab() {
 // ═══════════════════════════════════════════════════════════════════
 // ABA USUÁRIOS
 // ═══════════════════════════════════════════════════════════════════
+// Definição dos módulos da plataforma e os níveis de cada um
+const PLATFORM_MODULES = [
+  {
+    id: "tarefas", name: "Gestão de Tarefas", color: "#24646c",
+    levels: [
+      { value: "colaborador", label: "Colaborador" },
+      { value: "admin", label: "Administrador" },
+    ],
+    hasDataScope: true, // tem limite de departamento/empresas
+  },
+  {
+    id: "propostas", name: "Gerador de Propostas", color: "#c084fc",
+    levels: [
+      { value: "leitor", label: "Leitor (só visualiza)" },
+      { value: "editor", label: "Editor (cria/edita as próprias)" },
+      { value: "admin", label: "Administrador (vê todas)" },
+    ],
+    hasDataScope: false,
+  },
+  {
+    id: "whatsapp", name: "Atendimento WhatsApp", color: "#4ade80",
+    levels: [
+      { value: "atendente", label: "Atendente" },
+      { value: "admin", label: "Administrador" },
+    ],
+    hasDataScope: false,
+    disabled: true, // em preparação
+  },
+];
+
 function UsersTab() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState<{
     name: string; email: string; password: string; role: "admin" | "user";
     departmentIds: number[]; clientIds: number[];
-  }>({ name: "", email: "", password: "", role: "user", departmentIds: [], clientIds: [] });
+    modules: { module: string; level: string }[];
+  }>({ name: "", email: "", password: "", role: "user", departmentIds: [], clientIds: [], modules: [] });
 
   const { data: users = [], refetch } = trpc.usersAdmin.list.useQuery();
   const { data: departments = [] } = trpc.departments.list.useQuery();
@@ -174,13 +205,36 @@ function UsersTab() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", email: "", password: "", role: "user", departmentIds: [], clientIds: [] });
+    setForm({ name: "", email: "", password: "", role: "user", departmentIds: [], clientIds: [], modules: [] });
     setDialogOpen(true);
   };
   const openEdit = (user: any) => {
     setEditing(user);
-    setForm({ name: user.name ?? "", email: user.email, password: "", role: user.role === "admin" ? "admin" : "user", departmentIds: user.departmentIds ?? [], clientIds: user.clientIds ?? [] });
+    setForm({
+      name: user.name ?? "", email: user.email, password: "",
+      role: user.role === "admin" ? "admin" : "user",
+      departmentIds: user.departmentIds ?? [], clientIds: user.clientIds ?? [],
+      modules: user.modules ?? [],
+    });
     setDialogOpen(true);
+  };
+
+  // Módulos: liga/desliga um módulo e define o nível
+  const isModuleOn = (moduleId: string) => form.modules.some((m) => m.module === moduleId);
+  const getModuleLevel = (moduleId: string) => form.modules.find((m) => m.module === moduleId)?.level ?? "";
+  const toggleModule = (moduleId: string, defaultLevel: string) => {
+    setForm((f) => ({
+      ...f,
+      modules: isModuleOn(moduleId)
+        ? f.modules.filter((m) => m.module !== moduleId)
+        : [...f.modules, { module: moduleId, level: defaultLevel }],
+    }));
+  };
+  const setModuleLevel = (moduleId: string, level: string) => {
+    setForm((f) => ({
+      ...f,
+      modules: f.modules.map((m) => (m.module === moduleId ? { ...m, level } : m)),
+    }));
   };
 
   const toggleDept = (id: number) => {
@@ -196,7 +250,7 @@ function UsersTab() {
     if (!editing && form.password.length < 6) { toast.error("Senha de no mínimo 6 caracteres"); return; }
     try {
       if (editing) {
-        const payload: any = { id: editing.id, name: form.name, email: form.email, role: form.role, departmentIds: form.departmentIds, clientIds: form.clientIds };
+        const payload: any = { id: editing.id, name: form.name, email: form.email, role: form.role, departmentIds: form.departmentIds, clientIds: form.clientIds, modules: form.modules };
         if (form.password) payload.password = form.password;
         await updateMutation.mutateAsync(payload);
         toast.success("Usuário atualizado!");
@@ -266,8 +320,30 @@ function UsersTab() {
               </div>
             </div>
 
+            {/* Módulos do usuário (para todos) */}
+            <div className="mt-3 pl-12">
+              <div className="flex items-start gap-2">
+                <span className="text-xs shrink-0 mt-0.5" style={{ color: "#52525b" }}>Módulos:</span>
+                <div className="flex gap-1 flex-wrap">
+                  {(user.modules ?? []).length === 0 ? (
+                    <span className="text-xs" style={{ color: "#52525b" }}>nenhum</span>
+                  ) : (user.modules ?? []).map((m: any) => {
+                    const modDef = PLATFORM_MODULES.find((pm) => pm.id === m.module);
+                    const label = modDef?.name ?? m.module;
+                    const color = modDef?.color ?? "#9fd4dc";
+                    const levelLabel = modDef?.levels.find((l) => l.value === m.level)?.label ?? m.level;
+                    return (
+                      <span key={m.module} className="text-xs px-2 py-0.5 rounded" style={{ background: `${color}22`, color }}>
+                        {label} · {levelLabel}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
             {user.role !== "admin" && (
-              <div className="mt-3 pl-12 space-y-1.5">
+              <div className="mt-2 pl-12 space-y-1.5">
                 <div className="flex items-start gap-2">
                   <span className="text-xs shrink-0 mt-0.5" style={{ color: "#52525b" }}>Departamentos:</span>
                   <div className="flex gap-1 flex-wrap">
@@ -323,49 +399,91 @@ function UsersTab() {
               <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="mt-1" placeholder={editing ? "••••••" : "Mínimo 6 caracteres"} style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }} />
             </div>
 
-            {form.role === "user" && (
-              <>
-                <div>
-                  <Label style={{ color: "#a1a1aa" }}>Departamentos que o usuário acessa</Label>
-                  <div className="flex gap-2 flex-wrap mt-2">
-                    {departments.map((d) => {
-                      const active = form.departmentIds.includes(d.id);
-                      return (
-                        <button key={d.id} type="button" onClick={() => toggleDept(d.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all"
-                          style={{ background: active ? `${d.color}22` : "rgba(255,255,255,0.04)", color: active ? d.color : "#52525b", border: `1px solid ${active ? d.color + "55" : "rgba(255,255,255,0.08)"}` }}>
-                          {active && <Check size={11} />} {d.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {departments.length === 0 && <p className="text-xs mt-1" style={{ color: "#52525b" }}>Crie departamentos na aba Departamentos primeiro</p>}
-                </div>
-
-                <div>
-                  <Label style={{ color: "#a1a1aa" }}>Empresas que o usuário é responsável</Label>
-                  <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border p-2 space-y-1" style={{ borderColor: "#1e4f5c", background: "#0d1f22" }}>
-                    {clients.map((c) => {
-                      const active = form.clientIds.includes(c.id);
-                      return (
-                        <button key={c.id} type="button" onClick={() => toggleClient(c.id)}
-                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs transition-colors hover:bg-white/5"
-                          style={{ color: active ? "#9fd4dc" : "#a1a1aa" }}>
-                          <div className="w-4 h-4 rounded flex items-center justify-center shrink-0" style={{ border: `1px solid ${active ? "#9fd4dc" : "#52525b"}`, background: active ? "#9fd4dc" : "transparent" }}>
-                            {active && <Check size={10} style={{ color: "#0d1f22" }} />}
+            {/* Camada 1 + 2 + 3: Módulos, níveis e escopo de dados */}
+            <div>
+              <Label style={{ color: "#a1a1aa" }}>Módulos e permissões</Label>
+              <p className="text-xs mb-3 mt-0.5" style={{ color: "#52525b" }}>
+                Escolha quais módulos este usuário acessa e o nível dele em cada um.
+              </p>
+              <div className="space-y-2.5">
+                {PLATFORM_MODULES.map((mod) => {
+                  const on = isModuleOn(mod.id);
+                  const level = getModuleLevel(mod.id);
+                  return (
+                    <div key={mod.id} className="rounded-xl border overflow-hidden" style={{ borderColor: on ? `${mod.color}55` : "#1e4f5c", background: on ? `${mod.color}0d` : "#0d1f22" }}>
+                      {/* Cabeçalho do módulo: toggle + nível */}
+                      <div className="flex items-center justify-between p-3">
+                        <button type="button" disabled={mod.disabled}
+                          onClick={() => toggleModule(mod.id, mod.levels[0].value)}
+                          className="flex items-center gap-2.5"
+                          style={{ cursor: mod.disabled ? "not-allowed" : "pointer", opacity: mod.disabled ? 0.5 : 1 }}>
+                          <div className="w-5 h-5 rounded flex items-center justify-center shrink-0" style={{ border: `1px solid ${on ? mod.color : "#52525b"}`, background: on ? mod.color : "transparent" }}>
+                            {on && <Check size={13} style={{ color: "#0d1f22" }} />}
                           </div>
-                          {c.name}
+                          <div className="text-left">
+                            <span className="text-sm font-medium" style={{ color: on ? "#f4f4f5" : "#a1a1aa" }}>{mod.name}</span>
+                            {mod.disabled && <span className="text-xs ml-2" style={{ color: "#52525b" }}>(em breve)</span>}
+                          </div>
                         </button>
-                      );
-                    })}
-                    {clients.length === 0 && <p className="text-xs p-2" style={{ color: "#52525b" }}>Nenhuma empresa cadastrada</p>}
-                  </div>
-                  <p className="text-xs mt-1" style={{ color: "#52525b" }}>
-                    O usuário verá apenas tarefas das empresas selecionadas E dos departamentos marcados acima.
-                  </p>
-                </div>
-              </>
-            )}
+                        {on && !mod.disabled && (
+                          <select value={level} onChange={(e) => setModuleLevel(mod.id, e.target.value)}
+                            className="rounded-md px-2 py-1 text-xs" style={{ background: "#0d1f22", border: `1px solid ${mod.color}55`, color: mod.color, outline: "none" }}>
+                            {mod.levels.map((lv) => <option key={lv.value} value={lv.value} style={{ background: "#0d1f22", color: "#e5e5e5" }}>{lv.label}</option>)}
+                          </select>
+                        )}
+                      </div>
+
+                      {/* Camada 3: escopo de dados (só para o módulo Tarefas, quando ativo e nível colaborador) */}
+                      {on && mod.hasDataScope && level !== "admin" && (
+                        <div className="px-3 pb-3 pt-1 space-y-3" style={{ borderTop: "1px solid rgba(30,79,92,0.4)" }}>
+                          <p className="text-xs pt-2" style={{ color: "#71717a" }}>
+                            Limite o que este colaborador vê dentro do módulo de Tarefas:
+                          </p>
+                          <div>
+                            <span className="text-xs" style={{ color: "#a1a1aa" }}>Departamentos</span>
+                            <div className="flex gap-2 flex-wrap mt-1.5">
+                              {departments.map((d) => {
+                                const active = form.departmentIds.includes(d.id);
+                                return (
+                                  <button key={d.id} type="button" onClick={() => toggleDept(d.id)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all"
+                                    style={{ background: active ? `${d.color}22` : "rgba(255,255,255,0.04)", color: active ? d.color : "#52525b", border: `1px solid ${active ? d.color + "55" : "rgba(255,255,255,0.08)"}` }}>
+                                    {active && <Check size={11} />} {d.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {departments.length === 0 && <p className="text-xs mt-1" style={{ color: "#52525b" }}>Crie departamentos na aba Departamentos primeiro</p>}
+                          </div>
+                          <div>
+                            <span className="text-xs" style={{ color: "#a1a1aa" }}>Empresas</span>
+                            <div className="mt-1.5 max-h-40 overflow-y-auto rounded-lg border p-2 space-y-1" style={{ borderColor: "#1e4f5c", background: "#0d1f22" }}>
+                              {clients.map((c) => {
+                                const active = form.clientIds.includes(c.id);
+                                return (
+                                  <button key={c.id} type="button" onClick={() => toggleClient(c.id)}
+                                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs transition-colors hover:bg-white/5"
+                                    style={{ color: active ? "#9fd4dc" : "#a1a1aa" }}>
+                                    <div className="w-4 h-4 rounded flex items-center justify-center shrink-0" style={{ border: `1px solid ${active ? "#9fd4dc" : "#52525b"}`, background: active ? "#9fd4dc" : "transparent" }}>
+                                      {active && <Check size={10} style={{ color: "#0d1f22" }} />}
+                                    </div>
+                                    {c.name}
+                                  </button>
+                                );
+                              })}
+                              {clients.length === 0 && <p className="text-xs p-2" style={{ color: "#52525b" }}>Nenhuma empresa cadastrada</p>}
+                            </div>
+                            <p className="text-xs mt-1" style={{ color: "#52525b" }}>
+                              Verá apenas tarefas das empresas E departamentos marcados. Como administrador do módulo, veria tudo.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
             <div className="flex gap-3 pt-1">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="flex-1" style={{ borderColor: "#1e4f5c", color: "#a1a1aa" }}>Cancelar</Button>

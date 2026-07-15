@@ -1183,14 +1183,15 @@ const departmentsRouter = router({
 // ─── Users Management Router (admin only) ─────────────────────────────────────
 const usersRouter = router({
   list: adminProcedure.query(async () => {
-    const { listUsers, getUserDepartments, getUserClients } = await import("./db");
+    const { listUsers, getUserDepartments, getUserClients, getUserModules } = await import("./db");
     const users = await listUsers();
-    // Enriquecer com departamentos e empresas de cada usuário
+    // Enriquecer com departamentos, empresas e módulos de cada usuário
     const enriched = await Promise.all(users.map(async (u) => ({
       ...u,
       passwordHash: undefined, // nunca expor o hash
       departmentIds: await getUserDepartments(u.id),
       clientIds: await getUserClients(u.id),
+      modules: await getUserModules(u.id),
     })));
     return enriched;
   }),
@@ -1203,9 +1204,10 @@ const usersRouter = router({
       role: z.enum(["admin", "user"]).default("user"),
       departmentIds: z.array(z.number()).default([]),
       clientIds: z.array(z.number()).default([]),
+      modules: z.array(z.object({ module: z.string(), level: z.string() })).default([]),
     }))
     .mutation(async ({ input }) => {
-      const { createLocalUser, setUserDepartments, setUserClients, getUserByEmail } = await import("./db");
+      const { createLocalUser, setUserDepartments, setUserClients, setUserModules, getUserByEmail } = await import("./db");
       const bcryptjs = (await import("bcryptjs")).default;
 
       const existing = await getUserByEmail(input.email);
@@ -1217,6 +1219,7 @@ const usersRouter = router({
       });
       await setUserDepartments(userId, input.departmentIds);
       await setUserClients(userId, input.clientIds);
+      await setUserModules(userId, input.modules);
       return { id: userId };
     }),
 
@@ -1229,9 +1232,10 @@ const usersRouter = router({
       role: z.enum(["admin", "user"]).optional(),
       departmentIds: z.array(z.number()).optional(),
       clientIds: z.array(z.number()).optional(),
+      modules: z.array(z.object({ module: z.string(), level: z.string() })).optional(),
     }))
     .mutation(async ({ input }) => {
-      const { updateUserBasic, setUserDepartments, setUserClients } = await import("./db");
+      const { updateUserBasic, setUserDepartments, setUserClients, setUserModules } = await import("./db");
       const bcryptjs = (await import("bcryptjs")).default;
 
       const basic: any = {};
@@ -1243,6 +1247,7 @@ const usersRouter = router({
 
       if (input.departmentIds !== undefined) await setUserDepartments(input.id, input.departmentIds);
       if (input.clientIds !== undefined) await setUserClients(input.id, input.clientIds);
+      if (input.modules !== undefined) await setUserModules(input.id, input.modules);
       return { success: true };
     }),
 
