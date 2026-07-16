@@ -996,12 +996,19 @@ const clientPortalRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito a clientes" });
       }
       const clientTasks = await listTasks({ clientId: ctx.user.clientId });
-      const competencia = `${String(input.month).padStart(2, "0")}/${input.year}`;
-      // Só mostrar ao cliente as tarefas marcadas como "enviar ao cliente".
-      // (ex: DAS aparece; consultas/rotinas internas não)
-      const monthTasks = clientTasks.filter(
-        (t) => t.competencia === competencia && (t as any).sendToClient !== false && (t as any).sendToClient !== 0
-      );
+      // O cliente enxerga o calendário por DATA DE VENCIMENTO (quando pagar),
+      // não por competência. Ex.: DAS da competência 07 vence em 08/08 → aparece
+      // no calendário de agosto. Mesmo critério do Painel Mensal interno.
+      // Também só mostramos o que está marcado como "enviar ao cliente"
+      // (DAS aparece; consultas/rotinas internas não).
+      const monthTasks = clientTasks.filter((t) => {
+        const due = new Date(t.dueDate);
+        const inMonth =
+          due.getUTCMonth() + 1 === input.month && due.getUTCFullYear() === input.year;
+        const visible =
+          (t as any).sendToClient !== false && (t as any).sendToClient !== 0;
+        return inMonth && visible;
+      });
       return monthTasks.map((t) => ({
         id: t.id,
         title: t.title,

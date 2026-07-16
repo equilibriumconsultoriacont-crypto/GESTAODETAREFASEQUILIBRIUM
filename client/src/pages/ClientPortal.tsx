@@ -22,6 +22,16 @@ const MONTHS = [
 
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
+// Datas são armazenadas em UTC (meia-noite UTC no banco). Exibir e agrupar
+// sempre em UTC — caso contrário o fuso do navegador (Brasil = UTC-3) empurra
+// o dia para trás (ex.: vencimento dia 20 aparece como 19).
+function formatBR(d: Date | string): string {
+  const dt = new Date(d);
+  const dd = String(dt.getUTCDate()).padStart(2, "0");
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${dt.getUTCFullYear()}`;
+}
+
 interface Task {
   id: number;
   title: string;
@@ -78,7 +88,7 @@ function TaskDrawer({ task, onClose }: { task: Task; onClose: () => void }) {
           <div className="rounded-xl p-3 text-center" style={{ background: "rgba(36,100,108,0.1)", border: "1px solid rgba(36,100,108,0.2)" }}>
             <p className="text-xs mb-1" style={{ color: "#52525b" }}>Vencimento</p>
             <p className="text-sm font-semibold" style={{ color: isOverdue ? "#f87171" : "#e5e5e5" }}>
-              {due.toLocaleDateString("pt-BR")}
+              {formatBR(due)}
             </p>
           </div>
           <div className="rounded-xl p-3 text-center" style={{ background: "rgba(36,100,108,0.1)", border: "1px solid rgba(36,100,108,0.2)" }}>
@@ -187,7 +197,7 @@ export default function ClientPortal() {
   const tasksByDay = new Map<number, Task[]>();
   tasks.forEach((task) => {
     const due = new Date(task.dueDate);
-    const day = due.getDate();
+    const day = due.getUTCDate();
     if (!tasksByDay.has(day)) tasksByDay.set(day, []);
     tasksByDay.get(day)!.push(task as Task);
   });
@@ -374,7 +384,7 @@ export default function ClientPortal() {
                     <div>
                       <p className="text-sm font-medium" style={{ color: "#e5e5e5" }}>{task.title}</p>
                       <p className="text-xs mt-0.5" style={{ color: "#52525b" }}>
-                        Vence {due.toLocaleDateString("pt-BR")}
+                        Vence {formatBR(due)}
                       </p>
                     </div>
                   </div>
