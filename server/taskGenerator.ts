@@ -11,6 +11,7 @@ import {
   listTasks,
   taskExistsByRecurringAndCompetencia,
 } from "./db";
+import { adjustToBusinessDay, type DueAdjust } from "./businessDays";
 
 interface GenResult {
   created: number;
@@ -62,10 +63,18 @@ function calcDueDate(compMonth: number, compYear: number, rt: any): Date {
   let dueDay = rt.dueDayOfMonth ?? 20;
 
   // Garante que o dia existe no mês (ex: dia 31 em fevereiro → último dia)
-  const lastDayOfMonth = new Date(dueYear, dueMonth + 1, 0).getDate();
+  const lastDayOfMonth = new Date(Date.UTC(dueYear, dueMonth + 1, 0)).getUTCDate();
   if (dueDay > lastDayOfMonth) dueDay = lastDayOfMonth;
 
-  return new Date(dueYear, dueMonth, dueDay);
+  // Data em UTC meia-noite (independe do fuso do servidor).
+  const raw = new Date(Date.UTC(dueYear, dueMonth, dueDay));
+
+  // Ajuste para dia útil conforme a regra do imposto.
+  // Padrão = PROXIMO_DIA_UTIL (prorroga) — vale para DAS, ICMS-SP e demais
+  // obrigações do Simples. PIS/COFINS (regime normal) usam DIA_UTIL_ANTERIOR,
+  // definido no campo `dueDateAdjust` quando esses impostos forem cadastrados.
+  const mode: DueAdjust = (rt.dueDateAdjust as DueAdjust) ?? "PROXIMO_DIA_UTIL";
+  return adjustToBusinessDay(raw, mode);
 }
 
 /**
