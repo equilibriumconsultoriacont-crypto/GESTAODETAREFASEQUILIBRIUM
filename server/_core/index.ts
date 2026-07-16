@@ -416,6 +416,68 @@ async function startServer() {
     }
   });
 
+  // ── Diagnóstico de login de um usuário (sem expor senha) ──────────────────
+  // Uso: GET /admin/diag-user?secret=...&email=fulano@x.com[&pw=senhaTeste]
+  // Diz se o email existe, se o hash é bcrypt e (se pw for passado) se a senha bate.
+  app.get("/admin/diag-user", async (req, res) => {
+    const secret = process.env.MIGRATE_SECRET || "equilibrium-migrate-2024";
+    if (req.headers["x-migrate-secret"] !== secret && req.query.secret !== secret) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    try {
+      const emailRaw = String(req.query.email || "");
+      const emailNorm = emailRaw.trim().toLowerCase();
+      const { getPool } = await import("../db");
+      const pool = getPool();
+
+      // Busca tanto pelo email exato quanto normalizado, para detectar divergência
+      const [rows]: any = await pool.query(
+        "SELECT id, email, name, role, clientId, passwordHash FROM users WHERE LOWER(TRIM(email)) = ? OR email = ?",
+        [emailNorm, emailRaw]
+      );
+
+      if (!rows || rows.length === 0) {
+        // Lista emails parecidos para ajudar a achar erro de digitação
+        const [similar]: any = await pool.query(
+          "SELECT email, role FROM users WHERE email LIKE ? LIMIT 10",
+          [`%${emailNorm.split("@")[0].slice(0, 5)}%`]
+        );
+        return res.json({
+          found: false,
+          searchedFor: { raw: emailRaw, normalized: emailNorm },
+          hint: "Nenhum usuário com esse email. Veja se algum destes parecidos é o certo:",
+          similarEmails: (similar || []).map((s: any) => ({ email: s.email, role: s.role })),
+        });
+      }
+
+      const bcryptjs = (await import("bcryptjs")).default;
+      const report = await Promise.all(rows.map(async (u: any) => {
+        const hash = u.passwordHash || "";
+        const isBcrypt = hash.startsWith("$2b$") || hash.startsWith("$2a$");
+        const emailMatchesNormalized = u.email === emailNorm;
+        let passwordMatches: boolean | null = null;
+        const pw = req.query.pw ? String(req.query.pw) : null;
+        if (pw && isBcrypt) {
+          try { passwordMatches = await bcryptjs.compare(pw, hash); } catch { passwordMatches = null; }
+        }
+        return {
+          id: u.id,
+          emailStored: u.email,
+          emailIsNormalized: emailMatchesNormalized,
+          role: u.role,
+          clientId: u.clientId,
+          hasPassword: !!hash,
+          hashType: isBcrypt ? "bcrypt ✓" : (hash ? "LEGADO não-bcrypt ✗" : "SEM HASH ✗"),
+          passwordTest: pw ? (passwordMatches === true ? "SENHA CONFERE ✓" : passwordMatches === false ? "senha NÃO confere ✗" : "não testável") : "não testada (passe &pw=)",
+        };
+      }));
+
+      return res.json({ found: true, count: rows.length, users: report });
+    } catch (e: any) {
+      return res.status(500).json({ ok: false, error: e?.message });
+    }
+  });
+
   // ── tRPC ──────────────────────────────────────────────────────────────────
   app.use(
     "/api/trpc",
