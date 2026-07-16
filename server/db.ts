@@ -230,6 +230,7 @@ export async function listTasks(filters?: {
         competencia, dueDate, status, notes, completedAt, createdAt, updatedAt,
         COALESCE(priority, 'NORMAL') as priority,
         COALESCE(department, 'GERAL') as department,
+        COALESCE(sendToClient, 1) as sendToClient,
         assignedTo, internalDeadline, waitingSince, startedAt
         FROM tasks`;
       const params: any[] = [];

@@ -68,7 +68,7 @@ export default function Tasks() {
     clientId: "", title: "", taskType: "DAS",
     competenciaMm: def.mm, competenciaYyyy: def.yyyy,
     dueDate: "", description: "", notes: "",
-    department: "GERAL", priority: "NORMAL",
+    department: "GERAL", priority: "NORMAL", sendToClient: true,
   });
 
   const competenciaFilter = `${compMm}/${compYyyy}`;
@@ -149,6 +149,7 @@ export default function Tasks() {
         notes: form.notes || undefined,
         department: form.department as any,
         priority: form.priority as any,
+        sendToClient: form.sendToClient,
       });
       toast.success("Tarefa criada!");
       setDialogOpen(false);
@@ -501,6 +502,27 @@ export default function Tasks() {
                 className="w-full rounded-md px-3 py-2 text-sm mt-1 resize-none"
                 style={{ background: "#0d1f22", border: "1px solid #1e4f5c", color: "#e5e5e5", outline: "none" }} />
             </div>
+
+            {/* Enviar ao cliente: controla se aparece no Portal do Cliente */}
+            <button type="button" onClick={() => setForm({ ...form, sendToClient: !form.sendToClient })}
+              className="w-full flex items-center justify-between rounded-lg border p-3 transition-colors"
+              style={{
+                background: form.sendToClient ? "rgba(36,100,108,0.1)" : "rgba(82,82,91,0.08)",
+                borderColor: form.sendToClient ? "rgba(36,100,108,0.4)" : "rgba(82,82,91,0.3)",
+              }}>
+              <div className="text-left">
+                <div className="text-sm font-medium" style={{ color: "#e5e5e5" }}>Enviar ao cliente</div>
+                <div className="text-xs mt-0.5" style={{ color: "#71717a" }}>
+                  {form.sendToClient
+                    ? "Aparece no Portal do Cliente (calendário + guia para download)"
+                    : "Uso interno — o cliente não vê esta tarefa nem os anexos"}
+                </div>
+              </div>
+              <div className="w-11 h-6 rounded-full relative transition-colors shrink-0 ml-3" style={{ background: form.sendToClient ? "#24646c" : "#3f3f46" }}>
+                <div className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all" style={{ left: form.sendToClient ? "22px" : "2px" }} />
+              </div>
+            </button>
+
             <div className="flex gap-3 pt-1">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="flex-1"
                 style={{ borderColor: "#1e4f5c", color: "#a1a1aa" }}>Cancelar</Button>

@@ -158,6 +158,7 @@ export default function ClientPortal() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [, navigate] = useLocation();
 
   const { data: tasks = [], isLoading } = trpc.clientPortal.calendar.useQuery({ month, year });
@@ -167,10 +168,12 @@ export default function ClientPortal() {
   });
 
   const prevMonth = () => {
+    setSelectedDay(null);
     if (month === 1) { setMonth(12); setYear(y => y - 1); }
     else setMonth(m => m - 1);
   };
   const nextMonth = () => {
+    setSelectedDay(null);
     if (month === 12) { setMonth(1); setYear(y => y + 1); }
     else setMonth(m => m + 1);
   };
@@ -267,15 +270,17 @@ export default function ClientPortal() {
               return (
                 <button
                   key={idx}
-                  onClick={() => dayTasks.length > 0 && setSelectedTask(dayTasks[0])}
+                  onClick={() => dayTasks.length > 0 && setSelectedDay(selectedDay === day ? null : day)}
                   className="flex flex-col items-center justify-center aspect-square rounded-xl relative transition-all active:scale-95"
                   style={{
-                    background: isToday
+                    background: selectedDay === day
+                      ? "rgba(36,100,108,0.35)"
+                      : isToday
                       ? "rgba(36,100,108,0.25)"
                       : dayTasks.length > 0
                       ? "rgba(255,255,255,0.03)"
                       : "transparent",
-                    border: isToday ? "1px solid rgba(36,100,108,0.5)" : "1px solid transparent",
+                    border: (selectedDay === day || isToday) ? "1px solid rgba(36,100,108,0.5)" : "1px solid transparent",
                     cursor: dayTasks.length > 0 ? "pointer" : "default",
                   }}
                 >
@@ -322,13 +327,26 @@ export default function ClientPortal() {
           ))}
         </div>
 
-        {/* Task list for month */}
-        {tasks.length > 0 && (
+        {/* Task list — do dia selecionado ou do mês inteiro */}
+        {tasks.length > 0 && (() => {
+          const listTasks = selectedDay
+            ? tasks.filter((t) => new Date(t.dueDate).getUTCDate() === selectedDay)
+            : tasks;
+          return (
           <div className="mt-6 px-2 space-y-2">
-            <p className="text-xs font-medium px-1 mb-3" style={{ color: "#a1a1aa" }}>
-              OBRIGAÇÕES DE {MONTHS[month - 1].toUpperCase()}
-            </p>
-            {tasks.map((task) => {
+            <div className="flex items-center justify-between px-1 mb-3">
+              <p className="text-xs font-medium" style={{ color: "#a1a1aa" }}>
+                {selectedDay
+                  ? `OBRIGAÇÕES DO DIA ${String(selectedDay).padStart(2, "0")}/${String(month).padStart(2, "0")}`
+                  : `OBRIGAÇÕES DE ${MONTHS[month - 1].toUpperCase()}`}
+              </p>
+              {selectedDay && (
+                <button onClick={() => setSelectedDay(null)} className="text-xs px-2 py-1 rounded-lg" style={{ color: "#9fd4dc", background: "rgba(36,100,108,0.15)" }}>
+                  Ver o mês todo
+                </button>
+              )}
+            </div>
+            {listTasks.map((task) => {
               const due = new Date(task.dueDate);
               const isOverdue = due < today && task.status !== "CONCLUIDA";
               const StatusIcon = task.status === "CONCLUIDA" ? CheckCircle2
@@ -365,7 +383,8 @@ export default function ClientPortal() {
               );
             })}
           </div>
-        )}
+          );
+        })()}
 
         {!isLoading && tasks.length === 0 && (
           <div className="text-center py-16 px-6">

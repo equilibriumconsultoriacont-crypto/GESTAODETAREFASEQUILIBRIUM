@@ -97,6 +97,57 @@ async function startServer() {
     res.json({ status: "ok", uptime: process.uptime(), memory: process.memoryUsage().heapUsed, timestamp: new Date().toISOString() });
   });
 
+  // ── Download de arquivo pelo Portal do Cliente ────────────────────────────
+  // GET /api/portal/file/:taskId/:fileId — autentica o cliente, verifica que a
+  // tarefa é dele e serve o arquivo (data URL, http externo, ou storage).
+  app.get("/api/portal/file/:taskId/:fileId", async (req, res) => {
+    try {
+      const { sdk } = await import("./sdk");
+      let user: any = null;
+      try { user = await sdk.authenticateRequest(req); } catch {}
+      if (!user) return res.status(401).send("Não autenticado");
+
+      const taskId = Number(req.params.taskId);
+      const fileId = Number(req.params.fileId);
+      const { getTaskById, getTaskFileById } = await import("../db");
+
+      const task = await getTaskById(taskId);
+      // Cliente só baixa arquivo de tarefa da própria empresa
+      if (!task || (user.role === "client" && task.clientId !== user.clientId)) {
+        return res.status(403).send("Acesso negado");
+      }
+      const file = await getTaskFileById(fileId);
+      if (!file || file.taskId !== taskId) return res.status(404).send("Arquivo não encontrado");
+
+      const url = file.fileUrl;
+      // Data URL (base64): decodifica e envia como binário
+      if (url.startsWith("data:")) {
+        const match = url.match(/^data:([^;]+);base64,(.*)$/);
+        if (match) {
+          const mime = match[1];
+          const buffer = Buffer.from(match[2], "base64");
+          res.setHeader("Content-Type", mime);
+          res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(file.filename)}"`);
+          return res.send(buffer);
+        }
+      }
+      // URL http externa: redireciona
+      if (url.startsWith("http")) {
+        return res.redirect(url);
+      }
+      // Storage (manus/s3): tenta URL assinada
+      try {
+        const { storageGetSignedUrl } = await import("../storage");
+        const signed = await storageGetSignedUrl(file.fileKey);
+        if (signed) return res.redirect(signed);
+      } catch {}
+      return res.status(404).send("Arquivo indisponível");
+    } catch (e: any) {
+      console.error("[Portal file] error:", e?.message);
+      return res.status(500).send("Erro ao baixar arquivo");
+    }
+  });
+
   app.get("/health/db", async (_req, res) => {
     try {
       const { checkDbHealth } = await import("../db");
@@ -416,67 +467,6 @@ async function startServer() {
     }
   });
 
-  // ── Diagnóstico de login de um usuário (sem expor senha) ──────────────────
-  // Uso: GET /admin/diag-user?secret=...&email=fulano@x.com[&pw=senhaTeste]
-  // Diz se o email existe, se o hash é bcrypt e (se pw for passado) se a senha bate.
-  app.get("/admin/diag-user", async (req, res) => {
-    const secret = process.env.MIGRATE_SECRET || "equilibrium-migrate-2024";
-    if (req.headers["x-migrate-secret"] !== secret && req.query.secret !== secret) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-    try {
-      const emailRaw = String(req.query.email || "");
-      const emailNorm = emailRaw.trim().toLowerCase();
-      const { getPool } = await import("../db");
-      const pool = getPool();
-
-      // Busca tanto pelo email exato quanto normalizado, para detectar divergência
-      const [rows]: any = await pool.query(
-        "SELECT id, email, name, role, clientId, passwordHash FROM users WHERE LOWER(TRIM(email)) = ? OR email = ?",
-        [emailNorm, emailRaw]
-      );
-
-      if (!rows || rows.length === 0) {
-        // Lista emails parecidos para ajudar a achar erro de digitação
-        const [similar]: any = await pool.query(
-          "SELECT email, role FROM users WHERE email LIKE ? LIMIT 10",
-          [`%${emailNorm.split("@")[0].slice(0, 5)}%`]
-        );
-        return res.json({
-          found: false,
-          searchedFor: { raw: emailRaw, normalized: emailNorm },
-          hint: "Nenhum usuário com esse email. Veja se algum destes parecidos é o certo:",
-          similarEmails: (similar || []).map((s: any) => ({ email: s.email, role: s.role })),
-        });
-      }
-
-      const bcryptjs = (await import("bcryptjs")).default;
-      const report = await Promise.all(rows.map(async (u: any) => {
-        const hash = u.passwordHash || "";
-        const isBcrypt = hash.startsWith("$2b$") || hash.startsWith("$2a$");
-        const emailMatchesNormalized = u.email === emailNorm;
-        let passwordMatches: boolean | null = null;
-        const pw = req.query.pw ? String(req.query.pw) : null;
-        if (pw && isBcrypt) {
-          try { passwordMatches = await bcryptjs.compare(pw, hash); } catch { passwordMatches = null; }
-        }
-        return {
-          id: u.id,
-          emailStored: u.email,
-          emailIsNormalized: emailMatchesNormalized,
-          role: u.role,
-          clientId: u.clientId,
-          hasPassword: !!hash,
-          hashType: isBcrypt ? "bcrypt ✓" : (hash ? "LEGADO não-bcrypt ✗" : "SEM HASH ✗"),
-          passwordTest: pw ? (passwordMatches === true ? "SENHA CONFERE ✓" : passwordMatches === false ? "senha NÃO confere ✗" : "não testável") : "não testada (passe &pw=)",
-        };
-      }));
-
-      return res.json({ found: true, count: rows.length, users: report });
-    } catch (e: any) {
-      return res.status(500).json({ ok: false, error: e?.message });
-    }
-  });
 
   // ── tRPC ──────────────────────────────────────────────────────────────────
   app.use(

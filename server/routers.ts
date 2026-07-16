@@ -997,7 +997,11 @@ const clientPortalRouter = router({
       }
       const clientTasks = await listTasks({ clientId: ctx.user.clientId });
       const competencia = `${String(input.month).padStart(2, "0")}/${input.year}`;
-      const monthTasks = clientTasks.filter((t) => t.competencia === competencia);
+      // Só mostrar ao cliente as tarefas marcadas como "enviar ao cliente".
+      // (ex: DAS aparece; consultas/rotinas internas não)
+      const monthTasks = clientTasks.filter(
+        (t) => t.competencia === competencia && (t as any).sendToClient !== false && (t as any).sendToClient !== 0
+      );
       return monthTasks.map((t) => ({
         id: t.id,
         title: t.title,
