@@ -627,6 +627,7 @@ export async function applyCatalogToClient(clientId: number, catalogId: number):
         competenciaOffset: (tmpl as any).competenciaOffset ?? 1,
         annualMonth: (tmpl as any).annualMonth ?? null,
         sendToClient: (tmpl as any).sendToClient ?? true,
+        dueDateAdjust: (tmpl as any).dueDateAdjust ?? "PROXIMO_DIA_UTIL",
         dueDayOfMonth: tmpl.dueDayOfMonth,
         active: true,
       });

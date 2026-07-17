@@ -7,7 +7,7 @@ export type TaskStatus =
   | "CANCELADA"
   | "VENCIDA";
 
-export type TaskType = "DAS" | "NFS" | "DCTF" | "SPED" | "OUTROS";
+export type TaskType = "DAS" | "NFS" | "DCTF" | "SPED" | "OUTROS" | "PIS" | "COFINS" | "ICMS" | "ISSQN";
 export type Department = "FISCAL" | "CONTABIL" | "DP" | "SOCIETARIO" | "FINANCEIRO" | "GERAL";
 export type Priority = "BAIXA" | "NORMAL" | "ALTA" | "URGENTE";
 
@@ -43,6 +43,10 @@ const typeConfig: Record<TaskType, { bg: string; color: string; border: string }
   DCTF:   { bg: "rgba(99,102,241,0.15)", color: "#a5b4fc", border: "rgba(99,102,241,0.3)"  },
   SPED:   { bg: "rgba(168,85,247,0.15)", color: "#c4b5fd", border: "rgba(168,85,247,0.3)"  },
   OUTROS: { bg: "rgba(82,82,91,0.2)",    color: "#a1a1aa", border: "rgba(82,82,91,0.4)"    },
+  PIS:    { bg: "rgba(245,158,11,0.15)", color: "#fcd34d", border: "rgba(245,158,11,0.3)"  },
+  COFINS: { bg: "rgba(234,88,12,0.15)",  color: "#fdba74", border: "rgba(234,88,12,0.3)"   },
+  ICMS:   { bg: "rgba(34,197,94,0.15)",  color: "#86efac", border: "rgba(34,197,94,0.3)"   },
+  ISSQN:  { bg: "rgba(14,165,233,0.15)", color: "#7dd3fc", border: "rgba(14,165,233,0.3)"  },
 };
 
 type BadgeStyle = { label: string; bg: string; color: string; border: string; emoji: string };

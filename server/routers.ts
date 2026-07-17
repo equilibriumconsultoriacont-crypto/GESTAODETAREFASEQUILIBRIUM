@@ -117,7 +117,7 @@ const recurringTasksRouter = router({
         clientId: z.number(),
         title: z.string().min(2),
         description: z.string().optional(),
-        taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS"]),
+        taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]),
         dueDayOfMonth: z.number().min(1).max(31),
       })
     )
@@ -139,7 +139,7 @@ const recurringTasksRouter = router({
         id: z.number(),
         title: z.string().optional(),
         description: z.string().optional(),
-        taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).optional(),
+        taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]).optional(),
         dueDayOfMonth: z.number().min(1).max(31).optional(),
         active: z.boolean().optional(),
       })
@@ -208,7 +208,7 @@ const tasksRouter = router({
         recurringTaskId: z.number().optional(),
         title: z.string().min(2),
         description: z.string().optional(),
-        taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS"]),
+        taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]),
         competencia: z.string().regex(/^\d{2}\/\d{4}$/),
         dueDate: z.string(),
         notes: z.string().optional(),
@@ -881,7 +881,7 @@ const taskTemplatesRouter = router({
     .input(z.object({
       title: z.string().min(2),
       description: z.string().optional(),
-      taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS"]),
+      taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]),
       dueDayOfMonth: z.number().min(1).max(31),
       ocrKeywords: z.string().optional(),
       department: z.string().optional(),
@@ -889,6 +889,7 @@ const taskTemplatesRouter = router({
       competenciaOffset: z.number().min(0).max(12).optional(),
       annualMonth: z.number().min(1).max(12).optional(),
       sendToClient: z.boolean().optional(),
+      dueDateAdjust: z.enum(["PROXIMO_DIA_UTIL", "DIA_UTIL_ANTERIOR", "NENHUM"]).optional(),
     }))
     .mutation(async ({ input }) => {
       const id = await createTaskTemplate({ ...input, active: true } as any);
@@ -900,7 +901,7 @@ const taskTemplatesRouter = router({
       id: z.number(),
       title: z.string().optional(),
       description: z.string().optional(),
-      taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).optional(),
+      taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]).optional(),
       dueDayOfMonth: z.number().min(1).max(31).optional(),
       ocrKeywords: z.string().optional(),
       department: z.string().optional(),
@@ -908,6 +909,7 @@ const taskTemplatesRouter = router({
       competenciaOffset: z.number().min(0).max(12).optional(),
       annualMonth: z.number().min(1).max(12).optional(),
       sendToClient: z.boolean().optional(),
+      dueDateAdjust: z.enum(["PROXIMO_DIA_UTIL", "DIA_UTIL_ANTERIOR", "NENHUM"]).optional(),
       active: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
@@ -961,6 +963,7 @@ const clientTemplatesRouter = router({
             competenciaOffset: (template as any).competenciaOffset ?? 1,
             annualMonth: (template as any).annualMonth ?? null,
             sendToClient: (template as any).sendToClient ?? true,
+            dueDateAdjust: (template as any).dueDateAdjust ?? "PROXIMO_DIA_UTIL",
             dueDayOfMonth: template.dueDayOfMonth,
             active: true,
           });

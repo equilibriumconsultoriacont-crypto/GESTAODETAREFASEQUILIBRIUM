@@ -75,7 +75,7 @@ export const taskTemplates = mysqlTable("task_templates", {
   id: int("id").autoincrement().primaryKey(),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
-  taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).notNull(),
+  taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]).notNull(),
   dueDayOfMonth: int("dueDayOfMonth").notNull(), // dia do mês que vence
   // Periodicidade da obrigação: MENSAL, TRIMESTRAL ou ANUAL
   periodicity: mysqlEnum("periodicity", ["MENSAL", "TRIMESTRAL", "ANUAL"]).default("MENSAL").notNull(),
@@ -86,6 +86,9 @@ export const taskTemplates = mysqlTable("task_templates", {
   annualMonth: int("annualMonth"),
   // Se esta obrigação é enviada ao cliente (guia/documento) ou é só interna
   sendToClient: boolean("sendToClient").default(true).notNull(),
+  // Ajuste do vencimento para dia útil: PROXIMO_DIA_UTIL (prorroga, padrão),
+  // DIA_UTIL_ANTERIOR (antecipa — PIS/COFINS) ou NENHUM (mantém a data exata)
+  dueDateAdjust: mysqlEnum("dueDateAdjust", ["PROXIMO_DIA_UTIL", "DIA_UTIL_ANTERIOR", "NENHUM"]).default("PROXIMO_DIA_UTIL").notNull(),
   ocrKeywords: text("ocrKeywords"), // palavras-chave para reconhecimento de documento
   department: varchar("department", { length: 100 }).default("Geral").notNull(),
   active: boolean("active").default(true).notNull(),
@@ -116,13 +119,14 @@ export const recurringTasks = mysqlTable("recurring_tasks", {
   taskTemplateId: int("taskTemplateId"), // referência ao template global (opcional)
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
-  taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).notNull(),
+  taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]).notNull(),
   department: varchar("department", { length: 100 }).default("Geral").notNull(),
   dueDayOfMonth: int("dueDayOfMonth").notNull(), // dia do mês que vence
   periodicity: mysqlEnum("periodicity", ["MENSAL", "TRIMESTRAL", "ANUAL"]).default("MENSAL").notNull(),
   competenciaOffset: int("competenciaOffset").default(1).notNull(),
   annualMonth: int("annualMonth"),
   sendToClient: boolean("sendToClient").default(true).notNull(),
+  dueDateAdjust: mysqlEnum("dueDateAdjust", ["PROXIMO_DIA_UTIL", "DIA_UTIL_ANTERIOR", "NENHUM"]).default("PROXIMO_DIA_UTIL").notNull(),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -138,7 +142,7 @@ export const tasks = mysqlTable("tasks", {
   recurringTaskId: int("recurringTaskId"),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
-  taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS"]).notNull(),
+  taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]).notNull(),
   competencia: varchar("competencia", { length: 7 }).notNull(), // MM/YYYY
   dueDate: timestamp("dueDate").notNull(),
   status: mysqlEnum("status", [

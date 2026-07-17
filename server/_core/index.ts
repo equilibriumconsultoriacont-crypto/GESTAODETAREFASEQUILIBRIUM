@@ -243,12 +243,49 @@ async function startServer() {
         "CREATE TABLE IF NOT EXISTS `google_calendar_tokens` (`id` int AUTO_INCREMENT NOT NULL, `userId` int NOT NULL, `accessToken` text, `refreshToken` text, `expiryDate` timestamp NULL, `connected` boolean NOT NULL DEFAULT false, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `google_calendar_tokens_id` PRIMARY KEY(`id`), CONSTRAINT `google_calendar_tokens_userId_unique` UNIQUE(`userId`))",
         "CREATE TABLE IF NOT EXISTS `user_modules` (`id` int AUTO_INCREMENT NOT NULL, `userId` int NOT NULL, `module` varchar(40) NOT NULL, `level` varchar(40) NOT NULL DEFAULT 'colaborador', `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `user_modules_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `proposals` (`id` int AUTO_INCREMENT NOT NULL, `ownerId` int NOT NULL, `title` varchar(255) NOT NULL, `clientName` varchar(255), `data` text NOT NULL, `status` enum('RASCUNHO','ENVIADA','ACEITA','RECUSADA') NOT NULL DEFAULT 'RASCUNHO', `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `proposals_id` PRIMARY KEY(`id`))",
+        // Impostos de regime normal: amplia os tipos e adiciona a regra de dia útil por obrigação
+        "ALTER TABLE `task_templates` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
+        "ALTER TABLE `recurring_tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
+        "ALTER TABLE `tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
+        "ALTER TABLE `task_templates` ADD COLUMN `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
+        "ALTER TABLE `recurring_tasks` ADD COLUMN `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
       ];
 
       const results: string[] = [];
       for (const stmt of createStatements) {
         try { await conn.query(stmt); results.push("\u2713 tabela criada"); }
         catch (err: any) { results.push(`\u2717 ${err.message?.slice(0, 120)}`); }
+      }
+
+      // Impostos de regime normal (PIS, COFINS, ICMS, ISSQN Rio Claro) cadastrados
+      // como Tarefas Base para uso futuro. Só insere se ainda não existir (checa por
+      // título), então é seguro re-rodar a migração.
+      try {
+        const taxSeeds = [
+          { title: "PIS", taskType: "PIS", dueDay: 25, adjust: "DIA_UTIL_ANTERIOR",
+            desc: "PIS \u2014 regime normal (Lucro Presumido/Real). Vence dia 25 do m\u00eas seguinte; antecipa para o dia \u00fatil anterior se cair em dia n\u00e3o \u00fatil (Lei 10.833, art. 18)." },
+          { title: "COFINS", taskType: "COFINS", dueDay: 25, adjust: "DIA_UTIL_ANTERIOR",
+            desc: "COFINS \u2014 regime normal. Vence dia 25 do m\u00eas seguinte; antecipa para o dia \u00fatil anterior se cair em dia n\u00e3o \u00fatil (Lei 10.833, art. 18)." },
+          { title: "ICMS", taskType: "ICMS", dueDay: 20, adjust: "PROXIMO_DIA_UTIL",
+            desc: "ICMS-SP (RPA). Vence dia 20 do m\u00eas seguinte (varia conforme CPR/CNAE); prorroga para o pr\u00f3ximo dia \u00fatil se cair em dia n\u00e3o \u00fatil (RICMS-SP art. 596)." },
+          { title: "ISSQN Rio Claro", taskType: "ISSQN", dueDay: 20, adjust: "PROXIMO_DIA_UTIL",
+            desc: "ISSQN Rio Claro. Vence dia 20 do m\u00eas seguinte; prorroga para o pr\u00f3ximo dia \u00fatil se cair em dia n\u00e3o \u00fatil." },
+        ];
+        let taxCreated = 0;
+        for (const t of taxSeeds) {
+          const [ex]: any = await conn.query(
+            "SELECT COUNT(*) as cnt FROM task_templates WHERE title = ?", [t.title]
+          );
+          if (ex[0].cnt > 0) continue;
+          await conn.query(
+            "INSERT INTO task_templates (title, description, taskType, dueDayOfMonth, periodicity, competenciaOffset, sendToClient, dueDateAdjust, department, active) VALUES (?, ?, ?, ?, 'MENSAL', 1, true, ?, 'Fiscal', true)",
+            [t.title, t.desc, t.taskType, t.dueDay, t.adjust]
+          );
+          taxCreated++;
+        }
+        results.push(`\u2713 ${taxCreated} imposto(s) de regime normal cadastrado(s) como Tarefa Base`);
+      } catch (err: any) {
+        results.push(`\u2717 seed de impostos: ${err.message?.slice(0, 120)}`);
       }
 
       // Normalizar emails existentes para minúsculas (corrige logins que não

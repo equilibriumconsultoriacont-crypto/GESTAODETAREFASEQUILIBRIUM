@@ -17,6 +17,10 @@ const TYPE_OPTIONS = [
   { value: "DCTF", label: "DCTF" },
   { value: "SPED", label: "SPED" },
   { value: "OUTROS", label: "Outros" },
+  { value: "PIS", label: "PIS — regime normal" },
+  { value: "COFINS", label: "COFINS — regime normal" },
+  { value: "ICMS", label: "ICMS — regime normal" },
+  { value: "ISSQN", label: "ISSQN — Rio Claro" },
 ];
 
 const emptyForm = {
@@ -30,6 +34,7 @@ const emptyForm = {
   competenciaOffset: "1",
   annualMonth: "1",
   sendToClient: true,
+  dueDateAdjust: "PROXIMO_DIA_UTIL",
 };
 
 export default function TaskTemplatesPage() {
@@ -64,6 +69,7 @@ export default function TaskTemplatesPage() {
       competenciaOffset: String((t as any).competenciaOffset ?? 1),
       annualMonth: String((t as any).annualMonth ?? 1),
       sendToClient: (t as any).sendToClient ?? true,
+      dueDateAdjust: (t as any).dueDateAdjust ?? "PROXIMO_DIA_UTIL",
     });
     setDialogOpen(true);
   };
@@ -84,6 +90,7 @@ export default function TaskTemplatesPage() {
           competenciaOffset: Number(form.competenciaOffset),
           annualMonth: form.periodicity === "ANUAL" ? Number(form.annualMonth) : undefined,
           sendToClient: form.sendToClient,
+          dueDateAdjust: form.dueDateAdjust as any,
         });
         toast.success("Template atualizado!");
       } else {
@@ -98,6 +105,7 @@ export default function TaskTemplatesPage() {
           competenciaOffset: Number(form.competenciaOffset),
           annualMonth: form.periodicity === "ANUAL" ? Number(form.annualMonth) : undefined,
           sendToClient: form.sendToClient,
+          dueDateAdjust: form.dueDateAdjust as any,
         });
         toast.success("Template criado!");
       }
@@ -371,6 +379,23 @@ export default function TaskTemplatesPage() {
                 </Select>
                 <p className="text-xs" style={{ color: "#52525b" }}>
                   Ex: competência 06/2026 + "1 mês depois" = vence em julho/2026
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label style={{ color: "#a1a1aa" }}>Regra de vencimento (dia não útil) *</Label>
+                <Select value={form.dueDateAdjust} onValueChange={(v) => setForm({ ...form, dueDateAdjust: v })}>
+                  <SelectTrigger style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent style={{ background: "#111", borderColor: "#1e4f5c" }}>
+                    <SelectItem value="PROXIMO_DIA_UTIL" style={{ color: "#e5e5e5" }}>Prorroga — próximo dia útil (DAS, ICMS)</SelectItem>
+                    <SelectItem value="DIA_UTIL_ANTERIOR" style={{ color: "#e5e5e5" }}>Antecipa — dia útil anterior (PIS, COFINS)</SelectItem>
+                    <SelectItem value="NENHUM" style={{ color: "#e5e5e5" }}>Manter a data exata</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs" style={{ color: "#52525b" }}>
+                  Aplica quando o vencimento cai em fim de semana ou feriado.
                 </p>
               </div>
             </div>
