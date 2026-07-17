@@ -519,6 +519,9 @@ async function startServer() {
     })
   );
 
+  // ── Migração automática de schema (roda 1x quando o banco está atrás do código) ──
+  await ensureSchema();
+
   // ── Static / Vite ─────────────────────────────────────────────────────────
   if (process.env.NODE_ENV === "development") {
     const server = createServer(app);
@@ -536,6 +539,71 @@ startServer().catch((err) => {
   console.error("[Fatal] Server failed to start:", err);
   process.exit(1);
 });
+
+// ── Migração automática de schema ────────────────────────────────────────────
+// Aplica alterações idempotentes no boot, para o código nunca ficar à frente do
+// banco (evita "Unknown column" / enum sem o tipo novo após um deploy).
+// As ALTERs pesadas rodam só quando a coluna ainda não existe; nos boots
+// seguintes é apenas uma checagem rápida no information_schema.
+async function ensureSchema() {
+  try {
+    const mysql = await import("mysql2/promise");
+    const conn = await mysql.default.createConnection({ uri: process.env.DATABASE_URL! });
+    try {
+      const [rows]: any = await conn.query(
+        "SELECT COUNT(*) as cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'task_templates' AND COLUMN_NAME = 'dueDateAdjust'"
+      );
+      const hasColumn = Number(rows?.[0]?.cnt ?? 0) > 0;
+
+      if (!hasColumn) {
+        console.log("[Migração] Aplicando schema de impostos (enum taskType + dueDateAdjust)...");
+        const stmts = [
+          "ALTER TABLE `task_templates` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
+          "ALTER TABLE `recurring_tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
+          "ALTER TABLE `tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
+          "ALTER TABLE `task_templates` ADD COLUMN IF NOT EXISTS `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
+          "ALTER TABLE `recurring_tasks` ADD COLUMN IF NOT EXISTS `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
+        ];
+        for (const s of stmts) {
+          try { await conn.query(s); }
+          catch (e: any) { console.warn("[Migração] ", e?.message?.slice(0, 140)); }
+        }
+      }
+
+      // Seed dos 4 impostos de regime normal (idempotente por título). Roda sempre,
+      // mas só insere se faltar — assim funciona mesmo se a coluna já existia.
+      const taxSeeds = [
+        { title: "PIS", taskType: "PIS", dueDay: 25, adjust: "DIA_UTIL_ANTERIOR",
+          desc: "PIS \u2014 regime normal (Lucro Presumido/Real). Vence dia 25 do m\u00eas seguinte; antecipa para o dia \u00fatil anterior se cair em dia n\u00e3o \u00fatil (Lei 10.833, art. 18)." },
+        { title: "COFINS", taskType: "COFINS", dueDay: 25, adjust: "DIA_UTIL_ANTERIOR",
+          desc: "COFINS \u2014 regime normal. Vence dia 25 do m\u00eas seguinte; antecipa para o dia \u00fatil anterior se cair em dia n\u00e3o \u00fatil (Lei 10.833, art. 18)." },
+        { title: "ICMS", taskType: "ICMS", dueDay: 20, adjust: "PROXIMO_DIA_UTIL",
+          desc: "ICMS-SP (RPA). Vence dia 20 do m\u00eas seguinte (varia conforme CPR/CNAE); prorroga para o pr\u00f3ximo dia \u00fatil se cair em dia n\u00e3o \u00fatil (RICMS-SP art. 596)." },
+        { title: "ISSQN Rio Claro", taskType: "ISSQN", dueDay: 20, adjust: "PROXIMO_DIA_UTIL",
+          desc: "ISSQN Rio Claro. Vence dia 20 do m\u00eas seguinte; prorroga para o pr\u00f3ximo dia \u00fatil se cair em dia n\u00e3o \u00fatil." },
+      ];
+      let seeded = 0;
+      for (const t of taxSeeds) {
+        try {
+          const [ex]: any = await conn.query(
+            "SELECT COUNT(*) as cnt FROM task_templates WHERE title = ?", [t.title]
+          );
+          if (Number(ex?.[0]?.cnt ?? 0) > 0) continue;
+          await conn.query(
+            "INSERT INTO task_templates (title, description, taskType, dueDayOfMonth, periodicity, competenciaOffset, sendToClient, dueDateAdjust, department, active) VALUES (?, ?, ?, ?, 'MENSAL', 1, true, ?, 'Fiscal', true)",
+            [t.title, t.desc, t.taskType, t.dueDay, t.adjust]
+          );
+          seeded++;
+        } catch (e: any) { console.warn("[Migração seed] ", e?.message?.slice(0, 140)); }
+      }
+      if (seeded > 0) console.log(`[Migração] ${seeded} imposto(s) cadastrado(s) como Tarefa Base.`);
+    } finally {
+      await conn.end();
+    }
+  } catch (err: any) {
+    console.error("[Migração] Falhou no boot (servidor segue normalmente):", err?.message);
+  }
+}
 
 // ── Agendador automático ──────────────────────────────────────────────────────
 // Roda após o servidor iniciar, sem bloquear o startup
