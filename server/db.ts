@@ -179,13 +179,45 @@ export async function updateClient(id: number, data: Partial<InsertClient>): Pro
 }
 
 // ─── Recurring Tasks ──────────────────────────────────────────────────────────
+// Fallback: se a coluna dueDateAdjust ainda nao existir no banco (migracao
+// pendente ou falha), seleciona apenas as colunas seguras e aplica o padrao —
+// evita que uma diferenca de schema derrube toda a listagem.
+function isMissingColumn(err: any): boolean {
+  const m = String(err?.message ?? "");
+  return err?.code === "ER_BAD_FIELD_ERROR" || /Unknown column/i.test(m) || /dueDateAdjust/i.test(m);
+}
+const recurringColsSafe = {
+  id: recurringTasks.id, clientId: recurringTasks.clientId, taskTemplateId: recurringTasks.taskTemplateId,
+  title: recurringTasks.title, description: recurringTasks.description, taskType: recurringTasks.taskType,
+  department: recurringTasks.department, dueDayOfMonth: recurringTasks.dueDayOfMonth,
+  periodicity: recurringTasks.periodicity, competenciaOffset: recurringTasks.competenciaOffset,
+  annualMonth: recurringTasks.annualMonth, sendToClient: recurringTasks.sendToClient,
+  active: recurringTasks.active, createdAt: recurringTasks.createdAt, updatedAt: recurringTasks.updatedAt,
+};
+const templateColsSafe = {
+  id: taskTemplates.id, title: taskTemplates.title, description: taskTemplates.description,
+  taskType: taskTemplates.taskType, dueDayOfMonth: taskTemplates.dueDayOfMonth,
+  periodicity: taskTemplates.periodicity, competenciaOffset: taskTemplates.competenciaOffset,
+  annualMonth: taskTemplates.annualMonth, sendToClient: taskTemplates.sendToClient,
+  ocrKeywords: taskTemplates.ocrKeywords, department: taskTemplates.department,
+  active: taskTemplates.active, createdAt: taskTemplates.createdAt, updatedAt: taskTemplates.updatedAt,
+};
+
 export async function listRecurringTasks(clientId?: number): Promise<RecurringTask[]> {
   const db = await getDb();
   if (!db) return [];
-  if (clientId !== undefined) {
-    return db.select().from(recurringTasks).where(eq(recurringTasks.clientId, clientId));
+  try {
+    if (clientId !== undefined) {
+      return await db.select().from(recurringTasks).where(eq(recurringTasks.clientId, clientId));
+    }
+    return await db.select().from(recurringTasks);
+  } catch (err: any) {
+    if (!isMissingColumn(err)) throw err;
+    const rows = clientId !== undefined
+      ? await db.select(recurringColsSafe).from(recurringTasks).where(eq(recurringTasks.clientId, clientId))
+      : await db.select(recurringColsSafe).from(recurringTasks);
+    return rows.map((r) => ({ ...r, dueDateAdjust: "PROXIMO_DIA_UTIL" as const })) as RecurringTask[];
   }
-  return db.select().from(recurringTasks);
 }
 
 export async function createRecurringTask(data: InsertRecurringTask): Promise<number> {
@@ -506,15 +538,29 @@ export async function resetUserPassword(userId: number, passwordHash: string): P
 export async function listTaskTemplates(activeOnly = true): Promise<TaskTemplate[]> {
   const db = await getDb();
   if (!db) return [];
-  if (activeOnly) return db.select().from(taskTemplates).where(eq(taskTemplates.active, true)).orderBy(taskTemplates.title);
-  return db.select().from(taskTemplates).orderBy(taskTemplates.title);
+  try {
+    if (activeOnly) return await db.select().from(taskTemplates).where(eq(taskTemplates.active, true)).orderBy(taskTemplates.title);
+    return await db.select().from(taskTemplates).orderBy(taskTemplates.title);
+  } catch (err: any) {
+    if (!isMissingColumn(err)) throw err;
+    const rows = activeOnly
+      ? await db.select(templateColsSafe).from(taskTemplates).where(eq(taskTemplates.active, true)).orderBy(taskTemplates.title)
+      : await db.select(templateColsSafe).from(taskTemplates).orderBy(taskTemplates.title);
+    return rows.map((r) => ({ ...r, dueDateAdjust: "PROXIMO_DIA_UTIL" as const })) as TaskTemplate[];
+  }
 }
 
 export async function getTaskTemplateById(id: number): Promise<TaskTemplate | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(taskTemplates).where(eq(taskTemplates.id, id)).limit(1);
-  return result[0];
+  try {
+    const result = await db.select().from(taskTemplates).where(eq(taskTemplates.id, id)).limit(1);
+    return result[0];
+  } catch (err: any) {
+    if (!isMissingColumn(err)) throw err;
+    const result = await db.select(templateColsSafe).from(taskTemplates).where(eq(taskTemplates.id, id)).limit(1);
+    return result[0] ? ({ ...result[0], dueDateAdjust: "PROXIMO_DIA_UTIL" as const } as TaskTemplate) : undefined;
+  }
 }
 
 export async function createTaskTemplate(data: InsertTaskTemplate): Promise<number> {
