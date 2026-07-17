@@ -247,8 +247,8 @@ async function startServer() {
         "ALTER TABLE `task_templates` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
         "ALTER TABLE `recurring_tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
         "ALTER TABLE `tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
-        "ALTER TABLE `task_templates` ADD COLUMN IF NOT EXISTS `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
-        "ALTER TABLE `recurring_tasks` ADD COLUMN IF NOT EXISTS `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
+        "ALTER TABLE `task_templates` ADD COLUMN `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
+        "ALTER TABLE `recurring_tasks` ADD COLUMN `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
       ];
 
       const results: string[] = [];
@@ -561,8 +561,8 @@ async function ensureSchema() {
           "ALTER TABLE `task_templates` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
           "ALTER TABLE `recurring_tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
           "ALTER TABLE `tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
-          "ALTER TABLE `task_templates` ADD COLUMN IF NOT EXISTS `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
-          "ALTER TABLE `recurring_tasks` ADD COLUMN IF NOT EXISTS `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
+          "ALTER TABLE `task_templates` ADD COLUMN `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
+          "ALTER TABLE `recurring_tasks` ADD COLUMN `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
         ];
         for (const s of stmts) {
           try { await conn.query(s); }
