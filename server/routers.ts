@@ -999,18 +999,28 @@ const clientPortalRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito a clientes" });
       }
       const clientTasks = await listTasks({ clientId: ctx.user.clientId });
+
+      // Guias "disparadas": só marcamos o dia no calendário quando a guia já foi
+      // enviada ao cliente (envio bem-sucedido registrado em email_logs). Assim o
+      // cliente não vê um vencimento e cobra uma guia que ainda não saiu.
+      const logs = await listEmailLogs(undefined, ctx.user.clientId);
+      const dispatchedTaskIds = new Set(
+        logs.filter((l) => l.status === "ENVIADO").map((l) => l.taskId)
+      );
+
       // O cliente enxerga o calendário por DATA DE VENCIMENTO (quando pagar),
       // não por competência. Ex.: DAS da competência 07 vence em 08/08 → aparece
       // no calendário de agosto. Mesmo critério do Painel Mensal interno.
       // Também só mostramos o que está marcado como "enviar ao cliente"
-      // (DAS aparece; consultas/rotinas internas não).
+      // (DAS aparece; consultas/rotinas internas não) E cuja guia já foi disparada.
       const monthTasks = clientTasks.filter((t) => {
         const due = new Date(t.dueDate);
         const inMonth =
           due.getUTCMonth() + 1 === input.month && due.getUTCFullYear() === input.year;
         const visible =
           (t as any).sendToClient !== false && (t as any).sendToClient !== 0;
-        return inMonth && visible;
+        const dispatched = dispatchedTaskIds.has(t.id);
+        return inMonth && visible && dispatched;
       });
       return monthTasks.map((t) => ({
         id: t.id,
