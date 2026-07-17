@@ -147,7 +147,7 @@ export default function ClientLoginsPage() {
 
       {/* Create Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader>
             <DialogTitle style={{ color: "#e5e5e5" }}>Criar Acesso ao Portal</DialogTitle>
           </DialogHeader>
@@ -200,7 +200,7 @@ export default function ClientLoginsPage() {
 
       {/* Reset Password Dialog */}
       <Dialog open={!!resetOpen} onOpenChange={() => setResetOpen(null)}>
-        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader>
             <DialogTitle style={{ color: "#e5e5e5" }}>Alterar Senha</DialogTitle>
           </DialogHeader>

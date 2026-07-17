@@ -325,7 +325,7 @@ export default function TaskDetail() {
 
       {/* Upload Dialog */}
       <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader>
             <DialogTitle style={{ color: "#e5e5e5" }}>Upload de Arquivo</DialogTitle>
           </DialogHeader>
@@ -361,7 +361,7 @@ export default function TaskDetail() {
 
       {/* Email Dialog */}
       <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
-        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader>
             <DialogTitle style={{ color: "#e5e5e5" }}>Enviar Guia por E-mail</DialogTitle>
           </DialogHeader>

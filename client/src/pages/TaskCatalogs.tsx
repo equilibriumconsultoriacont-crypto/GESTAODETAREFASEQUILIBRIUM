@@ -217,7 +217,7 @@ export default function TaskCatalogsPage() {
 
       {/* Create catalog dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader>
             <DialogTitle style={{ color: "#e5e5e5" }}>Novo Catálogo</DialogTitle>
           </DialogHeader>
@@ -255,7 +255,7 @@ export default function TaskCatalogsPage() {
 
       {/* Add template to catalog dialog */}
       <Dialog open={addTemplateOpen} onOpenChange={setAddTemplateOpen}>
-        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader>
             <DialogTitle style={{ color: "#e5e5e5" }}>Adicionar Tarefa ao Catálogo</DialogTitle>
           </DialogHeader>

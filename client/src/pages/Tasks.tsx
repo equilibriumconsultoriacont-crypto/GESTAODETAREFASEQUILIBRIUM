@@ -428,7 +428,7 @@ export default function Tasks() {
 
       {/* Dialog Nova Tarefa */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader><DialogTitle style={{ color: "#e5e5e5" }}>Nova Tarefa</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-3 mt-2">
             <div>

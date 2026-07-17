@@ -500,7 +500,7 @@ export default function ClientDetail() {
 
       {/* Gerar tarefas do mês */}
       <Dialog open={genOpen} onOpenChange={setGenOpen}>
-        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader>
             <DialogTitle style={{ color: "#e5e5e5" }}>
               <div className="flex items-center gap-2"><Calendar size={16} style={{ color: "#9fd4dc" }} /> Gerar Tarefas do Mês</div>
@@ -545,7 +545,7 @@ export default function ClientDetail() {
 
       {/* Aplicar Catálogo */}
       <Dialog open={applyCatalogOpen} onOpenChange={setApplyCatalogOpen}>
-        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader><DialogTitle style={{ color: "#e5e5e5" }}>Aplicar Catálogo</DialogTitle></DialogHeader>
           <div className="space-y-2 max-h-80 overflow-y-auto mt-2">
             {catalogs.map((cat) => (
@@ -565,7 +565,7 @@ export default function ClientDetail() {
 
       {/* Adicionar Obrigação */}
       <Dialog open={addTemplateOpen} onOpenChange={setAddTemplateOpen}>
-        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader><DialogTitle style={{ color: "#e5e5e5" }}>Adicionar Obrigação</DialogTitle></DialogHeader>
           <div className="space-y-2 mt-2 max-h-96 overflow-y-auto">
             {availableTemplates.length === 0 ? (
@@ -590,7 +590,7 @@ export default function ClientDetail() {
 
       {/* Upload de arquivo */}
       <Dialog open={uploadDialogOpen} onOpenChange={(open) => { setUploadDialogOpen(open); if (!open) setSelectedFile(null); }}>
-        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader>
             <DialogTitle style={{ color: "#e5e5e5" }}>
               Anexar Arquivo
@@ -657,7 +657,7 @@ export default function ClientDetail() {
 
       {/* Enviar por e-mail */}
       <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
-        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader>
             <DialogTitle style={{ color: "#e5e5e5" }}>
               Enviar por E-mail

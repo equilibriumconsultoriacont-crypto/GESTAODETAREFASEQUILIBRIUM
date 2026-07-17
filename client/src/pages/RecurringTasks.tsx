@@ -186,7 +186,7 @@ export default function RecurringTasksPage() {
 
       {/* Create Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader>
             <DialogTitle style={{ color: "#e5e5e5" }}>Nova Tarefa Recorrente</DialogTitle>
           </DialogHeader>
@@ -251,7 +251,7 @@ export default function RecurringTasksPage() {
 
       {/* Generate Dialog */}
       <Dialog open={generateDialogOpen} onOpenChange={setGenerateDialogOpen}>
-        <DialogContent style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ background: "#111", borderColor: "#1e4f5c", color: "#e5e5e5" }}>
           <DialogHeader>
             <DialogTitle style={{ color: "#e5e5e5" }}>Gerar Tarefas do Mês</DialogTitle>
           </DialogHeader>
