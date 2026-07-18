@@ -597,6 +597,41 @@ async function ensureSchema() {
         } catch (e: any) { console.warn("[Migração seed] ", e?.message?.slice(0, 140)); }
       }
       if (seeded > 0) console.log(`[Migração] ${seeded} imposto(s) cadastrado(s) como Tarefa Base.`);
+
+      // ── Acesso automático de clientes ──────────────────────────────────────
+      // Coluna que marca "trocar senha no primeiro login".
+      try {
+        const [ur]: any = await conn.query(
+          "SELECT COUNT(*) as cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'mustChangePassword'"
+        );
+        if (Number(ur?.[0]?.cnt ?? 0) === 0) {
+          await conn.query("ALTER TABLE `users` ADD COLUMN `mustChangePassword` boolean NOT NULL DEFAULT false");
+          console.log("[Migração] Coluna users.mustChangePassword criada.");
+        }
+      } catch (e: any) { console.warn("[Migração users col] ", e?.message?.slice(0, 140)); }
+
+      // Backfill: todo cliente ativo com email que ainda não tem acesso ganha um
+      // usuário pendente (senha inicial 123456, troca obrigatória no 1º login).
+      try {
+        const bcryptjs = (await import("bcryptjs")).default;
+        const [clientRows]: any = await conn.query(
+          "SELECT id, email FROM clients WHERE email IS NOT NULL AND email <> '' AND active = true"
+        );
+        let createdUsers = 0;
+        let defaultHash: string | null = null;
+        for (const c of clientRows) {
+          const email = String(c.email).trim().toLowerCase();
+          const [ux]: any = await conn.query("SELECT COUNT(*) as cnt FROM users WHERE email = ?", [email]);
+          if (Number(ux?.[0]?.cnt ?? 0) > 0) continue;
+          if (!defaultHash) defaultHash = await bcryptjs.hash("123456", 10);
+          await conn.query(
+            "INSERT INTO users (email, name, passwordHash, role, clientId, mustChangePassword, loginMethod, lastSignedIn) VALUES (?, ?, ?, 'client', ?, true, 'local', NOW())",
+            [email, email, defaultHash, c.id]
+          );
+          createdUsers++;
+        }
+        if (createdUsers > 0) console.log(`[Migração] ${createdUsers} acesso(s) de cliente criado(s) automaticamente.`);
+      } catch (e: any) { console.warn("[Migração backfill acessos] ", e?.message?.slice(0, 140)); }
     } finally {
       await conn.end();
     }

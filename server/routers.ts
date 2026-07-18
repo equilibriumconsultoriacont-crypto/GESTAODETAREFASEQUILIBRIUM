@@ -18,6 +18,7 @@ import {
   listTaskCatalogs,
   updateTaskCatalog,
   createClient,
+  createPendingClientUser,
   createEmailLog,
   createRecurringTask,
   createTask,
@@ -80,6 +81,15 @@ const clientsRouter = router({
     )
     .mutation(async ({ input }) => {
       const id = await createClient({ ...input, email: input.email.trim().toLowerCase(), active: true });
+      // Cria automaticamente o acesso do cliente (senha inicial 123456, troca no 1º login).
+      try {
+        const email = input.email.trim().toLowerCase();
+        const existing = await getUserByEmail(email);
+        if (!existing) {
+          const passwordHash = await bcryptjs.hash("123456", 10);
+          await createPendingClientUser(email, passwordHash, id);
+        }
+      } catch { /* não bloqueia a criação do cliente */ }
       return { id };
     }),
 
@@ -101,6 +111,15 @@ const clientsRouter = router({
       const { id, ...data } = input;
       if (data.email) data.email = data.email.trim().toLowerCase();
       await updateClient(id, data);
+      if (data.email) {
+        try {
+          const existing = await getUserByEmail(data.email);
+          if (!existing) {
+            const passwordHash = await bcryptjs.hash("123456", 10);
+            await createPendingClientUser(data.email, passwordHash, id);
+          }
+        } catch { /* ignore */ }
+      }
       return { success: true };
     }),
 });
@@ -1523,6 +1542,20 @@ export const appRouter = router({
           maxAge: SESSION_DURATION_MS,
         });
         return { success: true, user, role: user.role, clientId: (user as any).clientId };
+      }),
+    // Cliente define a própria senha no primeiro acesso (limpa mustChangePassword)
+    setInitialPassword: protectedProcedure
+      .input(z.object({ newPassword: z.string().min(6) }))
+      .mutation(async ({ input, ctx }) => {
+        const passwordHash = await bcryptjs.hash(input.newPassword, 10);
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { users: usersTable } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        await db.update(usersTable)
+          .set({ passwordHash, mustChangePassword: false })
+          .where(eq(usersTable.id, ctx.user.id));
+        return { success: true };
       }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);

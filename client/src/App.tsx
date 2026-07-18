@@ -17,6 +17,7 @@ import ClientLoginsPage from "./pages/ClientLogins";
 import ResetPassword from "./pages/ResetPassword";
 import Login from "./pages/Login";
 import ClientPortal from "./pages/ClientPortal";
+import SetInitialPassword from "./pages/SetInitialPassword";
 import { useAuth } from "./_core/hooks/useAuth";
 import TaskCatalogsPage from "./pages/TaskCatalogs";
 import PendingSendsPage from "./pages/PendingSends";
@@ -53,6 +54,10 @@ function Router() {
   }
 
   if ((user as any).role === "client") {
+    // Primeiro acesso: obriga a definir a própria senha antes de ver o portal
+    if ((user as any).mustChangePassword) {
+      return <SetInitialPassword />;
+    }
     return (
       <Switch>
         <Route path="/" component={ClientPortal} />

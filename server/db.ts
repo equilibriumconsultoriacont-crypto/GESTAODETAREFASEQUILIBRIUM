@@ -129,16 +129,45 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 export async function getUserById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
-  return result[0] ?? undefined;
+  try {
+    const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return result[0] ?? undefined;
+  } catch (err: any) {
+    if (!isMissingColumn(err)) throw err;
+    const result = await db.select(userColsSafe).from(users).where(eq(users.id, id)).limit(1);
+    return result[0] ? ({ ...result[0], mustChangePassword: false } as any) : undefined;
+  }
 }
 
 export async function getUserByEmail(email: string) {
   const db = await getDb();
   if (!db) return undefined;
   const normalized = email.trim().toLowerCase();
-  const result = await db.select().from(users).where(eq(users.email, normalized)).limit(1);
-  return result[0] ?? undefined;
+  try {
+    const result = await db.select().from(users).where(eq(users.email, normalized)).limit(1);
+    return result[0] ?? undefined;
+  } catch (err: any) {
+    if (!isMissingColumn(err)) throw err;
+    const result = await db.select(userColsSafe).from(users).where(eq(users.email, normalized)).limit(1);
+    return result[0] ? ({ ...result[0], mustChangePassword: false } as any) : undefined;
+  }
+}
+
+// Cria o acesso (usuário) de um cliente com senha inicial padrão e a marca de
+// "trocar senha no primeiro login". Não sobrescreve usuário existente.
+export async function createPendingClientUser(email: string, passwordHash: string, clientId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(users).values({
+    email: email.trim().toLowerCase(),
+    name: email.trim().toLowerCase(),
+    passwordHash,
+    role: "client",
+    clientId,
+    mustChangePassword: true,
+    loginMethod: "local",
+    lastSignedIn: new Date(),
+  } as any);
 }
 
 export async function getUserByOpenId(openId: string) {
@@ -193,6 +222,12 @@ const recurringColsSafe = {
   periodicity: recurringTasks.periodicity, competenciaOffset: recurringTasks.competenciaOffset,
   annualMonth: recurringTasks.annualMonth, sendToClient: recurringTasks.sendToClient,
   active: recurringTasks.active, createdAt: recurringTasks.createdAt, updatedAt: recurringTasks.updatedAt,
+};
+const userColsSafe = {
+  id: users.id, openId: users.openId, name: users.name, email: users.email,
+  passwordHash: users.passwordHash, loginMethod: users.loginMethod, role: users.role,
+  clientId: users.clientId, createdAt: users.createdAt, updatedAt: users.updatedAt,
+  lastSignedIn: users.lastSignedIn,
 };
 const templateColsSafe = {
   id: taskTemplates.id, title: taskTemplates.title, description: taskTemplates.description,

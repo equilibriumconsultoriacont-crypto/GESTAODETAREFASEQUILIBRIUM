@@ -18,6 +18,9 @@ export const users = mysqlTable("users", {
   loginMethod: varchar("loginMethod", { length: 64 }).default("local").notNull(),
   role: mysqlEnum("role", ["user", "admin", "client"]).default("user").notNull(),
   clientId: int("clientId"), // preenchido quando role = "client"
+  // Acesso do cliente criado automaticamente com senha padrão; obriga a definir
+  // a própria senha no primeiro login.
+  mustChangePassword: boolean("mustChangePassword").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
