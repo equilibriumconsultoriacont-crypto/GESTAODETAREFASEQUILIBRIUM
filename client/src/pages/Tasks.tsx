@@ -11,7 +11,7 @@ import { Fragment, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 
-const TYPE_OPTIONS = ["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"];
+const TYPE_OPTIONS = ["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN", "PGDAS"];
 const DEPT_OPTIONS = [
   { value: "ALL", label: "Todos os departamentos" },
   { value: "FISCAL", label: "Fiscal" }, { value: "CONTABIL", label: "Contábil" },

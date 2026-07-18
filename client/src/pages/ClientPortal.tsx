@@ -230,9 +230,46 @@ function FinancialsView({ month, year, previewClientId }: { month: number; year:
 
   const taxes = data?.taxes ?? [];
   const totalImpostos = taxes.reduce((s: number, t: any) => s + (Number(t.valor) || 0), 0);
+  const revenueNum = Number(data?.revenue) || 0;
+  const impostoNum = Number((data as any)?.imposto) || totalImpostos;
+  const aliquotaPct = revenueNum > 0 ? (impostoNum / revenueNum) * 100 : 0;
+  const aliquotaStr = revenueNum > 0 ? `${aliquotaPct.toFixed(2).replace(".", ",")}%` : "—";
+  const impostoBarPct = revenueNum > 0 ? Math.min(100, aliquotaPct) : 0;
 
   return (
     <div className="px-2 pb-6 space-y-4">
+      {/* Resumo / gráfico do mês */}
+      <div className="rounded-2xl p-4" style={{ background: "#111", border: "1px solid #1e4f5c" }}>
+        <p className="text-xs mb-3" style={{ color: "#9fd4dc" }}>Resumo do mês</p>
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <div>
+            <p className="text-xs" style={{ color: "#52525b" }}>Faturamento</p>
+            <p className="text-sm font-bold" style={{ color: "#86efac" }}>{fmt(data?.revenue)}</p>
+          </div>
+          <div>
+            <p className="text-xs" style={{ color: "#52525b" }}>Imposto</p>
+            <p className="text-sm font-bold" style={{ color: "#fca5a5" }}>{fmt(impostoNum ? String(impostoNum) : null)}</p>
+          </div>
+          <div>
+            <p className="text-xs" style={{ color: "#52525b" }}>Alíquota efetiva</p>
+            <p className="text-sm font-bold" style={{ color: "#e5e5e5" }}>{aliquotaStr}</p>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div>
+            <div className="flex justify-between text-xs mb-1" style={{ color: "#a1a1aa" }}><span>Faturamento</span><span>{fmt(data?.revenue)}</span></div>
+            <div style={{ height: 8, borderRadius: 4, background: revenueNum > 0 ? "#86efac" : "#1a1a1a", width: "100%" }} />
+          </div>
+          <div>
+            <div className="flex justify-between text-xs mb-1" style={{ color: "#a1a1aa" }}><span>Imposto</span><span>{fmt(impostoNum ? String(impostoNum) : null)}</span></div>
+            <div style={{ height: 8, borderRadius: 4, background: "#fca5a5", width: `${impostoBarPct}%` }} />
+          </div>
+        </div>
+        {revenueNum === 0 && (
+          <p className="text-xs mt-3" style={{ color: "#52525b" }}>Suba o PGDAS no Upload Inteligente (ou lance o faturamento) para ver o resumo.</p>
+        )}
+      </div>
+
       {/* Faturamento */}
       <div className="rounded-2xl p-4" style={{ background: "#111", border: "1px solid #1e4f5c" }}>
         <p className="text-xs" style={{ color: "#9fd4dc" }}>Faturamento do mês</p>

@@ -21,6 +21,7 @@ const TYPE_OPTIONS = [
   { value: "COFINS", label: "COFINS — regime normal" },
   { value: "ICMS", label: "ICMS — regime normal" },
   { value: "ISSQN", label: "ISSQN — Rio Claro" },
+  { value: "PGDAS", label: "PGDAS — Declaração Simples" },
 ];
 
 const emptyForm = {

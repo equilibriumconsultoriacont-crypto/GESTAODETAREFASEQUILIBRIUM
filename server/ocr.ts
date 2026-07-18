@@ -14,6 +14,9 @@ export interface DocumentRecognition {
   valorPrincipal?: string;
   codigoBarras?: string;
   dataVencimento?: string;
+  receitaBruta?: string;      // PGDAS: faturamento do mês (numérico, ex '6000.00')
+  impostoDeclarado?: string;  // PGDAS: total do débito declarado
+  recalculado?: boolean;      // DAS pago em atraso (principal != total, com multa/juros)
   confidence: number; // 0-100
   extractedText?: string;
 }
@@ -84,6 +87,23 @@ interface DocTemplate {
 }
 
 const DOCUMENT_TEMPLATES: DocTemplate[] = [
+  // ── PGDAS Declaração do Simples Nacional (declaratório) ──────────────────────
+  // Precisa vir ANTES do DAS: a declaração também contém "Simples Nacional".
+  {
+    name: "PGDAS Declaração Simples",
+    documentType: "PGDAS",
+    identifiers: [
+      /Declarat[óo]rio/i,
+      /Programa Gerador do Documento/i,
+      /Discriminativo de Receitas/i,
+    ],
+    extractors: {
+      cnpj: /(\d{2}[\.\s]?\d{3}[\.\s]?\d{3}[\/\s]?\d{4}[\-\s]?\d{2})/,
+      competencia: /Per[íi]odo\s+de\s+Apura[çc][aã]o[:\s]*\d{2}\/(0[1-9]|1[0-2])\/(20\d{2})/i,
+    },
+    baseConfidence: 92,
+  },
+
   // ── DAS Simples Nacional ────────────────────────────────────────────────────
   {
     name: "DAS Simples Nacional",
@@ -283,6 +303,9 @@ export async function recognizeDocument(
       // Prioridade 1: nome do mês por extenso (ex: "Abril/2026") — mais confiável
       const extMatch = text.match(/(Janeiro|Fevereiro|Mar[çc]o|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro)[\/\s]*(20\d{2})/i);
       if (extMatch) return normalizeCompetencia(extMatch[0]);
+      // Prioridade 1.5: "Período de Apuração: DD/MM/YYYY" (PGDAS) — mês é o do meio
+      const periodoDDMM = text.match(/Per[íi]odo\s+de\s+Apura[çc][aã]o[:\s]*\d{2}\/(0[1-9]|1[0-2])\/(20\d{2})/i);
+      if (periodoDDMM) return `${periodoDDMM[1]}/${periodoDDMM[2]}`;
       // Prioridade 2: "Período de Apuração" seguido de data numérica
       const periodoMatch = text.match(/Per[íi]odo\s+de\s+Apura[çc][aã]o[^0-9]*(0[1-9]|1[0-2])[\/\-](20\d{2})/i);
       if (periodoMatch) return `${periodoMatch[1]}/${periodoMatch[2]}`;
@@ -299,6 +322,22 @@ export async function recognizeDocument(
     if (!valorMatch)               confidence -= 5;  // sem valor (menos crítico)
     confidence = Math.max(0, Math.min(100, confidence));
 
+    const brl = (s?: string) => (s ? s.replace(/\./g, "").replace(",", ".") : undefined);
+    // PGDAS: faturamento + imposto declarado (resumo 2.6: "6.000,00 360,00")
+    let receitaBruta: string | undefined, impostoDeclarado: string | undefined;
+    if (docType === "PGDAS") {
+      const sum = text.match(/Receita Bruta Auferida[\s\S]*?gina\s*1\s+([\d.]+,\d{2})\s+([\d.]+,\d{2})/i);
+      const rpa = text.match(/Receita Bruta do PA[^\d]*?RPA[^\d]*?([\d.]+,\d{2})/i);
+      receitaBruta = brl(sum?.[1] ?? rpa?.[1]);
+      impostoDeclarado = brl(sum?.[2]);
+    }
+    // DAS recalculado: linha "Totais" com principal != total (multa/juros somados)
+    let recalculado = false;
+    if (docType === "DAS" || docType === "DAS_MEI") {
+      const tot = text.match(/Totais\s+([\d.]+,\d{2})\s+[\d.]+,\d{2}\s+[\d.]+,\d{2}\s+([\d.]+,\d{2})/i);
+      if (tot && tot[1] !== tot[2]) recalculado = true;
+    }
+
     return {
       documentType: docType,
       cnpj: cnpjDigits ? formatCnpj(cnpjDigits) : undefined,
@@ -307,6 +346,9 @@ export async function recognizeDocument(
       valorPrincipal: valorMatch?.[1]?.replace(/\./g, "").replace(",", "."),
       codigoBarras: cbMatch?.[0]?.replace(/\s/g, ""),
       dataVencimento: vencMatch?.[1],
+      receitaBruta,
+      impostoDeclarado,
+      recalculado,
       confidence,
       extractedText: text.slice(0, 500),
     };

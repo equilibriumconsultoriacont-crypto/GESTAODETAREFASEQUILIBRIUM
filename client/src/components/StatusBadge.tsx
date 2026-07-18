@@ -7,7 +7,7 @@ export type TaskStatus =
   | "CANCELADA"
   | "VENCIDA";
 
-export type TaskType = "DAS" | "NFS" | "DCTF" | "SPED" | "OUTROS" | "PIS" | "COFINS" | "ICMS" | "ISSQN";
+export type TaskType = "DAS" | "NFS" | "DCTF" | "SPED" | "OUTROS" | "PIS" | "COFINS" | "ICMS" | "ISSQN" | "PGDAS";
 export type Department = "FISCAL" | "CONTABIL" | "DP" | "SOCIETARIO" | "FINANCEIRO" | "GERAL";
 export type Priority = "BAIXA" | "NORMAL" | "ALTA" | "URGENTE";
 
@@ -47,6 +47,7 @@ const typeConfig: Record<TaskType, { bg: string; color: string; border: string }
   COFINS: { bg: "rgba(234,88,12,0.15)",  color: "#fdba74", border: "rgba(234,88,12,0.3)"   },
   ICMS:   { bg: "rgba(34,197,94,0.15)",  color: "#86efac", border: "rgba(34,197,94,0.3)"   },
   ISSQN:  { bg: "rgba(14,165,233,0.15)", color: "#7dd3fc", border: "rgba(14,165,233,0.3)"  },
+  PGDAS:  { bg: "rgba(168,85,247,0.15)", color: "#d8b4fe", border: "rgba(168,85,247,0.3)"  },
 };
 
 type BadgeStyle = { label: string; bg: string; color: string; border: string; emoji: string };

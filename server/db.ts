@@ -1368,26 +1368,31 @@ export async function deleteProposal(id: number) {
 
 
 // ─── Faturamento do cliente ───────────────────────────────────────────────────
-export async function getClientRevenue(clientId: number, year: number, month: number): Promise<string | null> {
+export async function getClientRevenue(clientId: number, year: number, month: number): Promise<{ valor: string; imposto: string | null } | null> {
   const db = await getDb();
   if (!db) return null;
   try {
     const rows = await db.select().from(clientRevenue)
       .where(and(eq(clientRevenue.clientId, clientId), eq(clientRevenue.year, year), eq(clientRevenue.month, month)))
       .limit(1);
-    return rows[0]?.valor ?? null;
+    if (!rows[0]) return null;
+    return { valor: rows[0].valor, imposto: (rows[0] as any).imposto ?? null };
   } catch { return null; }
 }
 
-export async function upsertClientRevenue(clientId: number, year: number, month: number, valor: string): Promise<void> {
+// valor = faturamento; imposto = opcional (preenchido pelo PGDAS). Se imposto
+// vier undefined num update, mantém o valor já gravado.
+export async function upsertClientRevenue(clientId: number, year: number, month: number, valor: string, imposto?: string): Promise<void> {
   const db = await getDb();
   if (!db) return;
   const existing = await db.select().from(clientRevenue)
     .where(and(eq(clientRevenue.clientId, clientId), eq(clientRevenue.year, year), eq(clientRevenue.month, month)))
     .limit(1);
   if (existing[0]) {
-    await db.update(clientRevenue).set({ valor }).where(eq(clientRevenue.id, existing[0].id));
+    const set: any = { valor };
+    if (imposto !== undefined) set.imposto = imposto;
+    await db.update(clientRevenue).set(set).where(eq(clientRevenue.id, existing[0].id));
   } else {
-    await db.insert(clientRevenue).values({ clientId, year, month, valor });
+    await db.insert(clientRevenue).values({ clientId, year, month, valor, imposto } as any);
   }
 }

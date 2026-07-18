@@ -138,7 +138,7 @@ const recurringTasksRouter = router({
         clientId: z.number(),
         title: z.string().min(2),
         description: z.string().optional(),
-        taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]),
+        taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN", "PGDAS"]),
         dueDayOfMonth: z.number().min(1).max(31),
       })
     )
@@ -160,7 +160,7 @@ const recurringTasksRouter = router({
         id: z.number(),
         title: z.string().optional(),
         description: z.string().optional(),
-        taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]).optional(),
+        taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN", "PGDAS"]).optional(),
         dueDayOfMonth: z.number().min(1).max(31).optional(),
         active: z.boolean().optional(),
       })
@@ -229,7 +229,7 @@ const tasksRouter = router({
         recurringTaskId: z.number().optional(),
         title: z.string().min(2),
         description: z.string().optional(),
-        taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]),
+        taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN", "PGDAS"]),
         competencia: z.string().regex(/^\d{2}\/\d{4}$/),
         dueDate: z.string(),
         notes: z.string().optional(),
@@ -645,7 +645,7 @@ const smartUploadRouter = router({
       const recognition = await recognizeDocument(url, input.mimeType || "application/pdf", input.base64);
 
       // 3. Validar tipo de documento
-      const supportedTypes = ["DAS", "DAS_MEI", "NFS", "DCTF", "SPED", "OUTROS"];
+      const supportedTypes = ["DAS", "DAS_MEI", "NFS", "DCTF", "SPED", "OUTROS", "PGDAS"];
       if (!supportedTypes.includes(recognition.documentType)) {
         return {
           success: false,
@@ -687,6 +687,37 @@ const smartUploadRouter = router({
         return {
           success: false,
           error: "Não foi possível extrair a competência do documento.",
+          recognition,
+          clientFound: { id: matchedClient.id, name: matchedClient.name },
+        };
+      }
+
+      // PGDAS (declaração do Simples): alimenta o faturamento + imposto do cliente
+      // na aba "Faturamento e Imposto". Não exige uma tarefa específica; se houver
+      // uma tarefa PGDAS da competência, anexa o arquivo e grava o valor nela.
+      if (recognition.documentType === "PGDAS") {
+        const [pmm, pyyyy] = recognition.competencia.split("/").map(Number);
+        if (recognition.receitaBruta) {
+          await upsertClientRevenue(matchedClient.id, pyyyy, pmm, recognition.receitaBruta, recognition.impostoDeclarado);
+        }
+        const clientTasksP = await listTasks({ clientId: matchedClient.id });
+        const pgdasTask = clientTasksP.find(
+          (t) => t.competencia === recognition.competencia && t.taskType === "PGDAS"
+        );
+        if (pgdasTask) {
+          const key = `tasks/${pgdasTask.id}/${Date.now()}-${input.filename}`;
+          const { url } = await storagePut(key, buffer, input.mimeType || "application/pdf");
+          await createTaskFile({
+            taskId: pgdasTask.id, clientId: matchedClient.id, filename: input.filename,
+            fileKey: key, fileUrl: url, mimeType: input.mimeType, fileSize: buffer.length, uploadedBy: ctx.user?.id,
+          });
+          if ((pgdasTask as any).valor == null && recognition.impostoDeclarado) {
+            await updateTask(pgdasTask.id, { valor: recognition.impostoDeclarado } as any);
+          }
+        }
+        return {
+          success: true,
+          message: `PGDAS de ${matchedClient.name}: faturamento R$ ${recognition.receitaBruta ?? "?"} e imposto R$ ${recognition.impostoDeclarado ?? "?"} registrados na competência ${recognition.competencia}.`,
           recognition,
           clientFound: { id: matchedClient.id, name: matchedClient.name },
         };
@@ -906,7 +937,7 @@ const taskTemplatesRouter = router({
     .input(z.object({
       title: z.string().min(2),
       description: z.string().optional(),
-      taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]),
+      taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN", "PGDAS"]),
       dueDayOfMonth: z.number().min(1).max(31),
       ocrKeywords: z.string().optional(),
       department: z.string().optional(),
@@ -926,7 +957,7 @@ const taskTemplatesRouter = router({
       id: z.number(),
       title: z.string().optional(),
       description: z.string().optional(),
-      taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]).optional(),
+      taskType: z.enum(["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN", "PGDAS"]).optional(),
       dueDayOfMonth: z.number().min(1).max(31).optional(),
       ocrKeywords: z.string().optional(),
       department: z.string().optional(),
@@ -1128,8 +1159,8 @@ const clientPortalRouter = router({
           return inMonth && visible && dispatched.has(t.id);
         })
         .map((t) => ({ id: t.id, title: t.title, taskType: t.taskType, valor: (t as any).valor ?? null, dueDate: t.dueDate }));
-      const revenue = await getClientRevenue(clientId, input.year, input.month);
-      return { taxes, revenue };
+      const rev = await getClientRevenue(clientId, input.year, input.month);
+      return { taxes, revenue: rev?.valor ?? null, imposto: rev?.imposto ?? null };
     }),
 
   // Lançar/editar faturamento do mês (somente equipe interna, via pré-visualização)

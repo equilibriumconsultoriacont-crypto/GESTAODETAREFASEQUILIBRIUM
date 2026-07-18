@@ -244,9 +244,9 @@ async function startServer() {
         "CREATE TABLE IF NOT EXISTS `user_modules` (`id` int AUTO_INCREMENT NOT NULL, `userId` int NOT NULL, `module` varchar(40) NOT NULL, `level` varchar(40) NOT NULL DEFAULT 'colaborador', `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `user_modules_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `proposals` (`id` int AUTO_INCREMENT NOT NULL, `ownerId` int NOT NULL, `title` varchar(255) NOT NULL, `clientName` varchar(255), `data` text NOT NULL, `status` enum('RASCUNHO','ENVIADA','ACEITA','RECUSADA') NOT NULL DEFAULT 'RASCUNHO', `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `proposals_id` PRIMARY KEY(`id`))",
         // Impostos de regime normal: amplia os tipos e adiciona a regra de dia útil por obrigação
-        "ALTER TABLE `task_templates` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
-        "ALTER TABLE `recurring_tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
-        "ALTER TABLE `tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
+        "ALTER TABLE `task_templates` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN','PGDAS') NOT NULL",
+        "ALTER TABLE `recurring_tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN','PGDAS') NOT NULL",
+        "ALTER TABLE `tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN','PGDAS') NOT NULL",
         "ALTER TABLE `task_templates` ADD COLUMN `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
         "ALTER TABLE `recurring_tasks` ADD COLUMN `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
       ];
@@ -558,9 +558,9 @@ async function ensureSchema() {
       if (!hasColumn) {
         console.log("[Migração] Aplicando schema de impostos (enum taskType + dueDateAdjust)...");
         const stmts = [
-          "ALTER TABLE `task_templates` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
-          "ALTER TABLE `recurring_tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
-          "ALTER TABLE `tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN') NOT NULL",
+          "ALTER TABLE `task_templates` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN','PGDAS') NOT NULL",
+          "ALTER TABLE `recurring_tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN','PGDAS') NOT NULL",
+          "ALTER TABLE `tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN','PGDAS') NOT NULL",
           "ALTER TABLE `task_templates` ADD COLUMN `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
           "ALTER TABLE `recurring_tasks` ADD COLUMN `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
         ];
@@ -643,9 +643,45 @@ async function ensureSchema() {
           console.log("[Migração] Coluna tasks.valor criada.");
         }
         await conn.query(
-          "CREATE TABLE IF NOT EXISTS `client_revenue` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `year` int NOT NULL, `month` int NOT NULL, `valor` varchar(20) NOT NULL, `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `client_revenue_id` PRIMARY KEY(`id`))"
+          "CREATE TABLE IF NOT EXISTS `client_revenue` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `year` int NOT NULL, `month` int NOT NULL, `valor` varchar(20) NOT NULL, `imposto` varchar(20), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `client_revenue_id` PRIMARY KEY(`id`))"
         );
       } catch (e: any) { console.warn("[Migração faturamento] ", e?.message?.slice(0, 140)); }
+
+      // ── PGDAS: enum + coluna imposto + template ────────────────────────────
+      try {
+        const [et]: any = await conn.query(
+          "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'task_templates' AND COLUMN_NAME = 'taskType'"
+        );
+        if (!String(et?.[0]?.COLUMN_TYPE ?? "").includes("PGDAS")) {
+          for (const tbl of ["task_templates", "recurring_tasks", "tasks"]) {
+            await conn.query(
+              "ALTER TABLE `" + tbl + "` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN','PGDAS') NOT NULL"
+            );
+          }
+          console.log("[Migração] taskType enum atualizado com PGDAS.");
+        }
+      } catch (e: any) { console.warn("[Migração enum PGDAS] ", e?.message?.slice(0, 140)); }
+
+      try {
+        const [ic]: any = await conn.query(
+          "SELECT COUNT(*) as cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'client_revenue' AND COLUMN_NAME = 'imposto'"
+        );
+        if (Number(ic?.[0]?.cnt ?? 0) === 0) {
+          await conn.query("ALTER TABLE `client_revenue` ADD COLUMN `imposto` varchar(20)");
+        }
+      } catch (e: any) { console.warn("[Migração imposto col] ", e?.message?.slice(0, 140)); }
+
+      try {
+        const t = "Declaração do Simples Nacional (PGDAS)";
+        const [px]: any = await conn.query("SELECT COUNT(*) as cnt FROM task_templates WHERE title = ?", [t]);
+        if (Number(px?.[0]?.cnt ?? 0) === 0) {
+          await conn.query(
+            "INSERT INTO task_templates (title, description, taskType, dueDayOfMonth, periodicity, competenciaOffset, sendToClient, dueDateAdjust, department, active) VALUES (?, ?, 'PGDAS', 20, 'MENSAL', 1, false, 'PROXIMO_DIA_UTIL', 'Fiscal', true)",
+            [t, "Declaração mensal do Simples (PGDAS-D). Ao subir o PDF no Upload Inteligente, alimenta o faturamento e o imposto do cliente na aba Faturamento e Imposto."]
+          );
+          console.log("[Migração] Template PGDAS cadastrado.");
+        }
+      } catch (e: any) { console.warn("[Migração PGDAS seed] ", e?.message?.slice(0, 140)); }
     } finally {
       await conn.end();
     }

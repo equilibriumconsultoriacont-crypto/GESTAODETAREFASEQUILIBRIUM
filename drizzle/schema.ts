@@ -78,7 +78,7 @@ export const taskTemplates = mysqlTable("task_templates", {
   id: int("id").autoincrement().primaryKey(),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
-  taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]).notNull(),
+  taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN", "PGDAS"]).notNull(),
   dueDayOfMonth: int("dueDayOfMonth").notNull(), // dia do mês que vence
   // Periodicidade da obrigação: MENSAL, TRIMESTRAL ou ANUAL
   periodicity: mysqlEnum("periodicity", ["MENSAL", "TRIMESTRAL", "ANUAL"]).default("MENSAL").notNull(),
@@ -122,7 +122,7 @@ export const recurringTasks = mysqlTable("recurring_tasks", {
   taskTemplateId: int("taskTemplateId"), // referência ao template global (opcional)
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
-  taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]).notNull(),
+  taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN", "PGDAS"]).notNull(),
   department: varchar("department", { length: 100 }).default("Geral").notNull(),
   dueDayOfMonth: int("dueDayOfMonth").notNull(), // dia do mês que vence
   periodicity: mysqlEnum("periodicity", ["MENSAL", "TRIMESTRAL", "ANUAL"]).default("MENSAL").notNull(),
@@ -145,7 +145,7 @@ export const tasks = mysqlTable("tasks", {
   recurringTaskId: int("recurringTaskId"),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
-  taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN"]).notNull(),
+  taskType: mysqlEnum("taskType", ["DAS", "NFS", "DCTF", "SPED", "OUTROS", "PIS", "COFINS", "ICMS", "ISSQN", "PGDAS"]).notNull(),
   competencia: varchar("competencia", { length: 7 }).notNull(), // MM/YYYY
   dueDate: timestamp("dueDate").notNull(),
   status: mysqlEnum("status", [
@@ -230,7 +230,8 @@ export const clientRevenue = mysqlTable("client_revenue", {
   clientId: int("clientId").notNull(),
   year: int("year").notNull(),
   month: int("month").notNull(),
-  valor: varchar("valor", { length: 20 }).notNull(), // ex "12345.67"
+  valor: varchar("valor", { length: 20 }).notNull(), // faturamento, ex "12345.67"
+  imposto: varchar("imposto", { length: 20 }), // imposto declarado no PGDAS
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type ClientRevenue = typeof clientRevenue.$inferSelect;
