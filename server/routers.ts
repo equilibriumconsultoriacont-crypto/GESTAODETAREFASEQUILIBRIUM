@@ -1009,20 +1009,31 @@ const monthlyPanelRouter = router({
 
 // ─── Client Portal Router ─────────────────────────────────────────────────────
 // Interface exclusiva para clientes — acesso somente às próprias guias
+// Resolve de qual cliente é o portal: o próprio (role client) ou, para equipe
+// interna (admin/user), o cliente informado em previewClientId (pré-visualização).
+function resolvePortalClientId(ctx: any, previewClientId?: number): number {
+  if (ctx.user.role === "client") {
+    if (!ctx.user.clientId) throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito a clientes" });
+    return ctx.user.clientId;
+  }
+  if ((ctx.user.role === "admin" || ctx.user.role === "user") && previewClientId) {
+    return previewClientId;
+  }
+  throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito" });
+}
+
 const clientPortalRouter = router({
   // Dados do calendário: tarefas do cliente logado agrupadas por mês
   calendar: protectedProcedure
-    .input(z.object({ month: z.number().min(1).max(12), year: z.number().min(2020) }))
+    .input(z.object({ month: z.number().min(1).max(12), year: z.number().min(2020), previewClientId: z.number().optional() }))
     .query(async ({ input, ctx }) => {
-      if (ctx.user.role !== "client" || !ctx.user.clientId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito a clientes" });
-      }
-      const clientTasks = await listTasks({ clientId: ctx.user.clientId });
+      const clientId = resolvePortalClientId(ctx, input.previewClientId);
+      const clientTasks = await listTasks({ clientId });
 
       // Guias "disparadas": só marcamos o dia no calendário quando a guia já foi
       // enviada ao cliente (envio bem-sucedido registrado em email_logs). Assim o
       // cliente não vê um vencimento e cobra uma guia que ainda não saiu.
-      const logs = await listEmailLogs(undefined, ctx.user.clientId);
+      const logs = await listEmailLogs(undefined, clientId);
       const dispatchedTaskIds = new Set(
         logs.filter((l) => l.status === "ENVIADO").map((l) => l.taskId)
       );
@@ -1053,13 +1064,11 @@ const clientPortalRouter = router({
 
   // Arquivos de uma tarefa específica (somente do cliente logado)
   taskFiles: protectedProcedure
-    .input(z.object({ taskId: z.number() }))
+    .input(z.object({ taskId: z.number(), previewClientId: z.number().optional() }))
     .query(async ({ input, ctx }) => {
-      if (ctx.user.role !== "client" || !ctx.user.clientId) {
-        throw new TRPCError({ code: "FORBIDDEN" });
-      }
+      const clientId = resolvePortalClientId(ctx, input.previewClientId);
       const task = await getTaskById(input.taskId);
-      if (!task || task.clientId !== ctx.user.clientId) {
+      if (!task || task.clientId !== clientId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Tarefa não pertence a este cliente" });
       }
       return listTaskFiles(input.taskId);
@@ -1067,13 +1076,11 @@ const clientPortalRouter = router({
 
   // URL de download de arquivo (presigned)
   fileDownloadUrl: protectedProcedure
-    .input(z.object({ taskId: z.number(), fileId: z.number() }))
+    .input(z.object({ taskId: z.number(), fileId: z.number(), previewClientId: z.number().optional() }))
     .query(async ({ input, ctx }) => {
-      if (ctx.user.role !== "client" || !ctx.user.clientId) {
-        throw new TRPCError({ code: "FORBIDDEN" });
-      }
+      const clientId = resolvePortalClientId(ctx, input.previewClientId);
       const task = await getTaskById(input.taskId);
-      if (!task || task.clientId !== ctx.user.clientId) {
+      if (!task || task.clientId !== clientId) {
         throw new TRPCError({ code: "FORBIDDEN" });
       }
       const file = await getTaskFileById(input.fileId);
@@ -1134,12 +1141,23 @@ const clientAccessRouter = router({
     if (!db) return [];
     const { users: usersTable } = await import("../drizzle/schema");
     const { eq } = await import("drizzle-orm");
-    return db.select({
-      id: usersTable.id,
-      email: usersTable.email,
-      clientId: usersTable.clientId,
-      lastSignedIn: usersTable.lastSignedIn,
-    }).from(usersTable).where(eq(usersTable.role, "client"));
+    try {
+      return await db.select({
+        id: usersTable.id,
+        email: usersTable.email,
+        clientId: usersTable.clientId,
+        lastSignedIn: usersTable.lastSignedIn,
+        mustChangePassword: usersTable.mustChangePassword,
+      }).from(usersTable).where(eq(usersTable.role, "client"));
+    } catch {
+      const rows = await db.select({
+        id: usersTable.id,
+        email: usersTable.email,
+        clientId: usersTable.clientId,
+        lastSignedIn: usersTable.lastSignedIn,
+      }).from(usersTable).where(eq(usersTable.role, "client"));
+      return rows.map((r) => ({ ...r, mustChangePassword: false }));
+    }
   }),
 
   deleteLogin: protectedProcedure

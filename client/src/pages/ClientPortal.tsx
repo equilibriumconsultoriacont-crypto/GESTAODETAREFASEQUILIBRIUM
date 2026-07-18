@@ -41,8 +41,8 @@ interface Task {
   competencia: string;
 }
 
-function TaskDrawer({ task, onClose }: { task: Task; onClose: () => void }) {
-  const { data: files = [], isLoading } = trpc.clientPortal.taskFiles.useQuery({ taskId: task.id });
+function TaskDrawer({ task, onClose, previewClientId }: { task: Task; onClose: () => void; previewClientId?: number }) {
+  const { data: files = [], isLoading } = trpc.clientPortal.taskFiles.useQuery({ taskId: task.id, previewClientId });
   const due = new Date(task.dueDate);
   const isOverdue = due < new Date() && task.status !== "CONCLUIDA";
 
@@ -163,7 +163,7 @@ function TaskDrawer({ task, onClose }: { task: Task; onClose: () => void }) {
   );
 }
 
-export default function ClientPortal() {
+export default function ClientPortal({ previewClientId }: { previewClientId?: number }) {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -171,7 +171,7 @@ export default function ClientPortal() {
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [, navigate] = useLocation();
 
-  const { data: tasks = [], isLoading } = trpc.clientPortal.calendar.useQuery({ month, year });
+  const { data: tasks = [], isLoading } = trpc.clientPortal.calendar.useQuery({ month, year, previewClientId });
   const { data: user } = trpc.auth.me.useQuery();
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: () => navigate("/login"),
@@ -212,6 +212,11 @@ export default function ClientPortal() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#0a0a0a", maxWidth: 480, margin: "0 auto" }}>
+      {previewClientId && (
+        <div style={{ background: "#24646c", color: "#fff", textAlign: "center", padding: "6px 12px", fontSize: 12, fontWeight: 600 }}>
+          Pré-visualização — você está vendo o portal como o cliente
+        </div>
+      )}
       {/* Header */}
       <div className="sticky top-0 z-10 px-4 pt-safe-top" style={{ background: "#0a0a0a", borderBottom: "1px solid #1a1a1a" }}>
         <div className="flex items-center justify-between py-4">
@@ -407,7 +412,7 @@ export default function ClientPortal() {
 
       {/* Task drawer */}
       {selectedTask && (
-        <TaskDrawer task={selectedTask} onClose={() => setSelectedTask(null)} />
+        <TaskDrawer task={selectedTask} previewClientId={previewClientId} onClose={() => setSelectedTask(null)} />
       )}
     </div>
   );

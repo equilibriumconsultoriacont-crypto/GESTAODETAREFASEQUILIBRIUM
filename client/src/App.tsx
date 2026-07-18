@@ -93,6 +93,9 @@ function Router() {
       {/* Módulo WhatsApp (placeholder) */}
       <Route path="/whatsapp" component={WhatsAppModule} />
 
+      <Route path="/portal-cliente/:clientId">
+        {(params) => <ClientPortal previewClientId={Number(params.clientId)} />}
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );

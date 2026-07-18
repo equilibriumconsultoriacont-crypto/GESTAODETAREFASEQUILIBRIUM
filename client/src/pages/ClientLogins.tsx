@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
-import { Eye, EyeOff, KeyRound, PlusCircle, RefreshCw, Trash2, User } from "lucide-react";
+import { Eye, EyeOff, KeyRound, PlusCircle, RefreshCw, Trash2, User, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -114,12 +114,27 @@ export default function ClientLoginsPage() {
                           {client?.name ?? `Cliente #${login.clientId}`}
                         </p>
                         <p className="text-xs mt-0.5" style={{ color: "#a1a1aa" }}>{login.email}</p>
+                        {(login as any).mustChangePassword ? (
+                          <span style={{ display: "inline-block", marginTop: 4, fontSize: 11, fontWeight: 600, color: "#fcd34d", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 6, padding: "1px 7px" }}>Pendente — não definiu senha</span>
+                        ) : (
+                          <span style={{ display: "inline-block", marginTop: 4, fontSize: 11, fontWeight: 600, color: "#86efac", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 6, padding: "1px 7px" }}>Ativo</span>
+                        )}
                         <p className="text-xs mt-0.5" style={{ color: "#52525b" }}>
                           Último acesso: {new Date(login.lastSignedIn).toLocaleDateString("pt-BR")}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {login.clientId && (
+                        <button
+                          onClick={() => window.open(`/portal-cliente/${login.clientId}`, "_blank")}
+                          className="text-xs flex items-center gap-1"
+                          style={{ color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)", padding: "4px 8px", borderRadius: "6px" }}
+                          title="Abrir o portal como o cliente vê"
+                        >
+                          <ExternalLink size={12} /> Ver portal
+                        </button>
+                      )}
                       <button
                         onClick={() => setResetOpen({ id: login.id, email: login.email })}
                         className="p-1.5 rounded hover:bg-white/5 transition-colors text-xs flex items-center gap-1"
