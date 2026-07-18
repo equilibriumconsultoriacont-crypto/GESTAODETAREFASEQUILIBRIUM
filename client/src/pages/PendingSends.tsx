@@ -15,7 +15,20 @@ export default function PendingSendsPage() {
   });
 
   const sendGuiasMutation = trpc.autoSend.sendGuias.useMutation();
+  const cancelSendMutation = (trpc.autoSend as any).cancelSend.useMutation();
   const utils = trpc.useUtils();
+
+  const handleCancel = async (fileId: number, filename: string) => {
+    if (!confirm(`Cancelar o envio da guia "${filename}"? O arquivo anexado será removido da tarefa.`)) return;
+    try {
+      await cancelSendMutation.mutateAsync({ fileId });
+      toast.success("Envio cancelado e arquivo removido.");
+      refetch();
+      utils.tasks.list.invalidate();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao cancelar envio");
+    }
+  };
 
   const handleRunNow = async () => {
     setRunning(true);
@@ -142,7 +155,7 @@ export default function PendingSendsPage() {
                               </Link>
                               <span className="text-xs" style={{ color: "#52525b" }}>{task.competencia}</span>
                               <span className="text-xs font-medium" style={{ color: isOverdue ? "#f87171" : "#facc15" }}>
-                                {isOverdue ? "⚠ Venceu " : "Vence "}{due.toLocaleDateString("pt-BR")}
+                                {isOverdue ? "⚠ Venceu " : "Vence "}{`${String(due.getUTCDate()).padStart(2, "0")}/${String(due.getUTCMonth() + 1).padStart(2, "0")}/${due.getUTCFullYear()}`}
                               </span>
                               <span className="text-xs" style={{ color: "#52525b" }}>
                                 📎 {task.filename}
@@ -150,7 +163,18 @@ export default function PendingSendsPage() {
                             </div>
                           </div>
                         </div>
-                        <StatusBadge status={task.status} dueDate={task.dueDate} />
+                        <div className="flex items-center gap-2 shrink-0">
+                          <StatusBadge status={task.status} dueDate={task.dueDate} />
+                          <button
+                            onClick={() => handleCancel(task.fileId, task.filename)}
+                            disabled={cancelSendMutation.isPending}
+                            className="text-xs px-2.5 py-1 rounded-lg font-medium transition-colors"
+                            style={{ color: "#f87171", border: "1px solid rgba(248,113,113,0.3)", background: "rgba(248,113,113,0.08)" }}
+                            title="Cancelar o envio e remover o arquivo anexado"
+                          >
+                            Cancelar envio
+                          </button>
+                        </div>
                       </div>
                     );
                   })}

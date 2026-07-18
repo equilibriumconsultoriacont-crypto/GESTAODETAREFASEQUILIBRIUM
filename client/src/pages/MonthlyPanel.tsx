@@ -204,7 +204,7 @@ export default function MonthlyPanelPage() {
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
                           <span className="text-xs" style={{ color: isOverdue ? "#f87171" : "#52525b" }}>
-                            {due.toLocaleDateString("pt-BR")}
+                            {`${String(due.getUTCDate()).padStart(2, "0")}/${String(due.getUTCMonth() + 1).padStart(2, "0")}/${due.getUTCFullYear()}`}
                           </span>
                           <StatusBadge status={task.status} dueDate={task.dueDate} />
                         </div>
@@ -303,7 +303,7 @@ export default function MonthlyPanelPage() {
                             </div>
                             <div className="flex items-center gap-3">
                               <span className="text-xs" style={{ color: isOverdue ? "#f87171" : "#52525b" }}>
-                                {due.toLocaleDateString("pt-BR")}
+                                {`${String(due.getUTCDate()).padStart(2, "0")}/${String(due.getUTCMonth() + 1).padStart(2, "0")}/${due.getUTCFullYear()}`}
                               </span>
                               <StatusBadge status={task.status} dueDate={task.dueDate} />
                             </div>

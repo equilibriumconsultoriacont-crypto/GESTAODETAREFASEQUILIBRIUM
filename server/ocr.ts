@@ -331,12 +331,22 @@ export async function recognizeDocument(
       receitaBruta = brl(sum?.[1] ?? rpa?.[1]);
       impostoDeclarado = brl(sum?.[2]);
     }
-    // DAS recalculado: linha "Totais" com principal != total (multa/juros somados)
+    // Guia recalculada: "Pagar até" difere da "Data de Vencimento" original.
+    // Numa guia normal os dois campos batem; na recalculada, o "pagar até" foi
+    // remarcado (o cliente pagou/vai pagar em atraso). Fallback: linha "Totais"
+    // com principal != total (multa/juros somados).
     let recalculado = false;
     if (docType === "DAS" || docType === "DAS_MEI") {
-      const tot = text.match(/Totais\s+([\d.]+,\d{2})\s+[\d.]+,\d{2}\s+[\d.]+,\d{2}\s+([\d.]+,\d{2})/i);
-      if (tot && tot[1] !== tot[2]) recalculado = true;
+      const pagarAte = text.match(/Pagar\s+(?:este\s+documento\s+)?at[eé]\s+(\d{2}\/\d{2}\/20\d{2})/i)?.[1];
+      const dataVenc = text.match(/(?:Janeiro|Fevereiro|Mar[çc]o|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro)\/20\d{2}\s+(\d{2}\/\d{2}\/20\d{2})/i)?.[1];
+      if (pagarAte && dataVenc && pagarAte !== dataVenc) recalculado = true;
+      if (!recalculado) {
+        const tot = text.match(/Totais\s+([\d.]+,\d{2})\s+[\d.]+,\d{2}\s+[\d.]+,\d{2}\s+([\d.]+,\d{2})/i);
+        if (tot && tot[1] !== tot[2]) recalculado = true;
+      }
     }
+    // Vencimento a pagar: prioriza "Pagar até" (na recalculada é o novo prazo real).
+    const pagarAteFinal = text.match(/Pagar\s+(?:este\s+documento\s+)?at[eé]\s+(\d{2}\/\d{2}\/20\d{2})/i)?.[1];
 
     return {
       documentType: docType,
@@ -345,7 +355,7 @@ export async function recognizeDocument(
       competencia,
       valorPrincipal: valorMatch?.[1]?.replace(/\./g, "").replace(",", "."),
       codigoBarras: cbMatch?.[0]?.replace(/\s/g, ""),
-      dataVencimento: vencMatch?.[1],
+      dataVencimento: pagarAteFinal ?? vencMatch?.[1],
       receitaBruta,
       impostoDeclarado,
       recalculado,

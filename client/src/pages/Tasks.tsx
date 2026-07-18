@@ -326,7 +326,7 @@ export default function Tasks() {
                 const due = new Date(task.dueDate);
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
-                const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+                const dueDay = new Date(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate());
                 const isOverdue = dueDay < today && !["CONCLUIDA", "CANCELADA", "VENCIDA"].includes(task.status);
                 const isDueToday = dueDay.getTime() === today.getTime();
                 return (
@@ -345,7 +345,7 @@ export default function Tasks() {
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs truncate" style={{ color: "#9fd4dc" }}>{client?.name ?? "—"}</span>
                         <span className="text-xs shrink-0" style={{ color: isOverdue ? "#f87171" : isDueToday ? "#fb923c" : "#a1a1aa", fontWeight: (isOverdue || isDueToday) ? 600 : 400 }}>
-                          {isDueToday ? "⚡ Hoje" : due.toLocaleDateString("pt-BR")}
+                          {isDueToday ? "⚡ Hoje" : `${String(due.getUTCDate()).padStart(2, "0")}/${String(due.getUTCMonth() + 1).padStart(2, "0")}/${due.getUTCFullYear()}`}
                         </span>
                       </div>
                     </button>
@@ -377,7 +377,7 @@ export default function Tasks() {
                     const due = new Date(task.dueDate);
                     const today = new Date();
                     today.setHours(0, 0, 0, 0);
-                    const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+                    const dueDay = new Date(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate());
                     const isOverdue = dueDay < today && !["CONCLUIDA", "CANCELADA", "VENCIDA"].includes(task.status);
                     const isDueToday = dueDay.getTime() === today.getTime();
                     return (
@@ -402,7 +402,7 @@ export default function Tasks() {
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-xs" style={{ color: isOverdue ? "#f87171" : isDueToday ? "#fb923c" : "#a1a1aa", fontWeight: (isOverdue || isDueToday) ? 600 : 400 }}>
-                            {isDueToday ? "⚡ Hoje" : due.toLocaleDateString("pt-BR")}
+                            {isDueToday ? "⚡ Hoje" : `${String(due.getUTCDate()).padStart(2, "0")}/${String(due.getUTCMonth() + 1).padStart(2, "0")}/${due.getUTCFullYear()}`}
                           </span>
                         </td>
                         <td className="px-4 py-3">

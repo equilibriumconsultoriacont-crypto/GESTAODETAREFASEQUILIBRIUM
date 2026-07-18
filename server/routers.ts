@@ -621,6 +621,24 @@ const autoSendRouter = router({
     `) as [any[], any];
     return rows;
   }),
+
+  // Cancelar o envio de uma guia pendente (remove o arquivo anexado). Útil quando
+  // o reconhecimento veio errado ou a guia está incorreta.
+  cancelSend: protectedProcedure
+    .input(z.object({ fileId: z.number() }))
+    .mutation(async ({ input }) => {
+      const { deleteTaskFile } = await import("./db");
+      const deleted = await deleteTaskFile(input.fileId);
+      if (deleted?.fileKey) {
+        try {
+          const storage = await import("./storage");
+          if (typeof (storage as any).storageDelete === "function") {
+            await (storage as any).storageDelete(deleted.fileKey);
+          }
+        } catch {}
+      }
+      return { success: true };
+    }),
 });
 
 
@@ -791,11 +809,18 @@ const smartUploadRouter = router({
       if (recognition.valorPrincipal) {
         taskUpdates.valor = recognition.valorPrincipal;
       }
+      // Guia recalculada (DAS pago em atraso, com multa/juros): reabre a tarefa
+      // mesmo se já estava concluída/vencida — há um novo valor e vencimento a
+      // pagar. O disparo do arquivo novo é automático (autoSend envia todo
+      // taskFileId ainda sem envio, inclusive em tarefa concluída).
+      if (recognition.recalculado && matchedTask.status !== "PENDENTE" && matchedTask.status !== "EM_ANDAMENTO") {
+        taskUpdates.status = "EM_ANDAMENTO";
+      }
       // Se o OCR extraiu dataVencimento, usa ela como dueDate real (ex: 30/06/2026)
       if (recognition.dataVencimento) {
         const [dd, mm, yyyy] = recognition.dataVencimento.split("/").map(Number);
         if (dd && mm && yyyy) {
-          taskUpdates.dueDate = new Date(yyyy, mm - 1, dd);
+          taskUpdates.dueDate = new Date(Date.UTC(yyyy, mm - 1, dd));
           console.log(`[SmartUpload] dueDate atualizado para ${recognition.dataVencimento} pela guia`);
         }
       }
@@ -828,7 +853,9 @@ const smartUploadRouter = router({
         fileId,
         emailSent: false,
         pendingEmail: true,
-        message: "Guia anexada com sucesso! Será enviada ao cliente no próximo ciclo automático.",
+        message: recognition.recalculado
+          ? `Guia recalculada anexada na tarefa de ${matchedTask.competencia} (reaberta) — será reenviada ao cliente no próximo ciclo automático.`
+          : "Guia anexada com sucesso! Será enviada ao cliente no próximo ciclo automático.",
       };
     }),
 });

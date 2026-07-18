@@ -187,7 +187,7 @@ export default function TaskDetail() {
             <div>
               <p className="text-xs mb-1" style={{ color: "#a1a1aa" }}>Vencimento</p>
               <p className={`text-sm font-medium ${isOverdue ? "text-red-400" : ""}`} style={isOverdue ? {} : { color: "#e5e5e5" }}>
-                {new Date(task.dueDate).toLocaleDateString("pt-BR")}
+                {`${String(new Date(task.dueDate).getUTCDate()).padStart(2, "0")}/${String(new Date(task.dueDate).getUTCMonth() + 1).padStart(2, "0")}/${new Date(task.dueDate).getUTCFullYear()}`}
               </p>
             </div>
             <div>
