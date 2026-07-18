@@ -1106,6 +1106,12 @@ const clientPortalRouter = router({
       }
     }),
 
+  // Número de WhatsApp do escritório (para os botões "Falar com o escritório")
+  officeWhatsApp: protectedProcedure.query(() => {
+    const raw = process.env.TWILIO_WHATSAPP_FROM || "whatsapp:+5519999560591";
+    return { number: raw.replace(/\D/g, "") };
+  }),
+
   // Faturamento + impostos do mês (aba "Acompanhar faturamento e imposto")
   financials: protectedProcedure
     .input(z.object({ month: z.number().min(1).max(12), year: z.number().min(2020), previewClientId: z.number().optional() }))

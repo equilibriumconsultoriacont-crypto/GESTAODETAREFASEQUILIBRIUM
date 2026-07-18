@@ -10,6 +10,7 @@ import {
   FileText,
   LogOut,
   X,
+  MessageCircle,
 } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -39,6 +40,50 @@ interface Task {
   status: string;
   dueDate: Date | string;
   competencia: string;
+}
+
+function OfficeContact({ task }: { task?: { title: string; competencia: string } }) {
+  const { data: office } = trpc.clientPortal.officeWhatsApp.useQuery();
+  const [open, setOpen] = useState(false);
+  const wa = (msg: string) => {
+    if (!office?.number) return;
+    window.open(`https://wa.me/${office.number}?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+  if (task) {
+    const ctx = `${task.title} (competência ${task.competencia})`;
+    return (
+      <div className="space-y-2">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
+          style={{ background: "rgba(37,211,102,0.12)", border: "1px solid rgba(37,211,102,0.35)", color: "#25D366" }}
+        >
+          <MessageCircle size={16} /> Falar com o escritório
+        </button>
+        {open && (
+          <div className="space-y-2">
+            <button onClick={() => wa(`Olá! Gostaria de pedir o recálculo da guia ${ctx}.`)}
+              className="w-full py-2.5 rounded-lg text-sm" style={{ background: "rgba(255,255,255,0.05)", color: "#e5e5e5", border: "1px solid #2a2a2a" }}>
+              Pedir recálculo
+            </button>
+            <button onClick={() => wa(`Olá! Tenho uma dúvida sobre a guia ${ctx}.`)}
+              className="w-full py-2.5 rounded-lg text-sm" style={{ background: "rgba(255,255,255,0.05)", color: "#e5e5e5", border: "1px solid #2a2a2a" }}>
+              Tirar uma dúvida
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+  return (
+    <button
+      onClick={() => wa("Olá! Gostaria de falar com o escritório.")}
+      className="w-full py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
+      style={{ background: "rgba(37,211,102,0.12)", border: "1px solid rgba(37,211,102,0.35)", color: "#25D366" }}
+    >
+      <MessageCircle size={16} /> Falar com o escritório
+    </button>
+  );
 }
 
 function TaskDrawer({ task, onClose, previewClientId }: { task: Task; onClose: () => void; previewClientId?: number }) {
@@ -158,6 +203,9 @@ function TaskDrawer({ task, onClose, previewClientId }: { task: Task; onClose: (
             </div>
           )}
         </div>
+
+        {/* Falar com o escritório sobre esta guia */}
+        <OfficeContact task={task} />
       </div>
     </div>
   );
@@ -335,6 +383,10 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
         <div className="flex gap-2 pb-3">
           <button onClick={() => setView("calendar")} className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: view === "calendar" ? "#24646c" : "rgba(255,255,255,0.05)", color: view === "calendar" ? "#fff" : "#a1a1aa" }}>Calendário</button>
           <button onClick={() => setView("financials")} className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: view === "financials" ? "#24646c" : "rgba(255,255,255,0.05)", color: view === "financials" ? "#fff" : "#a1a1aa" }}>Faturamento e Imposto</button>
+        </div>
+
+        <div className="pb-3">
+          <OfficeContact />
         </div>
 
         {/* Weekday headers */}
