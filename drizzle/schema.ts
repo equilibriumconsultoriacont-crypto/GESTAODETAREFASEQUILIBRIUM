@@ -160,6 +160,7 @@ export const tasks = mysqlTable("tasks", {
   priority: mysqlEnum("priority", ["BAIXA", "NORMAL", "ALTA", "URGENTE"]).default("NORMAL").notNull(),
   department: varchar("department", { length: 100 }).default("Geral").notNull(),
   sendToClient: boolean("sendToClient").default(true).notNull(),
+  valor: varchar("valor", { length: 20 }), // valor principal da guia (OCR ou manual), ex "1234.56"
   assignedTo: int("assignedTo"), // FK users.id
   internalDeadline: timestamp("internalDeadline"), // prazo interno (antes do vencimento fiscal)
   waitingSince: timestamp("waitingSince"), // quando entrou em AGUARDANDO_CLIENTE
@@ -222,6 +223,17 @@ export const emailLogs = mysqlTable("email_logs", {
 });
 
 export type EmailLog = typeof emailLogs.$inferSelect;
+
+// ─── Faturamento do cliente (por mês) ─────────────────────────────────────────
+export const clientRevenue = mysqlTable("client_revenue", {
+  id: int("id").autoincrement().primaryKey(),
+  clientId: int("clientId").notNull(),
+  year: int("year").notNull(),
+  month: int("month").notNull(),
+  valor: varchar("valor", { length: 20 }).notNull(), // ex "12345.67"
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ClientRevenue = typeof clientRevenue.$inferSelect;
 export type InsertEmailLog = typeof emailLogs.$inferInsert;
 
 // ─── Departamentos (gerenciáveis) ────────────────────────────────────────────

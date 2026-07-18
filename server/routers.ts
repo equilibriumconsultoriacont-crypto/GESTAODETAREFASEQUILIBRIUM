@@ -19,6 +19,8 @@ import {
   updateTaskCatalog,
   createClient,
   createPendingClientUser,
+  getClientRevenue,
+  upsertClientRevenue,
   createEmailLog,
   createRecurringTask,
   createTask,
@@ -754,6 +756,10 @@ const smartUploadRouter = router({
       if (matchedTask.status === "PENDENTE") {
         taskUpdates.status = "EM_ANDAMENTO";
       }
+      // Valor extraído pelo OCR (ex: valor do DAS) — alimenta a aba de imposto do cliente
+      if (recognition.valorPrincipal) {
+        taskUpdates.valor = recognition.valorPrincipal;
+      }
       // Se o OCR extraiu dataVencimento, usa ela como dueDate real (ex: 30/06/2026)
       if (recognition.dataVencimento) {
         const [dd, mm, yyyy] = recognition.dataVencimento.split("/").map(Number);
@@ -1098,6 +1104,37 @@ const clientPortalRouter = router({
       } catch {
         return { url: file.fileUrl };
       }
+    }),
+
+  // Faturamento + impostos do mês (aba "Acompanhar faturamento e imposto")
+  financials: protectedProcedure
+    .input(z.object({ month: z.number().min(1).max(12), year: z.number().min(2020), previewClientId: z.number().optional() }))
+    .query(async ({ input, ctx }) => {
+      const clientId = resolvePortalClientId(ctx, input.previewClientId);
+      const clientTasks = await listTasks({ clientId });
+      const logs = await listEmailLogs(undefined, clientId);
+      const dispatched = new Set(logs.filter((l) => l.status === "ENVIADO").map((l) => l.taskId));
+      const taxes = clientTasks
+        .filter((t) => {
+          const due = new Date(t.dueDate);
+          const inMonth = due.getUTCMonth() + 1 === input.month && due.getUTCFullYear() === input.year;
+          const visible = (t as any).sendToClient !== false && (t as any).sendToClient !== 0;
+          return inMonth && visible && dispatched.has(t.id);
+        })
+        .map((t) => ({ id: t.id, title: t.title, taskType: t.taskType, valor: (t as any).valor ?? null, dueDate: t.dueDate }));
+      const revenue = await getClientRevenue(clientId, input.year, input.month);
+      return { taxes, revenue };
+    }),
+
+  // Lançar/editar faturamento do mês (somente equipe interna, via pré-visualização)
+  setRevenue: protectedProcedure
+    .input(z.object({ clientId: z.number(), year: z.number(), month: z.number().min(1).max(12), valor: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.user.role !== "admin" && ctx.user.role !== "user") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Apenas equipe interna" });
+      }
+      await upsertClientRevenue(input.clientId, input.year, input.month, input.valor.replace(",", "."));
+      return { success: true };
     }),
 });
 

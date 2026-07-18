@@ -632,6 +632,20 @@ async function ensureSchema() {
         }
         if (createdUsers > 0) console.log(`[Migração] ${createdUsers} acesso(s) de cliente criado(s) automaticamente.`);
       } catch (e: any) { console.warn("[Migração backfill acessos] ", e?.message?.slice(0, 140)); }
+
+      // ── Faturamento e valor por guia ───────────────────────────────────────
+      try {
+        const [vc]: any = await conn.query(
+          "SELECT COUNT(*) as cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'valor'"
+        );
+        if (Number(vc?.[0]?.cnt ?? 0) === 0) {
+          await conn.query("ALTER TABLE `tasks` ADD COLUMN `valor` varchar(20)");
+          console.log("[Migração] Coluna tasks.valor criada.");
+        }
+        await conn.query(
+          "CREATE TABLE IF NOT EXISTS `client_revenue` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `year` int NOT NULL, `month` int NOT NULL, `valor` varchar(20) NOT NULL, `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `client_revenue_id` PRIMARY KEY(`id`))"
+        );
+      } catch (e: any) { console.warn("[Migração faturamento] ", e?.message?.slice(0, 140)); }
     } finally {
       await conn.end();
     }

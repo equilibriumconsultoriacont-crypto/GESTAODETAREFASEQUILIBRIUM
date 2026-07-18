@@ -163,12 +163,91 @@ function TaskDrawer({ task, onClose, previewClientId }: { task: Task; onClose: (
   );
 }
 
+function FinancialsView({ month, year, previewClientId }: { month: number; year: number; previewClientId?: number }) {
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.clientPortal.financials.useQuery({ month, year, previewClientId });
+  const setRevenue = (trpc.clientPortal as any).setRevenue.useMutation({
+    onSuccess: () => utils.clientPortal.financials.invalidate(),
+  });
+  const isStaff = !!previewClientId; // em pré-visualização, a equipe pode lançar o faturamento
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState("");
+
+  const fmt = (v: string | null | undefined) => {
+    if (v === null || v === undefined || v === "") return "—";
+    const n = Number(v);
+    if (isNaN(n)) return String(v);
+    return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  };
+
+  const taxes = data?.taxes ?? [];
+  const totalImpostos = taxes.reduce((s: number, t: any) => s + (Number(t.valor) || 0), 0);
+
+  return (
+    <div className="px-2 pb-6 space-y-4">
+      {/* Faturamento */}
+      <div className="rounded-2xl p-4" style={{ background: "#111", border: "1px solid #1e4f5c" }}>
+        <p className="text-xs" style={{ color: "#9fd4dc" }}>Faturamento do mês</p>
+        {isStaff && editing ? (
+          <div className="flex gap-2 mt-2">
+            <input
+              value={val}
+              onChange={(e) => setVal(e.target.value)}
+              placeholder="0,00"
+              style={{ flex: 1, background: "#0d1f22", border: "1px solid #1e4f5c", borderRadius: 8, color: "#e5e5e5", padding: "8px 10px", outline: "none" }}
+            />
+            <button
+              onClick={async () => { try { await setRevenue.mutateAsync({ clientId: previewClientId!, year, month, valor: val }); setEditing(false); } catch { /* */ } }}
+              disabled={setRevenue.isPending}
+              style={{ background: "#24646c", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 600, fontSize: 13 }}
+            >Salvar</button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-2xl font-bold" style={{ color: "#e5e5e5" }}>{fmt(data?.revenue)}</p>
+            {isStaff && (
+              <button onClick={() => { setVal(data?.revenue ?? ""); setEditing(true); }}
+                style={{ color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)", borderRadius: 6, padding: "4px 10px", fontSize: 12 }}>Lançar</button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Impostos */}
+      <div className="rounded-2xl p-4" style={{ background: "#111", border: "1px solid #1e4f5c" }}>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs" style={{ color: "#9fd4dc" }}>Impostos do mês</p>
+          <p className="text-sm font-bold" style={{ color: "#e5e5e5" }}>{fmt(String(totalImpostos))}</p>
+        </div>
+        {isLoading ? (
+          <p className="text-sm" style={{ color: "#52525b" }}>Carregando...</p>
+        ) : taxes.length === 0 ? (
+          <p className="text-sm" style={{ color: "#52525b" }}>Nenhuma guia disparada este mês.</p>
+        ) : (
+          <div className="space-y-1">
+            {taxes.map((t: any) => (
+              <div key={t.id} className="flex items-center justify-between py-2" style={{ borderBottom: "1px solid rgba(30,79,92,0.3)" }}>
+                <div>
+                  <p className="text-sm font-medium" style={{ color: "#e5e5e5" }}>{t.title}</p>
+                  <p className="text-xs" style={{ color: "#52525b" }}>{t.taskType}</p>
+                </div>
+                <p className="text-sm font-semibold" style={{ color: t.valor ? "#e5e5e5" : "#52525b" }}>{fmt(t.valor)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ClientPortal({ previewClientId }: { previewClientId?: number }) {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [view, setView] = useState<"calendar" | "financials">("calendar");
   const [, navigate] = useLocation();
 
   const { data: tasks = [], isLoading } = trpc.clientPortal.calendar.useQuery({ month, year, previewClientId });
@@ -252,16 +331,28 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
           </button>
         </div>
 
+        {/* View switcher */}
+        <div className="flex gap-2 pb-3">
+          <button onClick={() => setView("calendar")} className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: view === "calendar" ? "#24646c" : "rgba(255,255,255,0.05)", color: view === "calendar" ? "#fff" : "#a1a1aa" }}>Calendário</button>
+          <button onClick={() => setView("financials")} className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: view === "financials" ? "#24646c" : "rgba(255,255,255,0.05)", color: view === "financials" ? "#fff" : "#a1a1aa" }}>Faturamento e Imposto</button>
+        </div>
+
         {/* Weekday headers */}
+        {view === "calendar" && (
         <div className="grid grid-cols-7 pb-2">
           {WEEKDAYS.map((d) => (
             <div key={d} className="text-center text-xs font-medium py-1" style={{ color: "#52525b" }}>{d}</div>
           ))}
         </div>
+        )}
       </div>
 
-      {/* Calendar grid */}
+      {/* Conteúdo */}
       <div className="flex-1 px-2 pb-6">
+        {view === "financials" ? (
+          <FinancialsView month={month} year={year} previewClientId={previewClientId} />
+        ) : (
+          <>
         {isLoading ? (
           <div className="grid grid-cols-7 gap-1 p-2">
             {Array(35).fill(0).map((_, i) => (
@@ -407,6 +498,8 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
             <p className="text-sm font-medium" style={{ color: "#a1a1aa" }}>Nenhuma obrigação este mês</p>
             <p className="text-xs mt-1" style={{ color: "#52525b" }}>Navegue pelos meses para ver suas guias</p>
           </div>
+        )}
+          </>
         )}
       </div>
 

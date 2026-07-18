@@ -33,6 +33,7 @@ import {
   clients,
   departments,
   emailLogs,
+  clientRevenue,
   recurringTasks,
   taskCatalogs,
   taskFiles,
@@ -1363,4 +1364,30 @@ export async function deleteProposal(id: number) {
   const db = await getDb();
   if (!db) return;
   await db.delete(proposals).where(eq(proposals.id, id));
+}
+
+
+// ─── Faturamento do cliente ───────────────────────────────────────────────────
+export async function getClientRevenue(clientId: number, year: number, month: number): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    const rows = await db.select().from(clientRevenue)
+      .where(and(eq(clientRevenue.clientId, clientId), eq(clientRevenue.year, year), eq(clientRevenue.month, month)))
+      .limit(1);
+    return rows[0]?.valor ?? null;
+  } catch { return null; }
+}
+
+export async function upsertClientRevenue(clientId: number, year: number, month: number, valor: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await db.select().from(clientRevenue)
+    .where(and(eq(clientRevenue.clientId, clientId), eq(clientRevenue.year, year), eq(clientRevenue.month, month)))
+    .limit(1);
+  if (existing[0]) {
+    await db.update(clientRevenue).set({ valor }).where(eq(clientRevenue.id, existing[0].id));
+  } else {
+    await db.insert(clientRevenue).values({ clientId, year, month, valor });
+  }
 }
