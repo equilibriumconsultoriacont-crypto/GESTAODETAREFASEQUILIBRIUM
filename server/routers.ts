@@ -1104,9 +1104,10 @@ function buildWelcomeEmailHtml(name: string, password: string, baseUrl: string):
         <p style="font-size:14px; line-height:1.6; margin:0 0 20px;">
           No primeiro acesso o sistema vai pedir para você <strong>criar a sua própria senha</strong>. A senha acima serve só para entrar da primeira vez.
         </p>
-        <div style="text-align:center; margin:24px 0;">
+        <div style="text-align:center; margin:24px 0 6px;">
           <a href="${baseUrl}/" style="display:inline-block; background:#24646c; color:#ffffff; text-decoration:none; padding:12px 30px; border-radius:8px; font-weight:bold; font-size:15px;">Acessar o Portal</a>
         </div>
+        <p style="text-align:center; font-size:12px; color:#a1a1aa; margin:0 0 20px; line-height:1.5;">Se o link abrir dentro do e-mail, toque em <strong>&#8943;</strong> (ou em Compartilhar) e escolha <strong>&ldquo;Abrir no navegador&rdquo;</strong> (Safari ou Chrome).</p>
         <div style="border-top:1px solid #e4e4e7; padding-top:20px; margin-top:8px;">
           <p style="font-size:14px; line-height:1.6; margin:0 0 10px; color:#3f3f46;">
             <strong>Dica:</strong> deixe o portal na tela inicial do seu celular e abra com um toque, como se fosse um aplicativo.
