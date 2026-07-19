@@ -647,6 +647,16 @@ async function ensureSchema() {
         );
       } catch (e: any) { console.warn("[Migração faturamento] ", e?.message?.slice(0, 140)); }
 
+      try {
+        const [cp]: any = await conn.query(
+          "SELECT COUNT(*) as cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'clientPaid'"
+        );
+        if (Number(cp?.[0]?.cnt ?? 0) === 0) {
+          await conn.query("ALTER TABLE `tasks` ADD COLUMN `clientPaid` boolean DEFAULT false");
+          console.log("[Migração] Coluna tasks.clientPaid criada.");
+        }
+      } catch (e: any) { console.warn("[Migração clientPaid] ", e?.message?.slice(0, 140)); }
+
       // ── PGDAS: enum + coluna imposto + template ────────────────────────────
       try {
         const [et]: any = await conn.query(

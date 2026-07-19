@@ -1380,6 +1380,12 @@ export async function getClientRevenue(clientId: number, year: number, month: nu
   } catch { return null; }
 }
 
+export async function setTaskClientPaid(taskId: number, paid: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  try { await db.update(tasks).set({ clientPaid: paid } as any).where(eq(tasks.id, taskId)); } catch {}
+}
+
 export async function getClientRevenueYear(clientId: number, year: number): Promise<Array<{ month: number; valor: string; imposto: string | null }>> {
   const db = await getDb();
   if (!db) return [];

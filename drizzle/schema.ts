@@ -161,6 +161,7 @@ export const tasks = mysqlTable("tasks", {
   department: varchar("department", { length: 100 }).default("Geral").notNull(),
   sendToClient: boolean("sendToClient").default(true).notNull(),
   valor: varchar("valor", { length: 20 }), // valor principal da guia (OCR ou manual), ex "1234.56"
+  clientPaid: boolean("clientPaid").default(false), // marca pessoal do cliente ("já paguei"), só informativo
   assignedTo: int("assignedTo"), // FK users.id
   internalDeadline: timestamp("internalDeadline"), // prazo interno (antes do vencimento fiscal)
   waitingSince: timestamp("waitingSince"), // quando entrou em AGUARDANDO_CLIENTE

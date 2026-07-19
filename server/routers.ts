@@ -21,6 +21,7 @@ import {
   createPendingClientUser,
   getClientRevenue,
   getClientRevenueYear,
+  setTaskClientPaid,
   upsertClientRevenue,
   createEmailLog,
   createRecurringTask,
@@ -1124,7 +1125,19 @@ const clientPortalRouter = router({
         status: t.status,
         dueDate: t.dueDate,
         competencia: t.competencia,
+        clientPaid: (t as any).clientPaid === true || (t as any).clientPaid === 1,
       }));
+    }),
+
+  // Marca pessoal do cliente: "já paguei esta guia" (só controle/cor no calendário)
+  markPaid: protectedProcedure
+    .input(z.object({ taskId: z.number(), paid: z.boolean(), previewClientId: z.number().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const clientId = resolvePortalClientId(ctx, input.previewClientId);
+      const task = await getTaskById(input.taskId);
+      if (!task || task.clientId !== clientId) throw new TRPCError({ code: "FORBIDDEN" });
+      await setTaskClientPaid(input.taskId, input.paid);
+      return { success: true };
     }),
 
   // Arquivos de uma tarefa específica (somente do cliente logado)

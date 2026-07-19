@@ -93,8 +93,18 @@ function OfficeContact({ task }: { task?: { title: string; competencia: string }
 
 function TaskDrawer({ task, onClose, previewClientId }: { task: Task; onClose: () => void; previewClientId?: number }) {
   const { data: files = [], isLoading } = trpc.clientPortal.taskFiles.useQuery({ taskId: task.id, previewClientId });
+  const utils = trpc.useUtils();
   const due = new Date(task.dueDate);
   const isOverdue = due < new Date() && task.status !== "CONCLUIDA";
+  const [paid, setPaid] = useState<boolean>(!!(task as any).clientPaid);
+  const markPaid = (trpc.clientPortal as any).markPaid.useMutation({
+    onSuccess: () => utils.clientPortal.calendar.invalidate(),
+  });
+  const togglePaid = () => {
+    const next = !paid;
+    setPaid(next);
+    markPaid.mutate({ taskId: task.id, paid: next, previewClientId });
+  };
 
   const handleDownload = async (fileId: number, filename: string) => {
     try {
@@ -160,6 +170,19 @@ function TaskDrawer({ task, onClose, previewClientId }: { task: Task; onClose: (
           </div>
         </div>
 
+        {/* Controle pessoal de pagamento (só informativo para o cliente) */}
+        <button onClick={togglePaid}
+          className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors"
+          style={{ background: paid ? "rgba(74,222,128,0.1)" : "rgba(255,255,255,0.03)", border: `1px solid ${paid ? "rgba(74,222,128,0.4)" : "#2a2a2a"}` }}>
+          <div className="flex items-center justify-center rounded shrink-0" style={{ width: 22, height: 22, background: paid ? "#4ade80" : "transparent", border: `2px solid ${paid ? "#4ade80" : "#52525b"}` }}>
+            {paid && <span style={{ color: "#0a0a0a", fontSize: 14, fontWeight: 700, lineHeight: 1 }}>✓</span>}
+          </div>
+          <div className="text-left">
+            <p className="text-sm font-medium" style={{ color: paid ? "#4ade80" : "#e5e5e5" }}>{paid ? "Você marcou como paga" : "Marcar como paga"}</p>
+            <p className="text-xs" style={{ color: "#52525b" }}>Controle pessoal — só para você acompanhar</p>
+          </div>
+        </button>
+
         {/* Files */}
         <div>
           <p className="text-sm font-medium mb-3" style={{ color: "#e5e5e5" }}>
@@ -185,7 +208,7 @@ function TaskDrawer({ task, onClose, previewClientId }: { task: Task; onClose: (
               {files.map((file) => (
                 <a
                   key={file.id}
-                  href={file.fileUrl}
+                  href={`/api/portal/file/${task.id}/${file.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-between p-4 rounded-xl active:opacity-70 transition-opacity"
@@ -646,11 +669,9 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
               const dayTasks = tasksByDay.get(day) ?? [];
               const isToday = day === today.getDate() && month === today.getMonth() + 1 && year === today.getFullYear();
 
-              const hasOverdue = dayTasks.some((t) => t.status === "VENCIDA" || (new Date(t.dueDate) < today && t.status !== "CONCLUIDA"));
-              const hasActive = dayTasks.some((t) => !hasOverdue && (t.status === "PENDENTE" || t.status === "EM_ANDAMENTO"));
-              const allDone = dayTasks.length > 0 && dayTasks.every((t) => t.status === "CONCLUIDA");
-
-              const dotColor = hasOverdue ? "#f87171" : allDone ? "#4ade80" : hasActive ? "#60a5fa" : null;
+              // Cor pelo controle do cliente: verde se marcou como paga, vermelho se ainda não.
+              const allPaid = dayTasks.length > 0 && dayTasks.every((t) => (t as any).clientPaid);
+              const dotColor = dayTasks.length === 0 ? null : allPaid ? "#4ade80" : "#f87171";
 
               return (
                 <button
