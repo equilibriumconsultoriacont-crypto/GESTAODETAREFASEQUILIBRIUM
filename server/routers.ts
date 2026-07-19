@@ -90,8 +90,7 @@ const clientsRouter = router({
         const email = input.email.trim().toLowerCase();
         const existing = await getUserByEmail(email);
         if (!existing) {
-          const passwordHash = await bcryptjs.hash("123456", 10);
-          await createPendingClientUser(email, passwordHash, id);
+          await provisionClientAccess(email, id, input.name);
         }
       } catch { /* não bloqueia a criação do cliente */ }
       return { id };
@@ -119,8 +118,7 @@ const clientsRouter = router({
         try {
           const existing = await getUserByEmail(data.email);
           if (!existing) {
-            const passwordHash = await bcryptjs.hash("123456", 10);
-            await createPendingClientUser(data.email, passwordHash, id);
+            await provisionClientAccess(data.email, id, data.name);
           }
         } catch { /* ignore */ }
       }
@@ -1077,6 +1075,73 @@ const monthlyPanelRouter = router({
 // Interface exclusiva para clientes — acesso somente às próprias guias
 // Resolve de qual cliente é o portal: o próprio (role client) ou, para equipe
 // interna (admin/user), o cliente informado em previewClientId (pré-visualização).
+function generateTempPassword(len = 8): string {
+  // Sem 0/O/1/l/I para não confundir o cliente ao digitar
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  let out = "";
+  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+function buildWelcomeEmailHtml(name: string, password: string, baseUrl: string): string {
+  const hello = name ? `Olá, ${name}!` : "Olá!";
+  return `
+  <div style="font-family: Arial, Helvetica, sans-serif; background:#f4f4f5; padding:24px;">
+    <div style="max-width:520px; margin:0 auto; background:#ffffff; border-radius:14px; overflow:hidden; border:1px solid #e4e4e7;">
+      <div style="background:#14464f; padding:24px; text-align:center;">
+        <h1 style="color:#ffffff; font-size:20px; margin:0;">Equilíbrio Consultoria Contábil</h1>
+        <p style="color:#9fd4dc; font-size:13px; margin:6px 0 0;">Portal do Cliente</p>
+      </div>
+      <div style="padding:28px 24px; color:#27272a;">
+        <p style="font-size:16px; margin:0 0 12px;">${hello}</p>
+        <p style="font-size:14px; line-height:1.6; margin:0 0 20px;">
+          Criamos o seu acesso ao nosso Portal do Cliente. Por lá você acompanha suas guias, vencimentos, faturamento e fala direto com o escritório.
+        </p>
+        <div style="background:#f4f4f5; border:1px solid #e4e4e7; border-radius:10px; padding:16px; margin-bottom:20px; text-align:center;">
+          <p style="font-size:13px; color:#71717a; margin:0 0 6px;">Sua senha de primeiro acesso:</p>
+          <p style="font-size:24px; font-weight:bold; letter-spacing:3px; color:#14464f; margin:0; font-family:monospace;">${password}</p>
+        </div>
+        <p style="font-size:14px; line-height:1.6; margin:0 0 20px;">
+          No primeiro acesso o sistema vai pedir para você <strong>criar a sua própria senha</strong>. A senha acima serve só para entrar da primeira vez.
+        </p>
+        <div style="text-align:center; margin:24px 0;">
+          <a href="${baseUrl}/" style="display:inline-block; background:#24646c; color:#ffffff; text-decoration:none; padding:12px 30px; border-radius:8px; font-weight:bold; font-size:15px;">Acessar o Portal</a>
+        </div>
+        <div style="border-top:1px solid #e4e4e7; padding-top:20px; margin-top:8px;">
+          <p style="font-size:14px; line-height:1.6; margin:0 0 10px; color:#3f3f46;">
+            <strong>Dica:</strong> deixe o portal na tela inicial do seu celular e abra com um toque, como se fosse um aplicativo.
+          </p>
+          <div style="text-align:center;">
+            <a href="${baseUrl}/instalar" style="display:inline-block; color:#14464f; text-decoration:underline; font-size:14px;">Ver como adicionar à tela inicial &rarr;</a>
+          </div>
+        </div>
+      </div>
+      <div style="background:#fafafa; padding:16px 24px; text-align:center; border-top:1px solid #e4e4e7;">
+        <p style="font-size:12px; color:#a1a1aa; margin:0;">Se você não esperava este e-mail, pode ignorá-lo com segurança.</p>
+      </div>
+    </div>
+  </div>`;
+}
+
+// Cria o acesso do cliente com senha aleatória de 1º acesso e envia o e-mail
+// de boas-vindas (senha + tutorial). Troca de senha é forçada no primeiro login.
+async function provisionClientAccess(email: string, clientId: number, name?: string): Promise<void> {
+  const tempPassword = generateTempPassword();
+  const passwordHash = await bcryptjs.hash(tempPassword, 10);
+  await createPendingClientUser(email, passwordHash, clientId);
+  try {
+    const { sendEmail } = await import("./email");
+    const base = process.env.APP_URL || "https://gestaodetarefasequilibrium.onrender.com";
+    await sendEmail({
+      to: email,
+      subject: "Seu acesso ao Portal do Cliente — Equilíbrio Consultoria",
+      html: buildWelcomeEmailHtml(name || "", tempPassword, base),
+    });
+  } catch (e: any) {
+    console.warn("[E-mail de boas-vindas] ", e?.message);
+  }
+}
+
 function resolvePortalClientId(ctx: any, previewClientId?: number): number {
   if (ctx.user.role === "client") {
     if (!ctx.user.clientId) throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito a clientes" });
@@ -1321,6 +1386,43 @@ const clientAccessRouter = router({
       const { users: usersTable } = await import("../drizzle/schema");
       const { eq } = await import("drizzle-orm");
       await db.update(usersTable).set({ passwordHash }).where(eq(usersTable.id, input.id));
+      return { success: true };
+    }),
+
+  // Reenvia o acesso ao cliente: gera nova senha aleatória de 1º acesso, força a
+  // troca no próximo login e manda o e-mail de boas-vindas (senha + tutorial).
+  resendClientAccess: protectedProcedure
+    .input(z.object({ clientId: z.number().positive() }))
+    .mutation(async ({ input }) => {
+      const client = await getClientById(input.clientId);
+      if (!client || !client.email) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Cliente sem e-mail cadastrado." });
+      }
+      const email = client.email.trim().toLowerCase();
+      const tempPassword = generateTempPassword();
+      const passwordHash = await bcryptjs.hash(tempPassword, 10);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { users: usersTable } = await import("../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+      const existing = await getUserByEmail(email);
+      if (existing) {
+        await db.update(usersTable).set({ passwordHash, mustChangePassword: true } as any).where(eq(usersTable.id, existing.id));
+      } else {
+        await createPendingClientUser(email, passwordHash, input.clientId);
+      }
+      try {
+        const { sendEmail } = await import("./email");
+        const base = process.env.APP_URL || "https://gestaodetarefasequilibrium.onrender.com";
+        await sendEmail({
+          to: email,
+          subject: "Seu acesso ao Portal do Cliente — Equilíbrio Consultoria",
+          html: buildWelcomeEmailHtml(client.name || "", tempPassword, base),
+        });
+      } catch (e: any) {
+        console.warn("[Reenviar acesso] ", e?.message);
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Senha atualizada, mas o e-mail falhou. Verifique o e-mail do cliente." });
+      }
       return { success: true };
     }),
 });

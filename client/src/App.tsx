@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Dashboard from "./pages/Dashboard";
@@ -16,6 +16,7 @@ import ClientDetail from "./pages/ClientDetail";
 import ClientLoginsPage from "./pages/ClientLogins";
 import ResetPassword from "./pages/ResetPassword";
 import Login from "./pages/Login";
+import InstallGuide from "./pages/InstallGuide";
 import ClientPortal from "./pages/ClientPortal";
 import SetInitialPassword from "./pages/SetInitialPassword";
 import { useAuth } from "./_core/hooks/useAuth";
@@ -33,6 +34,10 @@ function Router() {
 
   // Desloga automaticamente após 5h de inatividade (só quando logado)
   useInactivityLogout(user ? logout : () => {});
+
+  const [location] = useLocation();
+  // Página pública do tutorial (aberta pelo link do e-mail, antes do login)
+  if (location === "/instalar") return <InstallGuide />;
 
   if (loading) {
     return (

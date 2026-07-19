@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
-import { Eye, EyeOff, KeyRound, PlusCircle, RefreshCw, Trash2, User, ExternalLink } from "lucide-react";
+import { Eye, EyeOff, KeyRound, PlusCircle, RefreshCw, Trash2, User, ExternalLink, Mail } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -21,6 +21,7 @@ export default function ClientLoginsPage() {
   const createMutation = trpc.clientAccess.createLogin.useMutation();
   const deleteMutation = trpc.clientAccess.deleteLogin.useMutation();
   const resetMutation = trpc.clientAccess.resetClientPassword.useMutation();
+  const resendMutation = (trpc.clientAccess as any).resendClientAccess.useMutation();
 
   const clientMap = new Map(clients.map((c) => [c.id, c]));
 
@@ -49,6 +50,17 @@ export default function ClientLoginsPage() {
       refetch();
     } catch (err: any) {
       toast.error(err?.message ?? "Erro ao remover");
+    }
+  };
+
+  const handleResend = async (clientId: number, name: string) => {
+    if (!confirm(`Enviar um novo acesso para ${name}? Uma nova senha será gerada e enviada por e-mail (junto com o tutorial). A senha atual deixa de valer.`)) return;
+    try {
+      await resendMutation.mutateAsync({ clientId });
+      toast.success("Acesso enviado por e-mail com a nova senha.");
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao reenviar acesso");
     }
   };
 
@@ -133,6 +145,17 @@ export default function ClientLoginsPage() {
                           title="Abrir o portal como o cliente vê"
                         >
                           <ExternalLink size={12} /> Ver portal
+                        </button>
+                      )}
+                      {login.clientId && (
+                        <button
+                          onClick={() => handleResend(login.clientId!, client?.name ?? "o cliente")}
+                          disabled={resendMutation.isPending}
+                          className="text-xs flex items-center gap-1"
+                          style={{ color: "#86efac", border: "1px solid rgba(34,197,94,0.3)", padding: "4px 8px", borderRadius: "6px" }}
+                          title="Gerar nova senha e enviar por e-mail, com o tutorial de instalação"
+                        >
+                          <Mail size={12} /> Reenviar
                         </button>
                       )}
                       <button
