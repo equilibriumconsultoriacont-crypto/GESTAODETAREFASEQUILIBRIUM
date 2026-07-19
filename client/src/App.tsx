@@ -42,10 +42,17 @@ function Router() {
   if (loading) {
     return (
       <div style={{ minHeight: "100vh", background: "#0a0a0a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        <style>{`@keyframes eqPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }`}</style>
-        <img src="/logo.png" alt="Equilíbrio" style={{ width: 90, height: 90, objectFit: "contain", animation: "eqPulse 1.4s ease-in-out infinite" }} />
-        <h1 style={{ color: "#e5e5e5", fontSize: 22, fontWeight: "bold", margin: "16px 0 2px" }}>Equilíbrio</h1>
-        <p style={{ color: "#9fd4dc", fontSize: 13, margin: 0 }}>Consultoria Contábil</p>
+        <style>{`
+          @keyframes eqLogoReveal { 0% { opacity: 0; transform: scale(0.82) translateY(6px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
+          @keyframes eqNameUp { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
+          @keyframes eqBarSlide { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+        `}</style>
+        <img src="/logo.png" alt="Equilíbrio" style={{ width: 100, height: 100, objectFit: "contain", animation: "eqLogoReveal 0.8s cubic-bezier(0.16,1,0.3,1) both" }} />
+        <h1 style={{ color: "#e5e5e5", fontSize: 25, fontWeight: 700, letterSpacing: "0.5px", margin: "20px 0 4px", animation: "eqNameUp 0.7s ease 0.55s both" }}>Equilíbrio</h1>
+        <p style={{ color: "#9fd4dc", fontSize: 12, letterSpacing: "2.5px", textTransform: "uppercase", margin: 0, animation: "eqNameUp 0.7s ease 0.75s both" }}>Consultoria Contábil</p>
+        <div style={{ width: 92, height: 2, borderRadius: 2, background: "rgba(159,212,220,0.15)", overflow: "hidden", marginTop: 26, animation: "eqNameUp 0.7s ease 0.95s both" }}>
+          <div style={{ width: "38%", height: "100%", background: "#24646c", borderRadius: 2, animation: "eqBarSlide 1.2s ease-in-out infinite" }} />
+        </div>
       </div>
     );
   }
