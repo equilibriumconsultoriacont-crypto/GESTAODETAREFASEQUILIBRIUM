@@ -116,7 +116,7 @@ export default function ClientLoginsPage() {
               {logins.map((login) => {
                 const client = login.clientId ? clientMap.get(login.clientId) : undefined;
                 return (
-                  <div key={login.id} className="flex items-center justify-between px-4 py-3.5">
+                  <div key={login.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3.5">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: "rgba(36,100,108,0.2)", color: "#9fd4dc" }}>
                         {client?.name?.charAt(0).toUpperCase() ?? <User size={14} />}
@@ -136,7 +136,7 @@ export default function ClientLoginsPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap sm:justify-end">
                       {login.clientId && (
                         <button
                           onClick={() => window.open(`/portal-cliente/${login.clientId}`, "_blank")}

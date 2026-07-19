@@ -719,12 +719,11 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
           </div>
         )}
 
-        {/* Legend */}
+        {/* Legend — cores pelo controle de pagamento do cliente */}
         <div className="flex items-center justify-center gap-4 mt-2 px-4">
           {[
-            { color: "#60a5fa", label: "Pendente" },
-            { color: "#f87171", label: "Vencida" },
-            { color: "#4ade80", label: "Concluída" },
+            { color: "#4ade80", label: "Pago" },
+            { color: "#f87171", label: "A pagar" },
           ].map((l) => (
             <div key={l.label} className="flex items-center gap-1.5">
               <div className="w-2.5 h-2.5 rounded-full" style={{ background: l.color }} />
