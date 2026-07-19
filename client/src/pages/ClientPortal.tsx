@@ -230,7 +230,7 @@ function linreg(pts: { x: number; y: number }[]) {
 
 const fmtBRL = (v: number | null | undefined) =>
   v === null || v === undefined || (typeof v === "number" && isNaN(v))
-    ? "\u2014"
+    ? "—"
     : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 const finInput: React.CSSProperties = {
@@ -238,8 +238,9 @@ const finInput: React.CSSProperties = {
   color: "#e5e5e5", padding: "8px 10px", outline: "none", fontSize: 14,
 };
 
-function YearDetail({ months, onPick }: { months: Array<{ month: number; faturamento: number | null; imposto: number | null }>; onPick: (m: number) => void }) {
+function YearDetail({ months, onPick, isStaff }: { months: Array<{ month: number; faturamento: number | null; imposto: number | null }>; onPick: (m: number) => void; isStaff: boolean }) {
   const withData = months.filter((m) => m.faturamento != null);
+  const list = isStaff ? months : withData;
   const totalFat = withData.reduce((s, m) => s + (m.faturamento || 0), 0);
   const totalImp = withData.reduce((s, m) => s + (m.imposto || 0), 0);
   return (
@@ -254,18 +255,19 @@ function YearDetail({ months, onPick }: { months: Array<{ month: number; faturam
           <p className="text-base font-bold" style={{ color: "#fca5a5" }}>{fmtBRL(totalImp)}</p>
         </div>
       </div>
-      {withData.length === 0 ? (
+      {list.length === 0 ? (
         <p className="text-sm py-4 text-center" style={{ color: "#52525b" }}>Nenhum faturamento informado ainda.</p>
       ) : (
         <div className="space-y-1">
-          {withData.map((m) => {
+          {list.map((m) => {
             const aliq = m.faturamento && m.imposto != null && m.faturamento > 0 ? (m.imposto / m.faturamento) * 100 : null;
+            const hasData = m.faturamento != null;
             return (
               <button key={m.month} onClick={() => onPick(m.month)}
                 className="w-full flex items-center justify-between py-2 text-left" style={{ borderBottom: "1px solid rgba(30,79,92,0.3)" }}>
-                <span className="text-sm font-medium" style={{ color: "#e5e5e5" }}>{MONTHS[m.month - 1]}</span>
-                <span className="text-xs" style={{ color: "#a1a1aa" }}>
-                  {fmtBRL(m.faturamento)}  \u00b7  imp {fmtBRL(m.imposto)}{aliq != null ? `  \u00b7  ${aliq.toFixed(1).replace(".", ",")}%` : ""}
+                <span className="text-sm font-medium" style={{ color: hasData ? "#e5e5e5" : "#71717a" }}>{MONTHS[m.month - 1]}</span>
+                <span className="text-xs" style={{ color: hasData ? "#a1a1aa" : "#52525b" }}>
+                  {hasData ? `${fmtBRL(m.faturamento)}  ·  imp ${fmtBRL(m.imposto)}${aliq != null ? `  ·  ${aliq.toFixed(1).replace(".", ",")}%` : ""}` : (isStaff ? "informar →" : "—")}
                 </span>
               </button>
             );
@@ -361,7 +363,7 @@ function FinancialsView({ year, previewClientId, onYearChange }: { year: number;
   const { data: yearData, isLoading } = (trpc.clientPortal as any).financialsYear.useQuery({ year, previewClientId });
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
   const [showProjection, setShowProjection] = useState(false);
-  const [projNote, setProjNote] = useState<string | null>(null);
+  const [projModal, setProjModal] = useState<null | "confirm" | "warning">(null);
   const isStaff = !!previewClientId;
 
   const months: Array<{ month: number; faturamento: number | null; imposto: number | null }> = yearData?.months ?? [];
@@ -386,38 +388,30 @@ function FinancialsView({ year, previewClientId, onYearChange }: { year: number;
     }
     return {
       name: MONTHS_SHORT[m.month - 1], month: m.month,
-      Faturamento: m.faturamento, Imposto: m.imposto, "Al\u00edquota": aliquota,
+      Faturamento: m.faturamento, Imposto: m.imposto, "Alíquota": aliquota,
       projFat, projImp, projAliq,
     };
   });
 
   const handleProjection = () => {
-    if (!canProject) {
-      setShowProjection(false);
-      setProjNote("\u00c9 necess\u00e1rio pelo menos 3 meses de faturamento informado para gerar a proje\u00e7\u00e3o.");
-      return;
-    }
-    const next = !showProjection;
-    setShowProjection(next);
-    setProjNote(next
-      ? "A proje\u00e7\u00e3o usa apenas os valores j\u00e1 informados; n\u00e3o considera casos espec\u00edficos. \u00c9 uma m\u00e9dia que projeta linearmente (crescimento, estabilidade ou queda) para os pr\u00f3ximos meses."
-      : null);
+    if (showProjection) { setShowProjection(false); return; }
+    setProjModal(canProject ? "confirm" : "warning");
   };
 
   return (
     <div className="px-2 pb-6 space-y-4">
       <div className="flex items-center justify-between px-2">
-        <button onClick={() => { onYearChange(year - 1); setSelectedMonth(null); setShowProjection(false); setProjNote(null); }} className="p-2 rounded-full" style={{ background: "rgba(255,255,255,0.05)", color: "#9fd4dc" }}><ChevronLeft size={16} /></button>
+        <button onClick={() => { onYearChange(year - 1); setSelectedMonth(null); setShowProjection(false); setProjModal(null); }} className="p-2 rounded-full" style={{ background: "rgba(255,255,255,0.05)", color: "#9fd4dc" }}><ChevronLeft size={16} /></button>
         <p className="text-sm font-bold" style={{ color: "#e5e5e5" }}>{year}</p>
-        <button onClick={() => { onYearChange(year + 1); setSelectedMonth(null); setShowProjection(false); setProjNote(null); }} className="p-2 rounded-full" style={{ background: "rgba(255,255,255,0.05)", color: "#9fd4dc" }}><ChevronRight size={16} /></button>
+        <button onClick={() => { onYearChange(year + 1); setSelectedMonth(null); setShowProjection(false); setProjModal(null); }} className="p-2 rounded-full" style={{ background: "rgba(255,255,255,0.05)", color: "#9fd4dc" }}><ChevronRight size={16} /></button>
       </div>
 
       <div className="rounded-2xl p-3" style={{ background: "#111", border: "1px solid #1e4f5c" }}>
         <div className="flex items-center justify-between mb-2 px-1">
-          <p className="text-xs" style={{ color: "#9fd4dc" }}>Faturamento, imposto e al\u00edquota</p>
+          <p className="text-xs" style={{ color: "#9fd4dc" }}>Faturamento, imposto e alíquota</p>
           <button onClick={handleProjection} className="text-xs px-2.5 py-1 rounded-lg font-medium flex items-center gap-1"
             style={{ background: showProjection ? "#24646c" : "rgba(36,100,108,0.15)", color: showProjection ? "#fff" : "#9fd4dc", border: "1px solid rgba(36,100,108,0.4)" }}>
-            <TrendingUp size={12} /> {showProjection ? "Ocultar proje\u00e7\u00e3o" : "Projetar"}
+            <TrendingUp size={12} /> {showProjection ? "Ocultar projeção" : "Projetar"}
           </button>
         </div>
         {isLoading ? (
@@ -432,36 +426,57 @@ function FinancialsView({ year, previewClientId, onYearChange }: { year: number;
                 <YAxis yAxisId="left" tick={{ fill: "#6b7280", fontSize: 9 }} tickFormatter={(v: number) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fill: "#6b7280", fontSize: 9 }} tickFormatter={(v: number) => `${v.toFixed(0)}%`} />
                 <Tooltip contentStyle={{ background: "#0d1f22", border: "1px solid #1e4f5c", borderRadius: 8, fontSize: 12 }} labelStyle={{ color: "#9fd4dc" }}
-                  formatter={(val: any, name: any) => (name === "Al\u00edquota" ? [`${Number(val).toFixed(2)}%`, name] : [fmtBRL(val), name])} />
+                  formatter={(val: any, name: any) => (name === "Alíquota" ? [`${Number(val).toFixed(2)}%`, name] : [fmtBRL(val), name])} />
                 <Line yAxisId="left" type="monotone" dataKey="Faturamento" stroke="#4ade80" strokeWidth={2} dot={{ r: 2 }} connectNulls />
                 <Line yAxisId="left" type="monotone" dataKey="Imposto" stroke="#f87171" strokeWidth={2} dot={{ r: 2 }} connectNulls />
-                <Line yAxisId="right" type="monotone" dataKey="Al\u00edquota" stroke="#9fd4dc" strokeWidth={2} dot={{ r: 2 }} connectNulls />
-                {showProjection && (
-                  <>
-                    <Line yAxisId="left" type="monotone" dataKey="projFat" stroke="#4ade80" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
-                    <Line yAxisId="left" type="monotone" dataKey="projImp" stroke="#f87171" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
-                    <Line yAxisId="right" type="monotone" dataKey="projAliq" stroke="#9fd4dc" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
-                  </>
-                )}
+                <Line yAxisId="right" type="monotone" dataKey="Alíquota" stroke="#9fd4dc" strokeWidth={2} dot={{ r: 2 }} connectNulls />
+                {showProjection && <Line yAxisId="left" type="monotone" dataKey="projFat" stroke="#4ade80" strokeWidth={1.5} strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} />}
+                {showProjection && <Line yAxisId="left" type="monotone" dataKey="projImp" stroke="#f87171" strokeWidth={1.5} strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} />}
+                {showProjection && <Line yAxisId="right" type="monotone" dataKey="projAliq" stroke="#9fd4dc" strokeWidth={1.5} strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} />}
               </LineChart>
             </ResponsiveContainer>
           </div>
         )}
         <div className="flex items-center justify-center gap-4 mt-1">
-          <span className="text-xs" style={{ color: "#4ade80" }}>\u25cf Faturamento</span>
-          <span className="text-xs" style={{ color: "#f87171" }}>\u25cf Imposto</span>
-          <span className="text-xs" style={{ color: "#9fd4dc" }}>\u25cf Al\u00edquota</span>
+          <span className="text-xs" style={{ color: "#4ade80" }}>● Faturamento</span>
+          <span className="text-xs" style={{ color: "#f87171" }}>● Imposto</span>
+          <span className="text-xs" style={{ color: "#9fd4dc" }}>● Alíquota</span>
         </div>
-        {projNote && (
-          <div className="mt-2 p-2 rounded-lg text-xs" style={{ background: "rgba(36,100,108,0.1)", border: "1px solid rgba(36,100,108,0.3)", color: "#9fd4dc" }}>{projNote}</div>
-        )}
-        <p className="text-center text-xs mt-2" style={{ color: "#52525b" }}>Toque em um m\u00eas no gr\u00e1fico para ver os detalhes</p>
+        <p className="text-center text-xs mt-2" style={{ color: "#52525b" }}>Toque em um mês no gráfico para ver os detalhes</p>
       </div>
 
       {selectedMonth ? (
         <MonthDetail year={year} month={selectedMonth} previewClientId={previewClientId} onClear={() => setSelectedMonth(null)} isStaff={isStaff} />
       ) : (
-        <YearDetail months={months} onPick={setSelectedMonth} />
+        <YearDetail months={months} onPick={setSelectedMonth} isStaff={isStaff} />
+      )}
+
+      {projModal && (
+        <div onClick={() => setProjModal(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.65)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ background: "#111", border: "1px solid #1e4f5c", borderRadius: 16, padding: 20, maxWidth: 360, width: "100%" }}>
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp size={18} style={{ color: "#9fd4dc" }} />
+              <p className="text-sm font-semibold" style={{ color: "#e5e5e5" }}>{projModal === "warning" ? "Dados insuficientes" : "Sobre a projeção"}</p>
+            </div>
+            <p className="text-sm" style={{ color: "#a1a1aa", lineHeight: 1.55 }}>
+              {projModal === "warning"
+                ? "É necessário pelo menos 3 meses de faturamento informado para gerar a projeção."
+                : "A projeção usa apenas os valores já informados; não considera casos específicos. É uma média que projeta linearmente (crescimento, estabilidade ou queda) para os próximos meses."}
+            </p>
+            <div className="flex justify-end gap-2 mt-5">
+              {projModal === "confirm" && (
+                <button onClick={() => setProjModal(null)}
+                  style={{ background: "rgba(255,255,255,0.05)", color: "#a1a1aa", border: "1px solid #2a2a2a", borderRadius: 8, padding: "8px 14px", fontSize: 13 }}>Cancelar</button>
+              )}
+              <button onClick={() => { if (projModal === "confirm") setShowProjection(true); setProjModal(null); }}
+                style={{ background: "#24646c", color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", fontWeight: 600, fontSize: 13 }}>
+                {projModal === "warning" ? "Entendi" : "OK, projetar"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
