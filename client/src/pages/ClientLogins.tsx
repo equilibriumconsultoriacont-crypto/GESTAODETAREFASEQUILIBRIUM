@@ -190,8 +190,13 @@ export default function ClientLoginsPage() {
             <DialogTitle style={{ color: "#e5e5e5" }}>Criar Acesso ao Portal</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-4 mt-2">
+            <div style={{ background: "rgba(36,100,108,0.1)", border: "1px solid rgba(36,100,108,0.3)", borderRadius: 8, padding: "10px 12px" }}>
+              <p style={{ fontSize: 12, color: "#9fd4dc", margin: 0, lineHeight: 1.5 }}>
+                Uma mesma empresa pode ter <strong>vários e-mails de acesso</strong>. Todos apontando para a <strong>mesma empresa</strong> veem os <strong>mesmos dados</strong> (guias, vencimentos e faturamento). Para adicionar outro e-mail, escolha a <strong>mesma empresa</strong> e troque só o e-mail.
+              </p>
+            </div>
             <div className="space-y-1.5">
-              <Label style={{ color: "#a1a1aa" }}>Cliente *</Label>
+              <Label style={{ color: "#a1a1aa" }}>Empresa (cliente) *</Label>
               <select
                 value={form.clientId}
                 onChange={(e) => {
