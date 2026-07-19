@@ -72,6 +72,22 @@ export default function Login() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#0a0a0a", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      {loading && mode === "login" && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 50, background: "#0a0a0a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+          <style>{`
+            @keyframes eqLogoIn { 0% { opacity: 0; transform: scale(0.82) translateY(10px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
+            @keyframes eqFadeUp { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
+            @keyframes eqBarSlide { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
+          `}</style>
+          <img src="/logo.png" alt="Equilíbrio" style={{ width: 92, height: 92, objectFit: "contain", animation: "eqLogoIn 0.6s cubic-bezier(0.16,1,0.3,1) both" }} />
+          <h1 style={{ color: "#e5e5e5", fontSize: 26, fontWeight: "bold", margin: "14px 0 2px", animation: "eqFadeUp 0.55s ease 0.15s both" }}>Equilíbrio</h1>
+          <p style={{ color: "#9fd4dc", fontSize: 14, margin: 0, animation: "eqFadeUp 0.55s ease 0.28s both" }}>Gestão de Tarefas</p>
+          <div style={{ width: 130, height: 3, borderRadius: 3, background: "rgba(159,212,220,0.15)", overflow: "hidden", marginTop: 26, animation: "eqFadeUp 0.55s ease 0.42s both" }}>
+            <div style={{ width: "38%", height: "100%", background: "#24646c", borderRadius: 3, animation: "eqBarSlide 1.1s ease-in-out infinite" }} />
+          </div>
+        </div>
+      )}
+
       <div style={{ width: "100%", maxWidth: 400 }}>
 
         {/* Logo */}

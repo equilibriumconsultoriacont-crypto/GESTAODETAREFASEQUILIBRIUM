@@ -1380,6 +1380,16 @@ export async function getClientRevenue(clientId: number, year: number, month: nu
   } catch { return null; }
 }
 
+export async function getClientRevenueYear(clientId: number, year: number): Promise<Array<{ month: number; valor: string; imposto: string | null }>> {
+  const db = await getDb();
+  if (!db) return [];
+  try {
+    const rows = await db.select().from(clientRevenue)
+      .where(and(eq(clientRevenue.clientId, clientId), eq(clientRevenue.year, year)));
+    return rows.map((r) => ({ month: r.month, valor: r.valor, imposto: (r as any).imposto ?? null }));
+  } catch { return []; }
+}
+
 // valor = faturamento; imposto = opcional (preenchido pelo PGDAS). Se imposto
 // vier undefined num update, mantém o valor já gravado.
 export async function upsertClientRevenue(clientId: number, year: number, month: number, valor: string, imposto?: string): Promise<void> {

@@ -11,7 +11,11 @@ import {
   LogOut,
   X,
   MessageCircle,
+  TrendingUp,
+  Wallet,
+  ChevronRight as ChevronRightIcon,
 } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -22,6 +26,7 @@ const MONTHS = [
 ];
 
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const MONTHS_SHORT = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
 // Datas são armazenadas em UTC (meia-noite UTC no banco). Exibir e agrupar
 // sempre em UTC — caso contrário o fuso do navegador (Brasil = UTC-3) empurra
@@ -211,103 +216,129 @@ function TaskDrawer({ task, onClose, previewClientId }: { task: Task; onClose: (
   );
 }
 
-function FinancialsView({ month, year, previewClientId }: { month: number; year: number; previewClientId?: number }) {
+function linreg(pts: { x: number; y: number }[]) {
+  const n = pts.length;
+  const sx = pts.reduce((s, p) => s + p.x, 0);
+  const sy = pts.reduce((s, p) => s + p.y, 0);
+  const sxx = pts.reduce((s, p) => s + p.x * p.x, 0);
+  const sxy = pts.reduce((s, p) => s + p.x * p.y, 0);
+  const d = n * sxx - sx * sx;
+  if (d === 0) return { slope: 0, intercept: sy / n };
+  const slope = (n * sxy - sx * sy) / d;
+  return { slope, intercept: (sy - slope * sx) / n };
+}
+
+const fmtBRL = (v: number | null | undefined) =>
+  v === null || v === undefined || (typeof v === "number" && isNaN(v))
+    ? "\u2014"
+    : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+const finInput: React.CSSProperties = {
+  width: "100%", background: "#0d1f22", border: "1px solid #1e4f5c", borderRadius: 8,
+  color: "#e5e5e5", padding: "8px 10px", outline: "none", fontSize: 14,
+};
+
+function YearDetail({ months, onPick }: { months: Array<{ month: number; faturamento: number | null; imposto: number | null }>; onPick: (m: number) => void }) {
+  const withData = months.filter((m) => m.faturamento != null);
+  const totalFat = withData.reduce((s, m) => s + (m.faturamento || 0), 0);
+  const totalImp = withData.reduce((s, m) => s + (m.imposto || 0), 0);
+  return (
+    <div className="rounded-2xl p-4" style={{ background: "#111", border: "1px solid #1e4f5c" }}>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-xs" style={{ color: "#52525b" }}>Faturamento no ano</p>
+          <p className="text-base font-bold" style={{ color: "#86efac" }}>{fmtBRL(totalFat)}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs" style={{ color: "#52525b" }}>Imposto no ano</p>
+          <p className="text-base font-bold" style={{ color: "#fca5a5" }}>{fmtBRL(totalImp)}</p>
+        </div>
+      </div>
+      {withData.length === 0 ? (
+        <p className="text-sm py-4 text-center" style={{ color: "#52525b" }}>Nenhum faturamento informado ainda.</p>
+      ) : (
+        <div className="space-y-1">
+          {withData.map((m) => {
+            const aliq = m.faturamento && m.imposto != null && m.faturamento > 0 ? (m.imposto / m.faturamento) * 100 : null;
+            return (
+              <button key={m.month} onClick={() => onPick(m.month)}
+                className="w-full flex items-center justify-between py-2 text-left" style={{ borderBottom: "1px solid rgba(30,79,92,0.3)" }}>
+                <span className="text-sm font-medium" style={{ color: "#e5e5e5" }}>{MONTHS[m.month - 1]}</span>
+                <span className="text-xs" style={{ color: "#a1a1aa" }}>
+                  {fmtBRL(m.faturamento)}  \u00b7  imp {fmtBRL(m.imposto)}{aliq != null ? `  \u00b7  ${aliq.toFixed(1).replace(".", ",")}%` : ""}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MonthDetail({ year, month, previewClientId, onClear, isStaff }: { year: number; month: number; previewClientId?: number; onClear: () => void; isStaff: boolean }) {
   const utils = trpc.useUtils();
-  const { data, isLoading } = trpc.clientPortal.financials.useQuery({ month, year, previewClientId });
+  const { data } = trpc.clientPortal.financials.useQuery({ month, year, previewClientId });
   const setRevenue = (trpc.clientPortal as any).setRevenue.useMutation({
-    onSuccess: () => utils.clientPortal.financials.invalidate(),
+    onSuccess: () => { utils.clientPortal.financials.invalidate(); (utils.clientPortal as any).financialsYear.invalidate(); },
   });
-  const isStaff = !!previewClientId; // em pré-visualização, a equipe pode lançar o faturamento
   const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState("");
-
-  const fmt = (v: string | null | undefined) => {
-    if (v === null || v === undefined || v === "") return "—";
-    const n = Number(v);
-    if (isNaN(n)) return String(v);
-    return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  };
-
+  const [fat, setFat] = useState("");
+  const [imp, setImp] = useState("");
   const taxes = data?.taxes ?? [];
-  const totalImpostos = taxes.reduce((s: number, t: any) => s + (Number(t.valor) || 0), 0);
-  const revenueNum = Number(data?.revenue) || 0;
-  const impostoNum = Number((data as any)?.imposto) || totalImpostos;
-  const aliquotaPct = revenueNum > 0 ? (impostoNum / revenueNum) * 100 : 0;
-  const aliquotaStr = revenueNum > 0 ? `${aliquotaPct.toFixed(2).replace(".", ",")}%` : "—";
-  const impostoBarPct = revenueNum > 0 ? Math.min(100, aliquotaPct) : 0;
 
   return (
-    <div className="px-2 pb-6 space-y-4">
-      {/* Resumo / gráfico do mês */}
-      <div className="rounded-2xl p-4" style={{ background: "#111", border: "1px solid #1e4f5c" }}>
-        <p className="text-xs mb-3" style={{ color: "#9fd4dc" }}>Resumo do mês</p>
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          <div>
-            <p className="text-xs" style={{ color: "#52525b" }}>Faturamento</p>
-            <p className="text-sm font-bold" style={{ color: "#86efac" }}>{fmt(data?.revenue)}</p>
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: "#52525b" }}>Imposto</p>
-            <p className="text-sm font-bold" style={{ color: "#fca5a5" }}>{fmt(impostoNum ? String(impostoNum) : null)}</p>
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: "#52525b" }}>Alíquota efetiva</p>
-            <p className="text-sm font-bold" style={{ color: "#e5e5e5" }}>{aliquotaStr}</p>
-          </div>
-        </div>
-        <div className="space-y-2">
-          <div>
-            <div className="flex justify-between text-xs mb-1" style={{ color: "#a1a1aa" }}><span>Faturamento</span><span>{fmt(data?.revenue)}</span></div>
-            <div style={{ height: 8, borderRadius: 4, background: revenueNum > 0 ? "#86efac" : "#1a1a1a", width: "100%" }} />
-          </div>
-          <div>
-            <div className="flex justify-between text-xs mb-1" style={{ color: "#a1a1aa" }}><span>Imposto</span><span>{fmt(impostoNum ? String(impostoNum) : null)}</span></div>
-            <div style={{ height: 8, borderRadius: 4, background: "#fca5a5", width: `${impostoBarPct}%` }} />
-          </div>
-        </div>
-        {revenueNum === 0 && (
-          <p className="text-xs mt-3" style={{ color: "#52525b" }}>Suba o PGDAS no Upload Inteligente (ou lance o faturamento) para ver o resumo.</p>
-        )}
+    <div className="space-y-3">
+      <div className="flex items-center justify-between px-1">
+        <p className="text-sm font-semibold" style={{ color: "#e5e5e5" }}>{MONTHS[month - 1]} {year}</p>
+        <button onClick={onClear} className="text-xs font-medium" style={{ color: "#9fd4dc" }}>Ver ano todo</button>
       </div>
 
-      {/* Faturamento */}
       <div className="rounded-2xl p-4" style={{ background: "#111", border: "1px solid #1e4f5c" }}>
-        <p className="text-xs" style={{ color: "#9fd4dc" }}>Faturamento do mês</p>
         {isStaff && editing ? (
-          <div className="flex gap-2 mt-2">
-            <input
-              value={val}
-              onChange={(e) => setVal(e.target.value)}
-              placeholder="0,00"
-              style={{ flex: 1, background: "#0d1f22", border: "1px solid #1e4f5c", borderRadius: 8, color: "#e5e5e5", padding: "8px 10px", outline: "none" }}
-            />
-            <button
-              onClick={async () => { try { await setRevenue.mutateAsync({ clientId: previewClientId!, year, month, valor: val }); setEditing(false); } catch { /* */ } }}
-              disabled={setRevenue.isPending}
-              style={{ background: "#24646c", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 600, fontSize: 13 }}
-            >Salvar</button>
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs" style={{ color: "#9fd4dc" }}>Faturamento</label>
+              <input value={fat} onChange={(e) => setFat(e.target.value)} placeholder="6000,00" style={finInput} />
+            </div>
+            <div>
+              <label className="text-xs" style={{ color: "#9fd4dc" }}>Imposto</label>
+              <input value={imp} onChange={(e) => setImp(e.target.value)} placeholder="360,00" style={finInput} />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={async () => { try { await setRevenue.mutateAsync({ clientId: previewClientId!, year, month, valor: fat, imposto: imp || undefined }); setEditing(false); } catch { /* */ } }}
+                disabled={setRevenue.isPending}
+                style={{ flex: 1, background: "#24646c", color: "#fff", border: "none", borderRadius: 8, padding: "8px 0", fontWeight: 600, fontSize: 13 }}>Salvar</button>
+              <button onClick={() => setEditing(false)} style={{ background: "rgba(255,255,255,0.05)", color: "#a1a1aa", border: "1px solid #2a2a2a", borderRadius: 8, padding: "8px 14px", fontSize: 13 }}>Cancelar</button>
+            </div>
           </div>
         ) : (
-          <div className="flex items-center justify-between mt-1">
-            <p className="text-2xl font-bold" style={{ color: "#e5e5e5" }}>{fmt(data?.revenue)}</p>
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs" style={{ color: "#52525b" }}>Faturamento</p>
+                <p className="text-xl font-bold" style={{ color: "#86efac" }}>{fmtBRL(data?.revenue as any)}</p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: "#52525b" }}>Imposto</p>
+                <p className="text-xl font-bold" style={{ color: "#fca5a5" }}>{fmtBRL((data as any)?.imposto)}</p>
+              </div>
+            </div>
             {isStaff && (
-              <button onClick={() => { setVal(data?.revenue ?? ""); setEditing(true); }}
-                style={{ color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)", borderRadius: 6, padding: "4px 10px", fontSize: 12 }}>Lançar</button>
+              <button onClick={() => { setFat((data?.revenue as any) ?? ""); setImp(((data as any)?.imposto) ?? ""); setEditing(true); }}
+                className="mt-3 w-full text-xs py-2 rounded-lg font-medium"
+                style={{ color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)", background: "rgba(36,100,108,0.08)" }}>
+                Lançar / editar manualmente
+              </button>
             )}
-          </div>
+          </>
         )}
       </div>
 
-      {/* Impostos */}
       <div className="rounded-2xl p-4" style={{ background: "#111", border: "1px solid #1e4f5c" }}>
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-xs" style={{ color: "#9fd4dc" }}>Impostos do mês</p>
-          <p className="text-sm font-bold" style={{ color: "#e5e5e5" }}>{fmt(String(totalImpostos))}</p>
-        </div>
-        {isLoading ? (
-          <p className="text-sm" style={{ color: "#52525b" }}>Carregando...</p>
-        ) : taxes.length === 0 ? (
-          <p className="text-sm" style={{ color: "#52525b" }}>Nenhuma guia disparada este mês.</p>
+        <p className="text-xs mb-3" style={{ color: "#9fd4dc" }}>Guias do mês</p>
+        {taxes.length === 0 ? (
+          <p className="text-sm" style={{ color: "#52525b" }}>Nenhuma guia disparada neste mês.</p>
         ) : (
           <div className="space-y-1">
             {taxes.map((t: any) => (
@@ -316,12 +347,154 @@ function FinancialsView({ month, year, previewClientId }: { month: number; year:
                   <p className="text-sm font-medium" style={{ color: "#e5e5e5" }}>{t.title}</p>
                   <p className="text-xs" style={{ color: "#52525b" }}>{t.taskType}</p>
                 </div>
-                <p className="text-sm font-semibold" style={{ color: t.valor ? "#e5e5e5" : "#52525b" }}>{fmt(t.valor)}</p>
+                <p className="text-sm font-semibold" style={{ color: t.valor ? "#e5e5e5" : "#52525b" }}>{fmtBRL(t.valor ? Number(t.valor) : null)}</p>
               </div>
             ))}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function FinancialsView({ year, previewClientId, onYearChange }: { year: number; previewClientId?: number; onYearChange: (y: number) => void }) {
+  const { data: yearData, isLoading } = (trpc.clientPortal as any).financialsYear.useQuery({ year, previewClientId });
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
+  const [showProjection, setShowProjection] = useState(false);
+  const [projNote, setProjNote] = useState<string | null>(null);
+  const isStaff = !!previewClientId;
+
+  const months: Array<{ month: number; faturamento: number | null; imposto: number | null }> = yearData?.months ?? [];
+  const fatPts = months.filter((m) => m.faturamento != null).map((m) => ({ x: m.month, y: m.faturamento as number }));
+  const impPts = months.filter((m) => m.imposto != null).map((m) => ({ x: m.month, y: m.imposto as number }));
+  const lastDataMonth = fatPts.length ? Math.max(...fatPts.map((p) => p.x)) : 0;
+  const canProject = fatPts.length >= 3;
+  const fatReg = canProject ? linreg(fatPts) : null;
+  const impReg = impPts.length >= 3 ? linreg(impPts) : null;
+
+  const chartData = months.map((m) => {
+    const aliquota = m.faturamento && m.imposto != null && m.faturamento > 0 ? (m.imposto / m.faturamento) * 100 : null;
+    let projFat: number | null = null, projImp: number | null = null, projAliq: number | null = null;
+    if (showProjection && fatReg && m.month >= lastDataMonth) {
+      if (m.month === lastDataMonth) {
+        projFat = m.faturamento; projImp = m.imposto; projAliq = aliquota;
+      } else {
+        projFat = Math.max(0, fatReg.intercept + fatReg.slope * m.month);
+        projImp = impReg ? Math.max(0, impReg.intercept + impReg.slope * m.month) : null;
+        projAliq = projFat && projImp != null && projFat > 0 ? (projImp / projFat) * 100 : null;
+      }
+    }
+    return {
+      name: MONTHS_SHORT[m.month - 1], month: m.month,
+      Faturamento: m.faturamento, Imposto: m.imposto, "Al\u00edquota": aliquota,
+      projFat, projImp, projAliq,
+    };
+  });
+
+  const handleProjection = () => {
+    if (!canProject) {
+      setShowProjection(false);
+      setProjNote("\u00c9 necess\u00e1rio pelo menos 3 meses de faturamento informado para gerar a proje\u00e7\u00e3o.");
+      return;
+    }
+    const next = !showProjection;
+    setShowProjection(next);
+    setProjNote(next
+      ? "A proje\u00e7\u00e3o usa apenas os valores j\u00e1 informados; n\u00e3o considera casos espec\u00edficos. \u00c9 uma m\u00e9dia que projeta linearmente (crescimento, estabilidade ou queda) para os pr\u00f3ximos meses."
+      : null);
+  };
+
+  return (
+    <div className="px-2 pb-6 space-y-4">
+      <div className="flex items-center justify-between px-2">
+        <button onClick={() => { onYearChange(year - 1); setSelectedMonth(null); setShowProjection(false); setProjNote(null); }} className="p-2 rounded-full" style={{ background: "rgba(255,255,255,0.05)", color: "#9fd4dc" }}><ChevronLeft size={16} /></button>
+        <p className="text-sm font-bold" style={{ color: "#e5e5e5" }}>{year}</p>
+        <button onClick={() => { onYearChange(year + 1); setSelectedMonth(null); setShowProjection(false); setProjNote(null); }} className="p-2 rounded-full" style={{ background: "rgba(255,255,255,0.05)", color: "#9fd4dc" }}><ChevronRight size={16} /></button>
+      </div>
+
+      <div className="rounded-2xl p-3" style={{ background: "#111", border: "1px solid #1e4f5c" }}>
+        <div className="flex items-center justify-between mb-2 px-1">
+          <p className="text-xs" style={{ color: "#9fd4dc" }}>Faturamento, imposto e al\u00edquota</p>
+          <button onClick={handleProjection} className="text-xs px-2.5 py-1 rounded-lg font-medium flex items-center gap-1"
+            style={{ background: showProjection ? "#24646c" : "rgba(36,100,108,0.15)", color: showProjection ? "#fff" : "#9fd4dc", border: "1px solid rgba(36,100,108,0.4)" }}>
+            <TrendingUp size={12} /> {showProjection ? "Ocultar proje\u00e7\u00e3o" : "Projetar"}
+          </button>
+        </div>
+        {isLoading ? (
+          <div style={{ height: 220 }} className="animate-pulse rounded-xl" />
+        ) : (
+          <div style={{ width: "100%", height: 220 }}>
+            <ResponsiveContainer>
+              <LineChart data={chartData} margin={{ top: 8, right: 6, left: -14, bottom: 0 }}
+                onClick={(e: any) => { const m = e?.activePayload?.[0]?.payload?.month; if (m) setSelectedMonth((cur) => (cur === m ? null : m)); }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis dataKey="name" tick={{ fill: "#6b7280", fontSize: 10 }} />
+                <YAxis yAxisId="left" tick={{ fill: "#6b7280", fontSize: 9 }} tickFormatter={(v: number) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fill: "#6b7280", fontSize: 9 }} tickFormatter={(v: number) => `${v.toFixed(0)}%`} />
+                <Tooltip contentStyle={{ background: "#0d1f22", border: "1px solid #1e4f5c", borderRadius: 8, fontSize: 12 }} labelStyle={{ color: "#9fd4dc" }}
+                  formatter={(val: any, name: any) => (name === "Al\u00edquota" ? [`${Number(val).toFixed(2)}%`, name] : [fmtBRL(val), name])} />
+                <Line yAxisId="left" type="monotone" dataKey="Faturamento" stroke="#4ade80" strokeWidth={2} dot={{ r: 2 }} connectNulls />
+                <Line yAxisId="left" type="monotone" dataKey="Imposto" stroke="#f87171" strokeWidth={2} dot={{ r: 2 }} connectNulls />
+                <Line yAxisId="right" type="monotone" dataKey="Al\u00edquota" stroke="#9fd4dc" strokeWidth={2} dot={{ r: 2 }} connectNulls />
+                {showProjection && (
+                  <>
+                    <Line yAxisId="left" type="monotone" dataKey="projFat" stroke="#4ade80" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
+                    <Line yAxisId="left" type="monotone" dataKey="projImp" stroke="#f87171" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
+                    <Line yAxisId="right" type="monotone" dataKey="projAliq" stroke="#9fd4dc" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
+                  </>
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+        <div className="flex items-center justify-center gap-4 mt-1">
+          <span className="text-xs" style={{ color: "#4ade80" }}>\u25cf Faturamento</span>
+          <span className="text-xs" style={{ color: "#f87171" }}>\u25cf Imposto</span>
+          <span className="text-xs" style={{ color: "#9fd4dc" }}>\u25cf Al\u00edquota</span>
+        </div>
+        {projNote && (
+          <div className="mt-2 p-2 rounded-lg text-xs" style={{ background: "rgba(36,100,108,0.1)", border: "1px solid rgba(36,100,108,0.3)", color: "#9fd4dc" }}>{projNote}</div>
+        )}
+        <p className="text-center text-xs mt-2" style={{ color: "#52525b" }}>Toque em um m\u00eas no gr\u00e1fico para ver os detalhes</p>
+      </div>
+
+      {selectedMonth ? (
+        <MonthDetail year={year} month={selectedMonth} previewClientId={previewClientId} onClear={() => setSelectedMonth(null)} isStaff={isStaff} />
+      ) : (
+        <YearDetail months={months} onPick={setSelectedMonth} />
+      )}
+    </div>
+  );
+}
+
+
+function CardHome({ onOpen, previewClientId }: { onOpen: (v: "calendar" | "financials") => void; previewClientId?: number }) {
+  const { data: office } = trpc.clientPortal.officeWhatsApp.useQuery();
+  const openWhats = () => {
+    if (!office?.number) return;
+    window.open(`https://wa.me/${office.number}?text=${encodeURIComponent("Olá! Gostaria de falar com o escritório.")}`, "_blank");
+  };
+  const cards = [
+    { key: "calendar", title: "Calendário", desc: "Suas obrigações e guias por mês", icon: <CalendarDays size={22} />, color: "#60a5fa", onClick: () => onOpen("calendar") },
+    { key: "financials", title: "Financeiro", desc: "Faturamento, impostos e alíquota efetiva", icon: <Wallet size={22} />, color: "#4ade80", onClick: () => onOpen("financials") },
+    { key: "whats", title: "Falar com o escritório", desc: "Tire dúvidas pelo WhatsApp", icon: <MessageCircle size={22} />, color: "#25D366", onClick: openWhats },
+  ];
+  return (
+    <div className="px-2 pt-2 space-y-3">
+      {cards.map((c) => (
+        <button key={c.key} onClick={c.onClick}
+          className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-all active:scale-[0.98]"
+          style={{ background: "#111", border: "1px solid #1e4f5c" }}>
+          <div className="flex items-center justify-center rounded-xl shrink-0" style={{ width: 48, height: 48, background: `${c.color}1a`, color: c.color }}>
+            {c.icon}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold" style={{ color: "#e5e5e5" }}>{c.title}</p>
+            <p className="text-xs mt-0.5" style={{ color: "#a1a1aa" }}>{c.desc}</p>
+          </div>
+          <ChevronRightIcon size={18} style={{ color: "#52525b" }} />
+        </button>
+      ))}
     </div>
   );
 }
@@ -332,7 +505,7 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
   const [year, setYear] = useState(now.getFullYear());
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
-  const [view, setView] = useState<"calendar" | "financials">("calendar");
+  const [view, setView] = useState<"home" | "calendar" | "financials">("home");
   const [, navigate] = useLocation();
 
   const { data: tasks = [], isLoading } = trpc.clientPortal.calendar.useQuery({ month, year, previewClientId });
@@ -385,9 +558,17 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
       <div className="sticky top-0 z-10 px-4 pt-safe-top" style={{ background: "#0a0a0a", borderBottom: "1px solid #1a1a1a" }}>
         <div className="flex items-center justify-between py-4">
           <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="Equilíbrio" className="w-8 h-8 object-contain" />
+            {view !== "home" ? (
+              <button onClick={() => setView("home")} className="p-2 rounded-full" style={{ background: "rgba(255,255,255,0.05)", color: "#9fd4dc" }}>
+                <ChevronLeft size={18} />
+              </button>
+            ) : (
+              <img src="/logo.png" alt="Equilíbrio" className="w-8 h-8 object-contain" />
+            )}
             <div>
-              <p className="text-sm font-semibold" style={{ color: "#e5e5e5" }}>Portal do Cliente</p>
+              <p className="text-sm font-semibold" style={{ color: "#e5e5e5" }}>
+                {view === "home" ? "Portal do Cliente" : view === "calendar" ? "Calendário" : "Financeiro"}
+              </p>
               <p className="text-xs" style={{ color: "#52525b" }}>{user?.email}</p>
             </div>
           </div>
@@ -400,7 +581,8 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
           </button>
         </div>
 
-        {/* Month navigator */}
+        {/* Month navigator (só no calendário) */}
+        {view === "calendar" && (
         <div className="flex items-center justify-between pb-4">
           <button onClick={prevMonth} className="p-2 rounded-full" style={{ background: "rgba(255,255,255,0.05)", color: "#9fd4dc" }}>
             <ChevronLeft size={18} />
@@ -415,16 +597,7 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
             <ChevronRight size={18} />
           </button>
         </div>
-
-        {/* View switcher */}
-        <div className="flex gap-2 pb-3">
-          <button onClick={() => setView("calendar")} className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: view === "calendar" ? "#24646c" : "rgba(255,255,255,0.05)", color: view === "calendar" ? "#fff" : "#a1a1aa" }}>Calendário</button>
-          <button onClick={() => setView("financials")} className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: view === "financials" ? "#24646c" : "rgba(255,255,255,0.05)", color: view === "financials" ? "#fff" : "#a1a1aa" }}>Faturamento e Imposto</button>
-        </div>
-
-        <div className="pb-3">
-          <OfficeContact />
-        </div>
+        )}
 
         {/* Weekday headers */}
         {view === "calendar" && (
@@ -438,8 +611,10 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
 
       {/* Conteúdo */}
       <div className="flex-1 px-2 pb-6">
-        {view === "financials" ? (
-          <FinancialsView month={month} year={year} previewClientId={previewClientId} />
+        {view === "home" ? (
+          <CardHome onOpen={setView} previewClientId={previewClientId} />
+        ) : view === "financials" ? (
+          <FinancialsView year={year} previewClientId={previewClientId} onYearChange={setYear} />
         ) : (
           <>
         {isLoading ? (

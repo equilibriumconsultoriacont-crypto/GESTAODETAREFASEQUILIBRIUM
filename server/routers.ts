@@ -20,6 +20,7 @@ import {
   createClient,
   createPendingClientUser,
   getClientRevenue,
+  getClientRevenueYear,
   upsertClientRevenue,
   createEmailLog,
   createRecurringTask,
@@ -1191,13 +1192,36 @@ const clientPortalRouter = router({
     }),
 
   // Lançar/editar faturamento do mês (somente equipe interna, via pré-visualização)
+  // 12 meses de faturamento + imposto do ano (gráfico do Faturamento)
+  financialsYear: protectedProcedure
+    .input(z.object({ year: z.number().min(2020), previewClientId: z.number().optional() }))
+    .query(async ({ input, ctx }) => {
+      const clientId = resolvePortalClientId(ctx, input.previewClientId);
+      const rows = await getClientRevenueYear(clientId, input.year);
+      const byMonth = new Map(rows.map((r) => [r.month, r]));
+      const months = [] as Array<{ month: number; faturamento: number | null; imposto: number | null }>;
+      for (let m = 1; m <= 12; m++) {
+        const r = byMonth.get(m);
+        months.push({
+          month: m,
+          faturamento: r ? Number(r.valor) : null,
+          imposto: r?.imposto != null ? Number(r.imposto) : null,
+        });
+      }
+      return { year: input.year, months };
+    }),
+
   setRevenue: protectedProcedure
-    .input(z.object({ clientId: z.number(), year: z.number(), month: z.number().min(1).max(12), valor: z.string() }))
+    .input(z.object({ clientId: z.number(), year: z.number(), month: z.number().min(1).max(12), valor: z.string(), imposto: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
       if (ctx.user.role !== "admin" && ctx.user.role !== "user") {
         throw new TRPCError({ code: "FORBIDDEN", message: "Apenas equipe interna" });
       }
-      await upsertClientRevenue(input.clientId, input.year, input.month, input.valor.replace(",", "."));
+      await upsertClientRevenue(
+        input.clientId, input.year, input.month,
+        input.valor.replace(",", "."),
+        input.imposto ? input.imposto.replace(",", ".") : undefined
+      );
       return { success: true };
     }),
 });
