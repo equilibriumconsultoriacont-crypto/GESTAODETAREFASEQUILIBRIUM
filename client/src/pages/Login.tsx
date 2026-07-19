@@ -80,9 +80,11 @@ export default function Login() {
             @keyframes eqFadeUp { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
             @keyframes eqBarSlide { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
           `}</style>
-          <img src="/logo.png" alt="Equilíbrio" style={{ width: 92, height: 92, objectFit: "contain", animation: "eqLogoIn 0.6s cubic-bezier(0.16,1,0.3,1) both" }} />
+          <div style={{ width: 110, height: 110, borderRadius: 27, background: "#d8ebed", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 14px 44px rgba(0,0,0,0.45)", animation: "eqLogoIn 0.6s cubic-bezier(0.16,1,0.3,1) both" }}>
+            <img src="/logo.png" alt="Equilíbrio" style={{ width: 74, height: 74, objectFit: "contain" }} />
+          </div>
           <h1 style={{ color: "#e5e5e5", fontSize: 26, fontWeight: "bold", margin: "14px 0 2px", animation: "eqFadeUp 0.55s ease 0.15s both" }}>Equilíbrio</h1>
-          <p style={{ color: "#9fd4dc", fontSize: 14, margin: 0, animation: "eqFadeUp 0.55s ease 0.28s both" }}>Gestão de Tarefas</p>
+          <p style={{ color: "#9fd4dc", fontSize: 14, margin: 0, animation: "eqFadeUp 0.55s ease 0.28s both" }}>Consultoria Contábil</p>
           <div style={{ width: 130, height: 3, borderRadius: 3, background: "rgba(159,212,220,0.15)", overflow: "hidden", marginTop: 26, animation: "eqFadeUp 0.55s ease 0.42s both" }}>
             <div style={{ width: "38%", height: "100%", background: "#24646c", borderRadius: 3, animation: "eqBarSlide 1.1s ease-in-out infinite" }} />
           </div>

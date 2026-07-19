@@ -1318,11 +1318,14 @@ const clientAccessRouter = router({
     .input(z.object({
       clientId: z.number(),
       email: z.string().email(),
-      password: z.string().min(6),
+      password: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       const email = input.email.trim().toLowerCase();
-      const passwordHash = await bcryptjs.hash(input.password, 10);
+      // Sem senha: gera uma aleatória (o e-mail com a senha é enviado depois,
+      // manualmente, pelo botão "Reenviar").
+      const pwd = input.password && input.password.length >= 6 ? input.password : generateTempPassword();
+      const passwordHash = await bcryptjs.hash(pwd, 10);
       const existing = await getUserByEmail(email);
       if (existing) {
         await upsertUser({

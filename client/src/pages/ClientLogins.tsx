@@ -108,77 +108,63 @@ export default function ClientLoginsPage() {
             </Button>
           </div>
         ) : (
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#1e4f5c", background: "#111" }}>
-            <div className="px-4 py-3 text-xs font-medium" style={{ color: "#a1a1aa", borderBottom: "1px solid #1e4f5c", background: "rgba(0,0,0,0.2)" }}>
-              {logins.length} acesso(s) criado(s)
-            </div>
-            <div className="divide-y" style={{ borderColor: "rgba(30,79,92,0.4)" }}>
-              {logins.map((login) => {
-                const client = login.clientId ? clientMap.get(login.clientId) : undefined;
-                return (
-                  <div key={login.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3.5">
+          <div className="space-y-3">
+            {Array.from(logins.reduce((m: Map<number, any[]>, l: any) => {
+              const k = l.clientId ?? 0;
+              if (!m.has(k)) m.set(k, []);
+              m.get(k)!.push(l);
+              return m;
+            }, new Map<number, any[]>()).entries()).map(([cid, accesses]) => {
+              const client = cid ? clientMap.get(cid) : undefined;
+              return (
+                <div key={cid} className="rounded-xl border overflow-hidden" style={{ borderColor: "#1e4f5c", background: "#111" }}>
+                  <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid #1e4f5c", background: "rgba(0,0,0,0.2)" }}>
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: "rgba(36,100,108,0.2)", color: "#9fd4dc" }}>
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: "rgba(36,100,108,0.2)", color: "#9fd4dc" }}>
                         {client?.name?.charAt(0).toUpperCase() ?? <User size={14} />}
                       </div>
                       <div>
-                        <p className="text-sm font-medium" style={{ color: "#e5e5e5" }}>
-                          {client?.name ?? `Cliente #${login.clientId}`}
-                        </p>
-                        <p className="text-xs mt-0.5" style={{ color: "#a1a1aa" }}>{login.email}</p>
-                        {(login as any).mustChangePassword ? (
-                          <span style={{ display: "inline-block", marginTop: 4, fontSize: 11, fontWeight: 600, color: "#fcd34d", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 6, padding: "1px 7px" }}>Pendente — não definiu senha</span>
-                        ) : (
-                          <span style={{ display: "inline-block", marginTop: 4, fontSize: 11, fontWeight: 600, color: "#86efac", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 6, padding: "1px 7px" }}>Ativo</span>
-                        )}
-                        <p className="text-xs mt-0.5" style={{ color: "#52525b" }}>
-                          Último acesso: {new Date(login.lastSignedIn).toLocaleDateString("pt-BR")}
-                        </p>
+                        <p className="text-sm font-semibold" style={{ color: "#e5e5e5" }}>{client?.name ?? `Cliente #${cid}`}</p>
+                        <p className="text-xs" style={{ color: "#52525b" }}>{accesses.length} e-mail{accesses.length !== 1 ? "s" : ""} de acesso</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap sm:justify-end">
-                      {login.clientId && (
-                        <button
-                          onClick={() => window.open(`/portal-cliente/${login.clientId}`, "_blank")}
-                          className="text-xs flex items-center gap-1"
-                          style={{ color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)", padding: "4px 8px", borderRadius: "6px" }}
-                          title="Abrir o portal como o cliente vê"
-                        >
-                          <ExternalLink size={12} /> Ver portal
-                        </button>
-                      )}
-                      {login.clientId && (
-                        <button
-                          onClick={() => handleResend(login.clientId!, client?.name ?? "o cliente")}
-                          disabled={resendMutation.isPending}
-                          className="text-xs flex items-center gap-1"
-                          style={{ color: "#86efac", border: "1px solid rgba(34,197,94,0.3)", padding: "4px 8px", borderRadius: "6px" }}
-                          title="Gerar nova senha e enviar por e-mail, com o tutorial de instalação"
-                        >
-                          <Mail size={12} /> Reenviar
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setResetOpen({ id: login.id, email: login.email })}
-                        className="p-1.5 rounded hover:bg-white/5 transition-colors text-xs flex items-center gap-1"
-                        style={{ color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)", padding: "4px 8px", borderRadius: "6px" }}
-                        title="Alterar senha"
-                      >
-                        <RefreshCw size={12} /> Senha
+                    {cid ? (
+                      <button onClick={() => window.open(`/portal-cliente/${cid}`, "_blank")} className="text-xs flex items-center gap-1 shrink-0" style={{ color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)", padding: "4px 8px", borderRadius: "6px" }} title="Abrir o portal como o cliente vê">
+                        <ExternalLink size={12} /> Ver portal
                       </button>
-                      <button
-                        onClick={() => handleDelete(login.id, login.email)}
-                        className="p-1.5 rounded hover:bg-white/5 transition-colors"
-                        style={{ color: "#f87171" }}
-                        title="Remover acesso"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
+                    ) : null}
                   </div>
-                );
-              })}
-            </div>
+                  <div className="divide-y" style={{ borderColor: "rgba(30,79,92,0.4)" }}>
+                    {accesses.map((login: any) => (
+                      <div key={login.id} className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 px-4 py-3">
+                        <div>
+                          <p className="text-sm font-medium" style={{ color: "#e5e5e5" }}>{login.email}</p>
+                          {login.mustChangePassword ? (
+                            <span style={{ display: "inline-block", marginTop: 4, fontSize: 11, fontWeight: 600, color: "#fcd34d", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 6, padding: "1px 7px" }}>Pendente — não definiu senha</span>
+                          ) : (
+                            <span style={{ display: "inline-block", marginTop: 4, fontSize: 11, fontWeight: 600, color: "#86efac", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 6, padding: "1px 7px" }}>Ativo</span>
+                          )}
+                          <p className="text-xs mt-0.5" style={{ color: "#52525b" }}>Último acesso: {new Date(login.lastSignedIn).toLocaleDateString("pt-BR")}</p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap sm:justify-end">
+                          {login.clientId && (
+                            <button onClick={() => handleResend(login.clientId!, client?.name ?? "o cliente")} disabled={resendMutation.isPending} className="text-xs flex items-center gap-1" style={{ color: "#86efac", border: "1px solid rgba(34,197,94,0.3)", padding: "4px 8px", borderRadius: "6px" }} title="Gerar nova senha e enviar por e-mail, com o tutorial de instalação">
+                              <Mail size={12} /> Reenviar
+                            </button>
+                          )}
+                          <button onClick={() => setResetOpen({ id: login.id, email: login.email })} className="text-xs flex items-center gap-1" style={{ color: "#9fd4dc", border: "1px solid rgba(36,100,108,0.3)", padding: "4px 8px", borderRadius: "6px" }} title="Alterar senha">
+                            <RefreshCw size={12} /> Senha
+                          </button>
+                          <button onClick={() => handleDelete(login.id, login.email)} className="p-1.5 rounded hover:bg-white/5 transition-colors" style={{ color: "#f87171" }} title="Remover acesso">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -217,17 +203,18 @@ export default function ClientLoginsPage() {
                 style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }} />
             </div>
             <div className="space-y-1.5">
-              <Label style={{ color: "#a1a1aa" }}>Senha *</Label>
+              <Label style={{ color: "#a1a1aa" }}>Senha (opcional)</Label>
               <div className="relative">
                 <Input type={showPassword ? "text" : "password"} value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  placeholder="Mínimo 6 caracteres" required minLength={6} className="pr-10"
+                  placeholder="Deixe em branco para gerar automática" minLength={6} className="pr-10"
                   style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }} />
                 <button type="button" onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: "#52525b" }}>
                   {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
+              <p style={{ fontSize: 11, color: "#52525b", margin: "4px 0 0" }}>Deixe em branco e depois clique em <strong style={{ color: "#86efac" }}>Reenviar</strong> para enviar a senha + tutorial por e-mail.</p>
             </div>
             <div className="flex gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} className="flex-1"

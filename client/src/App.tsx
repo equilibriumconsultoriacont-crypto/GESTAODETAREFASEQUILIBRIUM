@@ -41,10 +41,13 @@ function Router() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", background: "#0a0a0a", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ textAlign: "center", color: "#a1a1aa" }}>
-          <p>Carregando...</p>
+      <div style={{ minHeight: "100vh", background: "#0a0a0a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <style>{`@keyframes eqPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }`}</style>
+        <div style={{ width: 96, height: 96, borderRadius: 24, background: "#d8ebed", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 12px 40px rgba(0,0,0,0.4)", animation: "eqPulse 1.4s ease-in-out infinite" }}>
+          <img src="/logo.png" alt="Equilíbrio" style={{ width: 64, height: 64, objectFit: "contain" }} />
         </div>
+        <h1 style={{ color: "#e5e5e5", fontSize: 22, fontWeight: "bold", margin: "16px 0 2px" }}>Equilíbrio</h1>
+        <p style={{ color: "#9fd4dc", fontSize: 13, margin: 0 }}>Consultoria Contábil</p>
       </div>
     );
   }
