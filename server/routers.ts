@@ -1108,13 +1108,10 @@ function buildWelcomeEmailHtml(name: string, password: string, baseUrl: string):
           <a href="${baseUrl}/" style="display:inline-block; background:#24646c; color:#ffffff; text-decoration:none; padding:12px 30px; border-radius:8px; font-weight:bold; font-size:15px;">Acessar o Portal</a>
         </div>
         <p style="text-align:center; font-size:12px; color:#a1a1aa; margin:0 0 20px; line-height:1.5;">Se o link abrir dentro do e-mail, toque em <strong>&#8943;</strong> (ou em Compartilhar) e escolha <strong>&ldquo;Abrir no navegador&rdquo;</strong> (Safari ou Chrome).</p>
-        <div style="border-top:1px solid #e4e4e7; padding-top:20px; margin-top:8px;">
-          <p style="font-size:14px; line-height:1.6; margin:0 0 10px; color:#3f3f46;">
-            <strong>Dica:</strong> deixe o portal na tela inicial do seu celular e abra com um toque, como se fosse um aplicativo.
-          </p>
-          <div style="text-align:center;">
-            <a href="${baseUrl}/instalar" style="display:inline-block; color:#14464f; text-decoration:underline; font-size:14px;">Ver como adicionar à tela inicial &rarr;</a>
-          </div>
+        <div style="background:#eef7f8; border:2px solid #14464f; border-radius:12px; padding:18px 16px; margin-top:8px; text-align:center;">
+          <p style="font-size:16px; font-weight:bold; color:#14464f; margin:0 0 6px;">📱 Deixe o portal na tela do celular</p>
+          <p style="font-size:13px; color:#3f3f46; margin:0 0 14px; line-height:1.5;">Assim você abre com um toque, como se fosse um aplicativo. É rápido — veja o passo a passo:</p>
+          <a href="${baseUrl}/instalar" style="display:inline-block; background:#14464f; color:#ffffff; text-decoration:none; padding:13px 26px; border-radius:8px; font-weight:bold; font-size:15px;">Ver como adicionar à tela inicial</a>
         </div>
       </div>
       <div style="background:#fafafa; padding:16px 24px; text-align:center; border-top:1px solid #e4e4e7;">
@@ -1242,6 +1239,15 @@ const clientPortalRouter = router({
       } catch {
         return { url: file.fileUrl };
       }
+    }),
+
+  // Nome do cliente do portal (para o banner de pré-visualização da equipe)
+  clientName: protectedProcedure
+    .input(z.object({ previewClientId: z.number().optional() }))
+    .query(async ({ input, ctx }) => {
+      const clientId = resolvePortalClientId(ctx, input.previewClientId);
+      const client = await getClientById(clientId);
+      return { name: client?.name ?? null, clientId };
     }),
 
   // Número de WhatsApp do escritório (para os botões "Falar com o escritório")

@@ -47,6 +47,7 @@ export default function Login() {
     setLoading(true);
     try {
       await loginMutation.mutateAsync({ email: email.trim().toLowerCase(), password });
+      try { localStorage.setItem("eq_session_start", String(Date.now())); } catch { /* */ }
       window.location.href = "/";
     } catch (err: any) {
       setError(parseError(err, "Credenciais inválidas"));

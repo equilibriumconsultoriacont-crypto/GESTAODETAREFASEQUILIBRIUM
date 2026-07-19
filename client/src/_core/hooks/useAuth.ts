@@ -20,6 +20,7 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     try {
+      try { localStorage.removeItem("eq_session_start"); } catch { /* */ }
       await logoutMutation.mutateAsync();
     } catch (error: unknown) {
       if (error instanceof TRPCClientError && error.data?.code === "UNAUTHORIZED") return;

@@ -544,6 +544,10 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [view, setView] = useState<"home" | "calendar" | "financials">("home");
+  const previewInfo = (trpc.clientPortal as any).clientName.useQuery(
+    { previewClientId },
+    { enabled: !!previewClientId }
+  );
   const [, navigate] = useLocation();
 
   const { data: tasks = [], isLoading } = trpc.clientPortal.calendar.useQuery({ month, year, previewClientId });
@@ -589,7 +593,7 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
     <div className="min-h-screen flex flex-col" style={{ background: "#0a0a0a", maxWidth: 480, margin: "0 auto" }}>
       {previewClientId && (
         <div style={{ background: "#24646c", color: "#fff", textAlign: "center", padding: "6px 12px", fontSize: 12, fontWeight: 600 }}>
-          Pré-visualização — você está vendo o portal como o cliente
+          Pré-visualização — portal de {previewInfo.data?.name ?? `cliente #${previewClientId}`}
         </div>
       )}
       {/* Header */}
