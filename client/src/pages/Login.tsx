@@ -78,14 +78,12 @@ export default function Login() {
           <style>{`
             @keyframes eqLogoIn { 0% { opacity: 0; transform: scale(0.82) translateY(10px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
             @keyframes eqFadeUp { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
-            @keyframes eqBarSlide { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
+            @keyframes eqSpin { to { transform: rotate(360deg); } }
           `}</style>
           <img src="/logo.png" alt="Equilíbrio" style={{ width: 104, height: 104, objectFit: "contain", animation: "eqLogoIn 0.8s cubic-bezier(0.16,1,0.3,1) both" }} />
           <h1 style={{ color: "#e5e5e5", fontSize: 26, fontWeight: 700, letterSpacing: "0.5px", margin: "20px 0 4px", animation: "eqFadeUp 0.7s ease 0.55s both" }}>Equilíbrio</h1>
           <p style={{ color: "#9fd4dc", fontSize: 12, letterSpacing: "2.5px", textTransform: "uppercase", margin: 0, animation: "eqFadeUp 0.7s ease 0.75s both" }}>Consultoria Contábil</p>
-          <div style={{ width: 100, height: 2, borderRadius: 2, background: "rgba(159,212,220,0.15)", overflow: "hidden", marginTop: 26, animation: "eqFadeUp 0.7s ease 0.95s both" }}>
-            <div style={{ width: "38%", height: "100%", background: "#24646c", borderRadius: 2, animation: "eqBarSlide 1.2s ease-in-out infinite" }} />
-          </div>
+          <div style={{ marginTop: 28, width: 28, height: 28, borderRadius: "50%", border: "2.5px solid rgba(159,212,220,0.15)", borderTopColor: "#24646c", animation: "eqFadeUp 0.7s ease 0.95s both, eqSpin 0.8s linear infinite" }} />
         </div>
       )}
 

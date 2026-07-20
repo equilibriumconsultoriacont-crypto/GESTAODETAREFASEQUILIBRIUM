@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
-import { Building2, Check, Key, Pencil, PlusCircle, Shield, Trash2, UserCog, Users } from "lucide-react";
+import { Building2, Check, Key, Pencil, PlusCircle, Shield, Trash2, UserCog, Users, Mail } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -12,7 +12,7 @@ import { toast } from "sonner";
 const COLORS = ["#9fd4dc", "#c084fc", "#fb923c", "#4ade80", "#facc15", "#f87171", "#60a5fa", "#a1a1aa"];
 
 export default function AdminSettingsPage() {
-  const [tab, setTab] = useState<"departments" | "users">("departments");
+  const [tab, setTab] = useState<"departments" | "users" | "email">("departments");
 
   return (
     <AppLayout>
@@ -34,11 +34,64 @@ export default function AdminSettingsPage() {
             style={{ color: tab === "users" ? "#9fd4dc" : "#52525b", borderBottom: tab === "users" ? "2px solid #9fd4dc" : "2px solid transparent" }}>
             <Users size={15} /> Usuários
           </button>
+          <button onClick={() => setTab("email")}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors"
+            style={{ color: tab === "email" ? "#9fd4dc" : "#52525b", borderBottom: tab === "email" ? "2px solid #9fd4dc" : "2px solid transparent" }}>
+            <Mail size={15} /> E-mail
+          </button>
         </div>
 
-        {tab === "departments" ? <DepartmentsTab /> : <UsersTab />}
+        {tab === "departments" ? <DepartmentsTab /> : tab === "users" ? <UsersTab /> : <EmailTab />}
       </div>
     </AppLayout>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ABA E-MAIL (diagnóstico)
+// ═══════════════════════════════════════════════════════════════════
+function EmailTab() {
+  const [to, setTo] = useState("");
+  const [result, setResult] = useState<any>(null);
+  const testMutation = (trpc.clientAccess as any).emailTest.useMutation();
+  const run = async () => {
+    setResult(null);
+    try {
+      setResult(await testMutation.mutateAsync({ to: to.trim() }));
+    } catch (e: any) {
+      setResult({ success: false, error: e?.message ?? "Erro ao chamar o teste" });
+    }
+  };
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border p-4" style={{ borderColor: "#1e4f5c", background: "#111" }}>
+        <p className="text-sm font-semibold" style={{ color: "#e5e5e5" }}>Testar envio de e-mail</p>
+        <p className="text-xs mt-1 mb-3" style={{ color: "#a1a1aa" }}>Envia um e-mail de teste e mostra exatamente o que acontece — use para descobrir por que os e-mails não estão chegando.</p>
+        <div className="flex gap-2">
+          <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="seu-email@exemplo.com"
+            style={{ flex: 1, background: "#0d1f22", border: "1px solid #1e4f5c", borderRadius: 8, color: "#e5e5e5", padding: "8px 10px", outline: "none", fontSize: 14 }} />
+          <Button onClick={run} disabled={!to || testMutation.isPending} style={{ background: "#24646c", color: "#fff" }}>
+            {testMutation.isPending ? "Enviando..." : "Enviar teste"}
+          </Button>
+        </div>
+      </div>
+      {result && (
+        <div className="rounded-xl border p-4 text-sm" style={{ borderColor: result.success ? "rgba(34,197,94,0.4)" : "rgba(248,113,113,0.4)", background: result.success ? "rgba(34,197,94,0.08)" : "rgba(248,113,113,0.08)" }}>
+          <p className="font-semibold mb-2" style={{ color: result.success ? "#86efac" : "#fca5a5" }}>{result.success ? "✅ E-mail enviado" : "❌ Falhou"}</p>
+          <div className="space-y-1 text-xs" style={{ color: "#a1a1aa" }}>
+            <p><strong>Método:</strong> {result.method ?? "—"}</p>
+            <p><strong>Remetente (from):</strong> {result.from ?? "—"}</p>
+            <p><strong>Resend configurado:</strong> {result.hasResend ? "sim" : "não"}</p>
+            <p><strong>SMTP configurado:</strong> {result.hasSmtp ? "sim" : "não"}</p>
+            {result.success ? (
+              <p className="mt-2" style={{ color: "#86efac" }}>Verifique a <strong>caixa de entrada e o SPAM</strong> do e-mail informado.</p>
+            ) : (
+              <p className="mt-2" style={{ color: "#fca5a5" }}><strong>Erro:</strong> {result.error}</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -1435,6 +1435,33 @@ const clientAccessRouter = router({
       }
       return { success: true };
     }),
+
+  // Diagnóstico de e-mail: mostra a config e tenta um envio de teste real.
+  emailTest: protectedProcedure
+    .input(z.object({ to: z.string().email() }))
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.user.role !== "admin" && ctx.user.role !== "user") {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
+      const hasResend = !!process.env.RESEND_API_KEY;
+      const hasSmtp = !!(process.env.SMTP_USER && process.env.SMTP_PASS);
+      const method = hasResend ? "Resend (API)" : hasSmtp ? "SMTP" : "NENHUM configurado";
+      const from = process.env.RESEND_FROM || process.env.SMTP_USER || "contato@equilibriumcont.com";
+      if (!hasResend && !hasSmtp) {
+        return { success: false, method, from, hasResend, hasSmtp, error: "Nenhum método de envio configurado (falta RESEND_API_KEY ou SMTP_USER/SMTP_PASS no ambiente do Render)." };
+      }
+      try {
+        const { sendEmail } = await import("./email");
+        await sendEmail({
+          to: input.to,
+          subject: "Teste de e-mail — Equilíbrio",
+          html: "<div style=\"font-family:Arial,sans-serif;padding:20px\"><h2 style=\"color:#14464f\">Funcionou! ✅</h2><p>Este é um e-mail de teste do sistema Equilíbrio. Se você recebeu, o envio de e-mails está funcionando normalmente.</p></div>",
+        });
+        return { success: true, method, from, hasResend, hasSmtp, error: null };
+      } catch (e: any) {
+        return { success: false, method, from, hasResend, hasSmtp, error: e?.message || String(e) };
+      }
+    }),
 });
 
 
