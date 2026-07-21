@@ -236,6 +236,15 @@ export const clientRevenue = mysqlTable("client_revenue", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type ClientRevenue = typeof clientRevenue.$inferSelect;
+
+// ─── Acesso de um usuário (e-mail) a várias empresas (many-to-many) ───────────
+export const clientUserAccess = mysqlTable("client_user_access", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  clientId: int("clientId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ClientUserAccess = typeof clientUserAccess.$inferSelect;
 export type InsertEmailLog = typeof emailLogs.$inferInsert;
 
 // ─── Departamentos (gerenciáveis) ────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
@@ -34,6 +34,7 @@ import {
   departments,
   emailLogs,
   clientRevenue,
+  clientUserAccess,
   recurringTasks,
   taskCatalogs,
   taskFiles,
@@ -1411,4 +1412,38 @@ export async function upsertClientRevenue(clientId: number, year: number, month:
   } else {
     await db.insert(clientRevenue).values({ clientId, year, month, valor, imposto } as any);
   }
+}
+
+
+// ─── Acesso do usuário a várias empresas ──────────────────────────────────────
+export async function getUserCompanies(userId: number): Promise<Array<{ id: number; name: string }>> {
+  const db = await getDb();
+  if (!db) return [];
+  try {
+    const access = await db.select().from(clientUserAccess).where(eq(clientUserAccess.userId, userId));
+    const ids = access.map((a) => a.clientId);
+    if (ids.length === 0) return [];
+    const cs = await db.select().from(clients).where(inArray(clients.id, ids));
+    return cs.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name })).sort((a, b) => a.name.localeCompare(b.name));
+  } catch { return []; }
+}
+
+export async function userHasCompanyAccess(userId: number, clientId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    const rows = await db.select().from(clientUserAccess)
+      .where(and(eq(clientUserAccess.userId, userId), eq(clientUserAccess.clientId, clientId))).limit(1);
+    return rows.length > 0;
+  } catch { return false; }
+}
+
+export async function addUserCompanyAccess(userId: number, clientId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  try {
+    const existing = await db.select().from(clientUserAccess)
+      .where(and(eq(clientUserAccess.userId, userId), eq(clientUserAccess.clientId, clientId))).limit(1);
+    if (existing.length === 0) await db.insert(clientUserAccess).values({ userId, clientId });
+  } catch { /* */ }
 }

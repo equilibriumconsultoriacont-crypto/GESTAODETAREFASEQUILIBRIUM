@@ -382,12 +382,11 @@ function MonthDetail({ year, month, previewClientId, onClear, isStaff }: { year:
   );
 }
 
-function FinancialsView({ year, previewClientId, onYearChange }: { year: number; previewClientId?: number; onYearChange: (y: number) => void }) {
+function FinancialsView({ year, previewClientId, onYearChange, isStaff }: { year: number; previewClientId?: number; onYearChange: (y: number) => void; isStaff: boolean }) {
   const { data: yearData, isLoading } = (trpc.clientPortal as any).financialsYear.useQuery({ year, previewClientId });
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
   const [showProjection, setShowProjection] = useState(false);
   const [projModal, setProjModal] = useState<null | "confirm" | "warning">(null);
-  const isStaff = !!previewClientId;
 
   const months: Array<{ month: number; faturamento: number | null; imposto: number | null }> = yearData?.months ?? [];
   const fatPts = months.filter((m) => m.faturamento != null).map((m) => ({ x: m.month, y: m.faturamento as number }));
@@ -537,6 +536,39 @@ function CardHome({ onOpen, previewClientId }: { onOpen: (v: "calendar" | "finan
   );
 }
 
+function CompanySelector({ companies, onSelect, email, onLogout }: { companies: Array<{ id: number; name: string }>; onSelect: (id: number) => void; email?: string; onLogout: () => void }) {
+  return (
+    <div className="min-h-screen flex flex-col" style={{ background: "#0a0a0a", maxWidth: 480, margin: "0 auto" }}>
+      <div className="flex items-center justify-between px-4 py-4" style={{ borderBottom: "1px solid #1a1a1a" }}>
+        <div className="flex items-center gap-3">
+          <img src="/logo.png" alt="Equilíbrio" className="w-8 h-8 object-contain" />
+          <div>
+            <p className="text-sm font-semibold" style={{ color: "#e5e5e5" }}>Escolha a empresa</p>
+            <p className="text-xs" style={{ color: "#52525b" }}>{email}</p>
+          </div>
+        </div>
+        <button onClick={onLogout} className="p-2 rounded-full" style={{ background: "rgba(255,255,255,0.05)", color: "#a1a1aa" }}><LogOut size={16} /></button>
+      </div>
+      <div className="flex-1 px-4 pt-4 space-y-3">
+        <p className="text-sm mb-1" style={{ color: "#a1a1aa" }}>Seu acesso está ligado a mais de uma empresa. Escolha qual deseja abrir:</p>
+        {companies.map((c) => (
+          <button key={c.id} onClick={() => onSelect(c.id)}
+            className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-all active:scale-[0.98]"
+            style={{ background: "#111", border: "1px solid #1e4f5c" }}>
+            <div className="flex items-center justify-center rounded-xl shrink-0" style={{ width: 44, height: 44, background: "rgba(36,100,108,0.2)", color: "#9fd4dc", fontWeight: 700 }}>
+              {c.name.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold" style={{ color: "#e5e5e5" }}>{c.name}</p>
+            </div>
+            <ChevronRightIcon size={18} style={{ color: "#52525b" }} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ClientPortal({ previewClientId }: { previewClientId?: number }) {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -544,16 +576,22 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [view, setView] = useState<"home" | "calendar" | "financials">("home");
+  const [selectedClientId, setSelectedClientId] = useState<number | undefined>(undefined);
   const previewInfo = (trpc.clientPortal as any).clientName.useQuery(
     { previewClientId },
     { enabled: !!previewClientId }
   );
-  const [, navigate] = useLocation();
+  const myCompaniesQuery = (trpc.clientPortal as any).myCompanies.useQuery(undefined, { enabled: !previewClientId });
+  const companies: Array<{ id: number; name: string }> = myCompaniesQuery.data?.companies ?? [];
+  const isStaff = !!previewClientId;
+  const viewClientId = previewClientId ?? selectedClientId;
+  const currentCompany = companies.find((c) => c.id === viewClientId);
 
-  const { data: tasks = [], isLoading } = trpc.clientPortal.calendar.useQuery({ month, year, previewClientId });
+  const { data: tasks = [], isLoading } = trpc.clientPortal.calendar.useQuery({ month, year, previewClientId: viewClientId });
   const { data: user } = trpc.auth.me.useQuery();
   const logoutMutation = trpc.auth.logout.useMutation({
-    onSuccess: () => navigate("/login"),
+    onSuccess: () => { try { localStorage.removeItem("eq_session_start"); } catch { /* */ } window.location.href = "/"; },
+    onError: () => { window.location.href = "/"; },
   });
 
   const prevMonth = () => {
@@ -589,6 +627,10 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
   // Pad to complete last row
   while (cells.length % 7 !== 0) cells.push(null);
 
+  if (!isStaff && companies.length > 1 && !selectedClientId) {
+    return <CompanySelector companies={companies} onSelect={setSelectedClientId} email={user?.email} onLogout={() => logoutMutation.mutate()} />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#0a0a0a", maxWidth: 480, margin: "0 auto" }}>
       {previewClientId && (
@@ -623,6 +665,13 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
           </button>
         </div>
 
+        {!isStaff && companies.length > 1 && currentCompany && (
+          <div className="flex items-center justify-between pb-3">
+            <span className="text-xs font-medium truncate" style={{ color: "#9fd4dc" }}>🏢 {currentCompany.name}</span>
+            <button onClick={() => { setSelectedClientId(undefined); setView("home"); }} className="text-xs shrink-0 ml-2" style={{ color: "#52525b", textDecoration: "underline" }}>trocar empresa</button>
+          </div>
+        )}
+
         {/* Month navigator (só no calendário) */}
         {view === "calendar" && (
         <div className="flex items-center justify-between pb-4">
@@ -654,9 +703,9 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
       {/* Conteúdo */}
       <div className="flex-1 px-2 pb-6">
         {view === "home" ? (
-          <CardHome onOpen={setView} previewClientId={previewClientId} />
+          <CardHome onOpen={setView} previewClientId={viewClientId} />
         ) : view === "financials" ? (
-          <FinancialsView year={year} previewClientId={previewClientId} onYearChange={setYear} />
+          <FinancialsView year={year} previewClientId={viewClientId} isStaff={isStaff} onYearChange={setYear} />
         ) : (
           <>
         {isLoading ? (
@@ -808,7 +857,7 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
 
       {/* Task drawer */}
       {selectedTask && (
-        <TaskDrawer task={selectedTask} previewClientId={previewClientId} onClose={() => setSelectedTask(null)} />
+        <TaskDrawer task={selectedTask} previewClientId={viewClientId} onClose={() => setSelectedTask(null)} />
       )}
     </div>
   );

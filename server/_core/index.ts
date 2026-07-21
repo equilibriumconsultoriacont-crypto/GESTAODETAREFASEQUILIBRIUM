@@ -112,9 +112,12 @@ async function startServer() {
       const { getTaskById, getTaskFileById } = await import("../db");
 
       const task = await getTaskById(taskId);
-      // Cliente só baixa arquivo de tarefa da própria empresa
-      if (!task || (user.role === "client" && task.clientId !== user.clientId)) {
-        return res.status(403).send("Acesso negado");
+      if (!task) return res.status(404).send("Tarefa não encontrada");
+      // Cliente só baixa arquivo de tarefa de uma empresa à qual tem acesso
+      if (user.role === "client" && task.clientId !== user.clientId) {
+        const { userHasCompanyAccess } = await import("../db");
+        const ok = await userHasCompanyAccess(user.id, task.clientId);
+        if (!ok) return res.status(403).send("Acesso negado");
       }
       const file = await getTaskFileById(fileId);
       if (!file || file.taskId !== taskId) return res.status(404).send("Arquivo não encontrado");
@@ -656,6 +659,18 @@ async function ensureSchema() {
           console.log("[Migração] Coluna tasks.clientPaid criada.");
         }
       } catch (e: any) { console.warn("[Migração clientPaid] ", e?.message?.slice(0, 140)); }
+
+      // ── Acesso de um usuário a várias empresas ─────────────────────────────
+      try {
+        await conn.query(
+          "CREATE TABLE IF NOT EXISTS `client_user_access` (`id` int AUTO_INCREMENT NOT NULL, `userId` int NOT NULL, `clientId` int NOT NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `client_user_access_id` PRIMARY KEY(`id`), CONSTRAINT `cua_unique` UNIQUE(`userId`,`clientId`))"
+        );
+        // Backfill: cada cliente-usuario com clientId vira uma linha de acesso
+        await conn.query(
+          "INSERT IGNORE INTO `client_user_access` (`userId`, `clientId`) SELECT `id`, `clientId` FROM `users` WHERE `role` = 'client' AND `clientId` IS NOT NULL"
+        );
+        console.log("[Migração] client_user_access pronto (backfill aplicado).");
+      } catch (e: any) { console.warn("[Migração client_user_access] ", e?.message?.slice(0, 140)); }
 
       // ── PGDAS: enum + coluna imposto + template ────────────────────────────
       try {

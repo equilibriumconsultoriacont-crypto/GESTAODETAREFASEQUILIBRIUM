@@ -23,6 +23,9 @@ import {
   getClientRevenueYear,
   setTaskClientPaid,
   upsertClientRevenue,
+  getUserCompanies,
+  userHasCompanyAccess,
+  addUserCompanyAccess,
   createEmailLog,
   createRecurringTask,
   createTask,
@@ -1127,6 +1130,8 @@ async function provisionClientAccess(email: string, clientId: number, name?: str
   const tempPassword = generateTempPassword();
   const passwordHash = await bcryptjs.hash(tempPassword, 10);
   await createPendingClientUser(email, passwordHash, clientId);
+  const created = await getUserByEmail(email);
+  if (created) await addUserCompanyAccess(created.id, clientId);
   try {
     const { sendEmail } = await import("./email");
     const base = process.env.APP_URL || "https://gestaodetarefasequilibrium.onrender.com";
@@ -1140,13 +1145,25 @@ async function provisionClientAccess(email: string, clientId: number, name?: str
   }
 }
 
-function resolvePortalClientId(ctx: any, previewClientId?: number): number {
-  if (ctx.user.role === "client") {
-    if (!ctx.user.clientId) throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito a clientes" });
-    return ctx.user.clientId;
+async function resolvePortalClientId(ctx: any, previewClientId?: number): Promise<number> {
+  const role = ctx.user?.role;
+  // Equipe: pode ver qualquer empresa (pré-visualização)
+  if (role === "admin" || role === "user") {
+    if (previewClientId) return previewClientId;
+    throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito" });
   }
-  if ((ctx.user.role === "admin" || ctx.user.role === "user") && previewClientId) {
-    return previewClientId;
+  // Cliente: pode ver as empresas às quais tem acesso
+  if (role === "client") {
+    const own = ctx.user.clientId as number | undefined;
+    if (previewClientId && previewClientId !== own) {
+      const ok = await userHasCompanyAccess(ctx.user.id, previewClientId);
+      if (ok) return previewClientId;
+      throw new TRPCError({ code: "FORBIDDEN", message: "Sem acesso a essa empresa" });
+    }
+    if (own) return own;
+    const companies = await getUserCompanies(ctx.user.id);
+    if (companies[0]) return companies[0].id;
+    throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito a clientes" });
   }
   throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito" });
 }
@@ -1156,7 +1173,7 @@ const clientPortalRouter = router({
   calendar: protectedProcedure
     .input(z.object({ month: z.number().min(1).max(12), year: z.number().min(2020), previewClientId: z.number().optional() }))
     .query(async ({ input, ctx }) => {
-      const clientId = resolvePortalClientId(ctx, input.previewClientId);
+      const clientId = await resolvePortalClientId(ctx, input.previewClientId);
       const clientTasks = await listTasks({ clientId });
 
       // Guias "disparadas": só marcamos o dia no calendário quando a guia já foi
@@ -1196,7 +1213,7 @@ const clientPortalRouter = router({
   markPaid: protectedProcedure
     .input(z.object({ taskId: z.number(), paid: z.boolean(), previewClientId: z.number().optional() }))
     .mutation(async ({ input, ctx }) => {
-      const clientId = resolvePortalClientId(ctx, input.previewClientId);
+      const clientId = await resolvePortalClientId(ctx, input.previewClientId);
       const task = await getTaskById(input.taskId);
       if (!task || task.clientId !== clientId) throw new TRPCError({ code: "FORBIDDEN" });
       await setTaskClientPaid(input.taskId, input.paid);
@@ -1207,7 +1224,7 @@ const clientPortalRouter = router({
   taskFiles: protectedProcedure
     .input(z.object({ taskId: z.number(), previewClientId: z.number().optional() }))
     .query(async ({ input, ctx }) => {
-      const clientId = resolvePortalClientId(ctx, input.previewClientId);
+      const clientId = await resolvePortalClientId(ctx, input.previewClientId);
       const task = await getTaskById(input.taskId);
       if (!task || task.clientId !== clientId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Tarefa não pertence a este cliente" });
@@ -1219,7 +1236,7 @@ const clientPortalRouter = router({
   fileDownloadUrl: protectedProcedure
     .input(z.object({ taskId: z.number(), fileId: z.number(), previewClientId: z.number().optional() }))
     .query(async ({ input, ctx }) => {
-      const clientId = resolvePortalClientId(ctx, input.previewClientId);
+      const clientId = await resolvePortalClientId(ctx, input.previewClientId);
       const task = await getTaskById(input.taskId);
       if (!task || task.clientId !== clientId) {
         throw new TRPCError({ code: "FORBIDDEN" });
@@ -1245,10 +1262,21 @@ const clientPortalRouter = router({
   clientName: protectedProcedure
     .input(z.object({ previewClientId: z.number().optional() }))
     .query(async ({ input, ctx }) => {
-      const clientId = resolvePortalClientId(ctx, input.previewClientId);
+      const clientId = await resolvePortalClientId(ctx, input.previewClientId);
       const client = await getClientById(clientId);
       return { name: client?.name ?? null, clientId };
     }),
+
+  // Empresas às quais o cliente logado tem acesso (para o seletor de empresa)
+  myCompanies: protectedProcedure.query(async ({ ctx }) => {
+    if (ctx.user.role !== "client") return { companies: [] as Array<{ id: number; name: string }> };
+    const companies = await getUserCompanies(ctx.user.id);
+    if (companies.length === 0 && ctx.user.clientId) {
+      const c = await getClientById(ctx.user.clientId);
+      if (c) return { companies: [{ id: c.id, name: c.name }] };
+    }
+    return { companies };
+  }),
 
   // Número de WhatsApp do escritório (para os botões "Falar com o escritório")
   officeWhatsApp: protectedProcedure.query(() => {
@@ -1260,7 +1288,7 @@ const clientPortalRouter = router({
   financials: protectedProcedure
     .input(z.object({ month: z.number().min(1).max(12), year: z.number().min(2020), previewClientId: z.number().optional() }))
     .query(async ({ input, ctx }) => {
-      const clientId = resolvePortalClientId(ctx, input.previewClientId);
+      const clientId = await resolvePortalClientId(ctx, input.previewClientId);
       const clientTasks = await listTasks({ clientId });
       const logs = await listEmailLogs(undefined, clientId);
       const dispatched = new Set(logs.filter((l) => l.status === "ENVIADO").map((l) => l.taskId));
@@ -1281,7 +1309,7 @@ const clientPortalRouter = router({
   financialsYear: protectedProcedure
     .input(z.object({ year: z.number().min(2020), previewClientId: z.number().optional() }))
     .query(async ({ input, ctx }) => {
-      const clientId = resolvePortalClientId(ctx, input.previewClientId);
+      const clientId = await resolvePortalClientId(ctx, input.previewClientId);
       const rows = await getClientRevenueYear(clientId, input.year);
       const byMonth = new Map(rows.map((r) => [r.month, r]));
       const months = [] as Array<{ month: number; faturamento: number | null; imposto: number | null }>;
@@ -1322,29 +1350,22 @@ const clientAccessRouter = router({
     }))
     .mutation(async ({ input }) => {
       const email = input.email.trim().toLowerCase();
-      // Sem senha: gera uma aleatória (o e-mail com a senha é enviado depois,
-      // manualmente, pelo botão "Reenviar").
-      const pwd = input.password && input.password.length >= 6 ? input.password : generateTempPassword();
-      const passwordHash = await bcryptjs.hash(pwd, 10);
       const existing = await getUserByEmail(email);
       if (existing) {
-        await upsertUser({
-          email,
-          passwordHash,
-          role: "client",
-          clientId: input.clientId,
-          lastSignedIn: existing.lastSignedIn,
-        });
-        return { success: true, action: "updated" };
+        // E-mail já existe → apenas VINCULA à empresa (pode acessar várias, escolhe
+        // no login). Não mexe na senha nem na empresa principal.
+        await addUserCompanyAccess(existing.id, input.clientId);
+        return { success: true, action: "linked" };
       }
+      // Novo e-mail → cria o acesso. Senha em branco = gerada (envie depois com Reenviar).
+      const pwd = input.password && input.password.length >= 6 ? input.password : generateTempPassword();
+      const passwordHash = await bcryptjs.hash(pwd, 10);
       await upsertUser({
-        email,
-        name: email,
-        passwordHash,
-        role: "client",
-        clientId: input.clientId,
-        lastSignedIn: new Date(),
+        email, name: email, passwordHash, role: "client",
+        clientId: input.clientId, lastSignedIn: new Date(),
       });
+      const created = await getUserByEmail(email);
+      if (created) await addUserCompanyAccess(created.id, input.clientId);
       return { success: true, action: "created" };
     }),
 
@@ -1418,8 +1439,11 @@ const clientAccessRouter = router({
       const existing = await getUserByEmail(email);
       if (existing) {
         await db.update(usersTable).set({ passwordHash, mustChangePassword: true } as any).where(eq(usersTable.id, existing.id));
+        await addUserCompanyAccess(existing.id, input.clientId);
       } else {
         await createPendingClientUser(email, passwordHash, input.clientId);
+        const nu = await getUserByEmail(email);
+        if (nu) await addUserCompanyAccess(nu.id, input.clientId);
       }
       try {
         const { sendEmail } = await import("./email");
