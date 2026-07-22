@@ -386,6 +386,7 @@ let P = null, sel = 0;
 const clone = o => JSON.parse(JSON.stringify(o));
 const R$ = v => 'R$ ' + (+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const bmd = s => esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
 const nl2 = s => esc(s).replace(/\n/g,'<br>');
 const toast = m => { const t=document.getElementById('toast'); t.textContent=m; t.classList.add('on');
   clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('on'),2100); };
@@ -461,6 +462,12 @@ const TIPOS = {
   pass: { lb:'Próximos passos', novo:()=>({t:'pass',on:true, tit:'Como começamos',
       itens: DB.passos.map(s=>{ const [b,d]=s.split('::'); return {b:(b||'').trim(), s:(d||'').trim()}; }) }) },
   obs:  { lb:'Observações', novo:()=>({t:'obs',on:true, tit:'Observações', txt:'' }) },
+  grupos:{ lb:'Escopo agrupado', novo:()=>({t:'grupos',on:true, tit:'Tudo isto está incluso', sub:'',
+      grupos:[{h:'',itens:['']}] }) },
+  preco: { lb:'Preço único', novo:()=>({t:'preco',on:true, tit:'Investimento',
+      nome:'', desc:'', valor:0, periodo:'/mês', incl:[{b:'',s:''}] }) },
+  taxas: { lb:'Fora do pacote', novo:()=>({t:'taxas',on:true, tit:'Fora do pacote', sub:'',
+      itens:[{n:'',d:'',v:0,t:'mensal',na:''}] }) },
   fech: { lb:'Fechamento', fixo:true, novo:()=>({t:'fech',on:true,
       tit:'Vamos começar?', txt:'Qualquer dúvida sobre os números, respondemos na hora. Sem compromisso.' }) }
 };
@@ -510,6 +517,7 @@ const vld = () => addDias(P.emissao, P.validade);
 function bCapa(b){
   const m = DB.marca;
   const meta = [
+    ['Preparada para', '{{cliente}}', ''],
     ['Emissão', fmtData(P.emissao), ''],
     ['Válida até', fmtData(vld()), ''],
   ];
@@ -589,7 +597,7 @@ function bLista(b, cls){
   const its = b.itens.filter(x=>String(x).trim());
   if(!its.length) return '';
   return `<section class="rv"><div class="sechead"><h2 class="serif">${esc(b.tit)}</h2></div>
-    ${its.map(i=>`<div class="note"><span>${esc(i)}</span></div>`).join('')}</section>`;
+    ${its.map(i=>`<div class="note"><span>${bmd(i)}</span></div>`).join('')}</section>`;
 }
 function bPass(b){
   const its = b.itens.filter(i=>i.b);
@@ -618,7 +626,40 @@ function bFech(b){
     <small>Proposta ${esc(P.num)} · válida até ${fmtData(vld())}</small>
   </div>`;
 }
+function bGrupos(b){
+  const chk = '<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const grps = (b.grupos||[]).filter(g=>g.h).map(g=>{
+    const li = (g.itens||[]).filter(x=>String(x).trim()).map(t=>`<li>${chk}${bmd(t)}</li>`).join('');
+    return li ? `<div class="grp"><h3>${esc(g.h)}</h3><ul>${li}</ul></div>` : '';
+  }).join('');
+  if(!grps) return '';
+  return `<section class="rv"><div class="sechead"><h2 class="serif">${esc(b.tit)}</h2>${b.sub?`<p>${nl2(b.sub)}</p>`:''}</div>
+    <div class="grps">${grps}</div></section>`;
+}
+function bPreco(b){
+  const per = b.periodo?` <i>${esc(b.periodo)}</i>`:'';
+  const incl = (b.incl||[]).filter(x=>x.b).map(x=>`<div><b>${esc(x.b)}</b>${x.s?`<span>${esc(x.s)}</span>`:''}</div>`).join('');
+  return `<section class="rv"><div class="sechead"><h2 class="serif">${esc(b.tit)}</h2></div>
+    <div class="price">
+      <div class="box">
+        <div class="l"><b>${esc(b.nome)}</b>${b.desc?`<span>${esc(b.desc)}</span>`:''}</div>
+        <div class="v">${R$(b.valor)}${per}</div>
+      </div>
+      ${incl?`<div class="incl">${incl}</div>`:''}
+    </div></section>`;
+}
+function bTaxas(b){
+  const suf = {unico:'', mensal:' <i>/mês</i>', anual:' <i>/ano</i>'};
+  const rows = (b.itens||[]).filter(i=>i.n).map(i=>{
+    const v = (i.na && String(i.na).trim()) ? `<div class="v na">${esc(i.na)}</div>` : `<div class="v">${R$(i.v)}${suf[i.t]||''}</div>`;
+    return `<div class="row"><div class="l"><b>${esc(i.n)}</b>${i.d?`<span>${esc(i.d)}</span>`:''}</div>${v}</div>`;
+  }).join('');
+  if(!rows) return '';
+  return `<section class="rv"><div class="sechead"><h2 class="serif">${esc(b.tit)}</h2>${b.sub?`<p>${nl2(b.sub)}</p>`:''}</div>
+    <div class="tbl">${rows}</div></section>`;
+}
 const REND = { capa:bCapa, diag:bDiag, comp:bComp, escopo:bEscopo, val:bVal,
+  grupos:bGrupos, preco:bPreco, taxas:bTaxas,
   cond:b=>bLista(b), docs:b=>bLista(b), pass:bPass, obs:bObs, fech:bFech };
 
 /* ---------- documento completo ---------- */
@@ -698,6 +739,25 @@ border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:v
 .scope svg{flex:none;width:17px;height:17px;margin-top:3px;stroke:var(--teal);fill:none;stroke-width:2.2}
 .scope b{display:block;font-size:.93rem;font-weight:600;margin-bottom:2px}
 .scope span{font-size:.82rem;color:var(--ink-3);line-height:1.45}
+.grps{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.grp{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:24px 26px}
+.grp h3{font-size:.68rem;letter-spacing:.18em;text-transform:uppercase;color:var(--teal);font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:9px}
+.grp h3::after{content:"";flex:1;height:1px;background:var(--line)}
+.grp ul{list-style:none}
+.grp li{display:flex;gap:11px;align-items:flex-start;padding:6px 0;font-size:.9rem;color:var(--ink-2)}
+.grp svg{flex:none;width:15px;height:15px;margin-top:4px;stroke:var(--teal);fill:none;stroke-width:2.4}
+.grp li b{color:var(--ink);font-weight:600}
+.price{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--paper)}
+.price .box{background:var(--t900);color:#fff;padding:38px 34px;display:flex;flex-wrap:wrap;gap:24px;align-items:center;justify-content:space-between}
+.price .box .l b{display:block;font-size:1.15rem;font-weight:600;margin-bottom:6px}
+.price .box .l span{font-size:.9rem;color:rgba(255,255,255,.6);max-width:38ch;display:block;line-height:1.5}
+.price .box .v{font-family:var(--serif);font-size:3.1rem;font-weight:400;line-height:1;white-space:nowrap}
+.price .box .v i{font-style:normal;font-family:var(--sans);font-size:.95rem;color:var(--t400);font-weight:500}
+.incl{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1px;background:var(--line)}
+.incl div{background:var(--paper);padding:18px 22px}
+.incl b{display:block;font-size:.87rem;color:var(--good);font-weight:600;margin-bottom:2px}
+.incl span{font-size:.79rem;color:var(--ink-3);line-height:1.45}
+.tbl .row .v.na{font-size:.82rem;font-weight:500;color:var(--ink-3);border:1px solid var(--line);border-radius:99px;padding:5px 12px;background:var(--bone)}
 .tbl{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--paper)}
 .tbl .row{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:17px 24px;border-bottom:1px solid var(--line)}
 .tbl .row:last-child{border-bottom:0}
@@ -792,6 +852,51 @@ setTimeout(function(){var s=document.getElementById('splash');if(s)s.remove();},
 /* ==================== PRESETS ==================== */
 const PRESETS = {
   vazio:{ nome:'— Em branco —', blocos:['capa','fech'] },
+  acomp:{ nome:'Acompanhamento mensal (valor único)', blocos:['capa','grupos','preco','taxas','cond','pass','fech'],
+    prep:p=>{
+      p.b('capa').eyebrow='Acompanhamento contábil';
+      p.b('capa').titulo='Sua contabilidade inteira,<br>por <em>um valor só</em>.';
+      p.b('capa').lead='Fiscal, contábil e folha na mesma mensalidade — sem cobrança por serviço e sem surpresa no meio do caminho.';
+      p.b('grupos').sub='Não é um pacote básico com adicionais escondidos. É a rotina completa da sua empresa, do balanço à guia do FGTS, dentro do mesmo valor.';
+      p.b('grupos').grupos=[
+        {h:'Contábil', itens:['Escrituração contábil completa','Balancete mensal','Balanço Patrimonial e DRE','Livros Diário e Razão','Conciliação bancária']},
+        {h:'Fiscal', itens:['Apuração mensal do Simples Nacional','**Emissão das suas notas fiscais**','Guia do DAS calculada e enviada pronta','PGDAS-D e DEFIS','Certidões negativas quando precisar']},
+        {h:'Folha de pagamento', itens:['**Folha do seu funcionário atual inclusa**','Folha mensal e holerites','Admissões, férias, 13º e rescisões','Guias de INSS e FGTS prontas','eSocial, FGTS Digital e DCTFweb']},
+        {h:'Sócios', itens:['Cálculo do pró-labore e das guias','Distribuição de lucros isenta de IR','Orientação sobre a melhor retirada']},
+        {h:'Atendimento', itens:['Suporte no WhatsApp, direto com quem faz','Resposta no mesmo dia útil','Calendário de obrigações — você sabe o que vence','Orientação tributária ao longo do ano']},
+        {h:'Reforma Tributária · 2026', itens:['Adequação das suas notas ao padrão IBS/CBS','Acompanhamento do ano-piloto de apuração','Revisão dos seus códigos de serviço','Você chega em 2027 sem correria']},
+      ];
+      p.b('preco').nome='Acompanhamento contábil mensal';
+      p.b('preco').desc='Tudo o que está descrito acima, sem cobrança adicional por serviço.';
+      p.b('preco').valor=800; p.b('preco').periodo='/mês';
+      p.b('preco').incl=[
+        {b:'Sem taxa de adesão', s:'Você não paga nada para começar'},
+        {b:'Folha inclusa', s:'Do seu funcionário atual'},
+        {b:'Sem cobrança por nota', s:'Emitimos quantas forem'},
+        {b:'Sem custo de migração', s:'Assumimos a rotina por nossa conta'},
+      ];
+      p.b('taxas').sub='Só isto é cobrado à parte. Nada mais — e nada entra sem o seu aceite antes.';
+      p.b('taxas').itens=[
+        {n:'Funcionário adicional', d:'Cada novo empregado admitido além do quadro atual. Sócios não contam.', v:50, t:'mensal', na:''},
+        {n:'Declaração de Imposto de Renda dos sócios', d:'Não está inclusa na mensalidade. O valor é informado na época da declaração.', v:0, t:'unico', na:'Não incluso'},
+      ];
+      p.b('cond').itens=[
+        'Os valores desta proposta são válidos até a data de validade indicada acima.',
+        'A mensalidade é reajustada uma vez por ano, pelo **IPCA**. Nada de reajuste no meio do caminho.',
+        'A folha está inclusa para o **quadro atual** de funcionários. Cada novo empregado admitido entra a **R$ 50,00 por mês**.',
+        'A **declaração de Imposto de Renda dos sócios** não faz parte da mensalidade. Se quiser, passamos o valor na época da declaração.',
+        'Taxas de terceiros (Prefeitura, Junta Comercial, conselhos) são repassadas sem acréscimo, contra comprovante.',
+        'Serviços eventuais fora da rotina — perícias, defesas administrativas, recuperação de crédito — são orçados à parte, sempre com o seu aceite antes.',
+      ];
+      p.b('pass').itens=[
+        {b:'Você confirma pelo WhatsApp', s:'Um "sim" já basta. Respondemos no mesmo dia útil.'},
+        {b:'Alinhamos acessos e documentos', s:'Uma conversa rápida para entender a sua rotina e pegar o que é necessário.'},
+        {b:'Assumimos tudo no mês seguinte', s:'Sem interrupção na sua operação, sem retrabalho do seu lado.'},
+        {b:'Você só recebe as guias prontas', s:'E volta a pensar no seu negócio, não na burocracia.'},
+      ];
+      p.b('fech').tit='Vamos começar?';
+      p.b('fech').txt='Qualquer dúvida sobre o escopo ou sobre o valor, respondemos na hora. Sem compromisso.';
+    }},
   abertura:{ nome:'Abertura de CNPJ', blocos:['capa','diag','escopo','val','cond','docs','pass','fech'],
     prep:p=>{
       p.b('capa').eyebrow='Proposta de serviços';
@@ -1039,6 +1144,35 @@ function editor(){
         <p class="hint">O total soma apenas os itens de pagamento <b>único</b>. Mensais e anuais aparecem
           na linha deles, mas ficam fora do "para começar".</p>`;
   }
+  else if(b.t==='grupos'){
+    const txt = (b.grupos||[]).map(g=>'# '+g.h+'\n'+(g.itens||[]).join('\n')).join('\n\n');
+    h = fld('Título', b.tit,'tit') + fld('Subtítulo', b.sub,'sub','area')
+      + `<label class="f"><span>Grupos e itens — cada grupo começa com <b># Nome</b>, cada item numa linha. Use <b>**texto**</b> para negrito.</span>
+         <textarea class="in" data-p="_gruposText" rows="14">${esc(txt)}</textarea></label>`;
+  }
+  else if(b.t==='preco'){
+    const inclTxt = (b.incl||[]).map(x=>x.b+(x.s?' :: '+x.s:'')).join('\n');
+    h = fld('Título da seção', b.tit,'tit')
+      + `<div class="row r2">${fld('Nome do plano', b.nome,'nome')}${fld('Período (ex: /mês)', b.periodo,'periodo')}</div>`
+      + fld('Descrição', b.desc,'desc','area')
+      + fld('Valor (R$)', b.valor,'valor','number')
+      + `<label class="f"><span>Incluídos (destaques) — um por linha, formato <b>Título :: descrição</b></span>
+         <textarea class="in" data-p="_inclText" rows="5">${esc(inclTxt)}</textarea></label>`;
+  }
+  else if(b.t==='taxas'){
+    const suf = {unico:'único', mensal:'/mês', anual:'/ano'};
+    h = fld('Título', b.tit,'tit') + fld('Subtítulo', b.sub,'sub','area')
+      + `<div id="lst">${b.itens.map((i,k)=>`<div class="it"><div class="gr">
+          <input class="in" data-l="${k}.n" value="${esc(i.n)}" placeholder="Item">
+          <input class="in" data-l="${k}.d" value="${esc(i.d)}" placeholder="Descrição">
+          <div class="row r2">
+            <input class="in" type="number" step="0.01" data-l="${k}.v" value="${i.v}" placeholder="Valor">
+            <select class="in" data-l="${k}.t">${Object.entries(suf).map(([v,t])=>`<option value="${v}" ${i.t===v?'selected':''}>${t}</option>`).join('')}</select>
+          </div>
+          <input class="in" data-l="${k}.na" value="${esc(i.na||'')}" placeholder='Se não incluso: texto (ex: Não incluso). Vazio = usa o valor.'>
+        </div><button class="btn dg" data-lrm="${k}">✕</button></div>`).join('')}</div>
+        <button class="btn add" data-ladd="1">+ item</button>`;
+  }
   else if(b.t==='cond' || b.t==='docs'){
     h = fld('Título', b.tit,'tit')
       + `<div id="lst">${b.itens.map((i,k)=>`<div class="it">
@@ -1058,7 +1192,16 @@ function editor(){
   e.querySelectorAll('[data-p]').forEach(el=>{
     el.oninput = el.onchange = ()=>{
       const v = el.type==='number' ? (parseFloat(el.value)||0) : el.value;
-      b[el.dataset.p] = v;
+      if(el.dataset.p==='_gruposText'){
+        const gs=[]; let cur=null;
+        String(v).split('\n').forEach(ln=>{ const t=ln.trim();
+          if(t.startsWith('#')){ cur={h:t.replace(/^#+\s*/,''),itens:[]}; gs.push(cur); }
+          else if(t && cur){ cur.itens.push(t); } });
+        b.grupos = gs.length?gs:[{h:'',itens:['']}];
+      } else if(el.dataset.p==='_inclText'){
+        b.incl = String(v).split('\n').filter(l=>l.trim()).map(l=>{ const [bb,...ss]=l.split('::'); return {b:(bb||'').trim(), s:ss.join('::').trim()}; });
+        if(!b.incl.length) b.incl=[{b:'',s:''}];
+      } else { b[el.dataset.p] = v; }
       if(b.t==='comp') editorMem(b);
       pv();
     };
@@ -1074,6 +1217,7 @@ function editor(){
   const add = e.querySelector('[data-ladd]');
   if(add) add.onclick = ()=>{
     if(b.t==='val') b.itens.push({n:'',d:'',v:0,t:'unico'});
+    else if(b.t==='taxas') b.itens.push({n:'',d:'',v:0,t:'mensal',na:''});
     else if(b.t==='cond'||b.t==='docs') b.itens.push('');
     else b.itens.push({b:'',s:''});
     editor(); pv();
