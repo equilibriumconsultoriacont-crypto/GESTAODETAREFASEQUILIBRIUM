@@ -1424,39 +1424,35 @@ const clientAccessRouter = router({
   // Reenvia o acesso ao cliente: gera nova senha aleatória de 1º acesso, força a
   // troca no próximo login e manda o e-mail de boas-vindas (senha + tutorial).
   resendClientAccess: protectedProcedure
-    .input(z.object({ clientId: z.number().positive() }))
+    .input(z.object({ email: z.string().email(), clientId: z.number().optional() }))
     .mutation(async ({ input }) => {
-      const client = await getClientById(input.clientId);
-      if (!client || !client.email) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Cliente sem e-mail cadastrado." });
+      // Usa o e-mail DO ACESSO (login), nunca o e-mail da empresa — eles podem diferir.
+      const email = input.email.trim().toLowerCase();
+      const existing = await getUserByEmail(email);
+      if (!existing) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Acesso não encontrado para esse e-mail." });
       }
-      const email = client.email.trim().toLowerCase();
       const tempPassword = generateTempPassword();
       const passwordHash = await bcryptjs.hash(tempPassword, 10);
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       const { users: usersTable } = await import("../drizzle/schema");
       const { eq } = await import("drizzle-orm");
-      const existing = await getUserByEmail(email);
-      if (existing) {
-        await db.update(usersTable).set({ passwordHash, mustChangePassword: true } as any).where(eq(usersTable.id, existing.id));
-        await addUserCompanyAccess(existing.id, input.clientId);
-      } else {
-        await createPendingClientUser(email, passwordHash, input.clientId);
-        const nu = await getUserByEmail(email);
-        if (nu) await addUserCompanyAccess(nu.id, input.clientId);
-      }
+      await db.update(usersTable).set({ passwordHash, mustChangePassword: true } as any).where(eq(usersTable.id, existing.id));
+      const clientId = input.clientId ?? existing.clientId ?? undefined;
+      if (clientId) await addUserCompanyAccess(existing.id, clientId);
+      const client = clientId ? await getClientById(clientId) : null;
       try {
         const { sendEmail } = await import("./email");
         const base = process.env.APP_URL || "https://gestaodetarefasequilibrium.onrender.com";
         await sendEmail({
           to: email,
           subject: "Seu acesso ao Portal do Cliente — Equilíbrio Consultoria",
-          html: buildWelcomeEmailHtml(client.name || "", tempPassword, base),
+          html: buildWelcomeEmailHtml(client?.name || "", tempPassword, base),
         });
       } catch (e: any) {
         console.warn("[Reenviar acesso] ", e?.message);
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Senha atualizada, mas o e-mail falhou. Verifique o e-mail do cliente." });
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Senha atualizada, mas o e-mail falhou: ${e?.message || "erro desconhecido"}` });
       }
       return { success: true };
     }),

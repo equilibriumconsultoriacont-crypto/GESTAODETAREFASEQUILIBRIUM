@@ -53,11 +53,11 @@ export default function ClientLoginsPage() {
     }
   };
 
-  const handleResend = async (clientId: number, name: string) => {
-    if (!confirm(`Enviar um novo acesso para ${name}? Uma nova senha será gerada e enviada por e-mail (junto com o tutorial). A senha atual deixa de valer.`)) return;
+  const handleResend = async (email: string, clientId: number | null, name: string) => {
+    if (!confirm(`Enviar um novo acesso para ${email}? Uma nova senha será gerada e enviada por e-mail (junto com o tutorial). A senha atual deixa de valer.`)) return;
     try {
-      await resendMutation.mutateAsync({ clientId });
-      toast.success("Acesso enviado por e-mail com a nova senha.");
+      await resendMutation.mutateAsync({ email, clientId: clientId ?? undefined });
+      toast.success(`Acesso enviado para ${email} com a nova senha.`);
       refetch();
     } catch (err: any) {
       toast.error(err?.message ?? "Erro ao reenviar acesso");
@@ -148,7 +148,7 @@ export default function ClientLoginsPage() {
                         </div>
                         <div className="flex items-center gap-2 flex-wrap sm:justify-end">
                           {login.clientId && (
-                            <button onClick={() => handleResend(login.clientId!, client?.name ?? "o cliente")} disabled={resendMutation.isPending} className="text-xs flex items-center gap-1" style={{ color: "#86efac", border: "1px solid rgba(34,197,94,0.3)", padding: "4px 8px", borderRadius: "6px" }} title="Gerar nova senha e enviar por e-mail, com o tutorial de instalação">
+                            <button onClick={() => handleResend(login.email, login.clientId ?? null, client?.name ?? "o cliente")} disabled={resendMutation.isPending} className="text-xs flex items-center gap-1" style={{ color: "#86efac", border: "1px solid rgba(34,197,94,0.3)", padding: "4px 8px", borderRadius: "6px" }} title="Gerar nova senha e enviar por e-mail, com o tutorial de instalação">
                               <Mail size={12} /> Reenviar
                             </button>
                           )}
