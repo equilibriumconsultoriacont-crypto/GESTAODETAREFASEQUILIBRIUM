@@ -420,6 +420,7 @@ const emailRouter = router({
       const html = buildGuiaEmailHtml({
         clientName: input.clientName,
         taskTitle: task.title,
+        taskType: task.taskType,
         competencia: task.competencia,
         dueDate: new Date(task.dueDate),
         notes: task.notes ?? undefined,

@@ -63,6 +63,7 @@ export async function autoSendPendingGuias(): Promise<{
         const html = buildGuiaEmailHtml({
           clientName: row.clientName,
           taskTitle: row.title,
+          taskType: row.taskType,
           competencia: row.competencia,
           dueDate: new Date(row.dueDate),
           notes: row.notes ?? undefined,

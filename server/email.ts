@@ -109,9 +109,19 @@ export function buildGuiaEmailHtml(params: {
   taskTitle: string;
   taskType: string;
   competencia: string;
-  dueDate: string;
+  dueDate: string | Date;
   notes?: string;
 }): string {
+  const due = params.dueDate instanceof Date ? params.dueDate : new Date(params.dueDate);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const dueFmt = `${pad(due.getUTCDate())}/${pad(due.getUTCMonth() + 1)}/${due.getUTCFullYear()}`;
+  // Link "Adicionar ao Google Agenda" (evento de dia inteiro no vencimento)
+  const dStart = `${due.getUTCFullYear()}${pad(due.getUTCMonth() + 1)}${pad(due.getUTCDate())}`;
+  const next = new Date(Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate() + 1));
+  const dEnd = `${next.getUTCFullYear()}${pad(next.getUTCMonth() + 1)}${pad(next.getUTCDate())}`;
+  const gcalText = encodeURIComponent(`Vencimento ${params.taskTitle} (${params.competencia})`);
+  const gcalDetails = encodeURIComponent(`Guia ${params.taskType} referente à competência ${params.competencia}. Enviada pela Equilíbrio Consultoria Contábil.`);
+  const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${gcalText}&dates=${dStart}/${dEnd}&details=${gcalDetails}`;
   return `
 <!DOCTYPE html>
 <html>
@@ -134,9 +144,13 @@ export function buildGuiaEmailHtml(params: {
           <table width="100%" cellpadding="12" cellspacing="0" style="background:#f8fafb;border-radius:6px;border:1px solid #e5e7eb;margin-bottom:24px">
             <tr><td style="color:#555;font-size:13px;border-bottom:1px solid #e5e7eb"><strong>Tipo:</strong> ${params.taskType}</td></tr>
             <tr><td style="color:#555;font-size:13px;border-bottom:1px solid #e5e7eb"><strong>Competência:</strong> ${params.competencia}</td></tr>
-            <tr><td style="color:#e74c3c;font-size:13px;font-weight:600"><strong>Vencimento:</strong> ${params.dueDate}</td></tr>
+            <tr><td style="color:#e74c3c;font-size:13px;font-weight:600"><strong>Vencimento:</strong> ${dueFmt}</td></tr>
           </table>
           ${params.notes ? `<p style="margin:0 0 24px;color:#555;font-size:13px;padding:12px;background:#fffbeb;border-left:3px solid #f59e0b;border-radius:0 4px 4px 0"><strong>Observação:</strong> ${params.notes}</p>` : ""}
+          <div style="text-align:center;margin:0 0 24px">
+            <a href="${gcalUrl}" style="display:inline-block;background:#24646c;color:#ffffff;text-decoration:none;padding:12px 26px;border-radius:6px;font-weight:600;font-size:14px">Adicionar vencimento à agenda</a>
+            <p style="margin:8px 0 0;color:#999;font-size:11px">Abre o Google Agenda com o vencimento já preenchido — é só salvar.</p>
+          </div>
           <p style="margin:0;color:#555;font-size:13px;line-height:1.6">
             Em caso de dúvidas, entre em contato conosco pelo e-mail ou WhatsApp.
           </p>
