@@ -387,7 +387,11 @@ const clone = o => JSON.parse(JSON.stringify(o));
 const R$ = v => 'R$ ' + (+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const bmd = s => esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
-const nl2 = s => esc(s).replace(/\n/g,'<br>');
+const nl2 = s => esc(s)
+  .replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')
+  .replace(/\n/g,'<br>')
+  .replace(/&lt;br\s*\/?&gt;/gi,'<br>')
+  .replace(/&lt;(\/?)(em|b|strong|i)&gt;/gi,'<$1$2>');
 const toast = m => { const t=document.getElementById('toast'); t.textContent=m; t.classList.add('on');
   clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('on'),2100); };
 
@@ -1065,7 +1069,7 @@ function editor(){
 
   if(b.t==='capa'){
     h = fld('Etiqueta','','eyebrow').replace('value=""',`value="${esc(b.eyebrow)}"`)
-      + fld('Título — use &lt;br&gt; para quebrar e &lt;em&gt; para destacar em teal', b.titulo,'titulo','area')
+      + fld('Título — Enter quebra a linha, **texto** fica em destaque teal', b.titulo,'titulo','area')
       + fld('Texto de abertura', b.lead,'lead','area')
       + `<div class="row r2">${fld('Destaque — rótulo (opcional)', b.dLbl,'dLbl')}
          ${fld('Destaque — valor', b.dVal,'dVal')}</div>`
@@ -1171,7 +1175,15 @@ function editor(){
           </div>
           <input class="in" data-l="${k}.na" value="${esc(i.na||'')}" placeholder='Se não incluso: texto (ex: Não incluso). Vazio = usa o valor.'>
         </div><button class="btn dg" data-lrm="${k}">✕</button></div>`).join('')}</div>
-        <button class="btn add" data-ladd="1">+ item</button>`;
+        <div class="btns" style="margin-top:8px">
+          <button class="btn sm" data-ladd="1">+ item em branco</button>
+          <select class="in" id="doCat" style="flex:1;min-width:180px">
+            <option value="">+ puxar serviço do catálogo…</option>
+            ${DB.hon.map((x,i)=>`<option value="h${i}">${esc(x.n)} — ${R$(x.v)}</option>`).join('')}
+            ${DB.tax.map((x,i)=>`<option value="t${i}">${esc(x.n)} — ${R$(x.v)}</option>`).join('')}
+          </select></div>
+        <p class="hint">Preencha o <b>valor</b> pra cobrar à parte, ou escreva um texto no último campo
+          (ex.: <i>Não incluso</i>) pra sinalizar que <b>não é cobrado</b> nesta proposta.</p>`;
   }
   else if(b.t==='cond' || b.t==='docs'){
     h = fld('Título', b.tit,'tit')
