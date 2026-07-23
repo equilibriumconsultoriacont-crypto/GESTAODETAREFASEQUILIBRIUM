@@ -77,6 +77,25 @@ comparar a estrutura do `<body>` com um HTML de referência. Foi assim que se ac
   `<em>` apareciam como **texto literal** no título. Hoje `nl2` reabilita as tags de formatação,
   aceita Enter como quebra e `**texto**` como negrito.
 
+## Contratos (gerador)
+
+O gerador exporta, além da proposta, **dois contratos** que herdam os dados dela
+(aba "Contrato"): serviços **mensais** alimentam o contrato continuado; serviços
+**únicos** alimentam o contrato eventual (abertura, alteração).
+
+Base normativa das cláusulas — não remover nenhuma sem checar:
+Resolução CFC n.º 1.590/2020 (art. 2.º, alíneas "a" a "m" = requisitos mínimos),
+Código Civil arts. 593–609, NBC PG 01 (ética/sigilo), NBC ITG 1000 (Carta de
+Responsabilidade da Administração), Lei n.º 9.613/1998 + Resolução CFC n.º 1.721/2024
+(COAF) e Lei n.º 13.709/2018 (LGPD — no contrato contábil o **cliente é controlador**
+e o **escritório é operador**).
+
+Detalhes que já custaram pesquisa:
+- O reajuste **não pode** ser vinculado ao salário mínimo (art. 7.º, IV, da Constituição).
+- O honorário adicional anual (13.º) só é devido **se estiver escrito** no contrato.
+- A assinatura da contratada precisa trazer nome, categoria e número do CRC (NBC PG 01, item 4, "r").
+- O rompimento exige **distrato**; é vedada a retenção de documentos como garantia de honorários.
+
 ## Segurança
 
 - **Nunca commitar segredos.** Credenciais (banco, Resend, token do GitHub, secret do `/admin/setup`)

@@ -144,6 +144,7 @@ tr:last-child td{border-bottom:0}
       <button class="on" data-tab="prop">Proposta</button>
       <button data-tab="cat">Catálogo</button>
       <button data-tab="fisc">Fiscal</button>
+      <button data-tab="ctr">Contrato</button>
       <button data-tab="salvas">Salvas</button>
     </nav>
   </div>
@@ -304,6 +305,109 @@ tr:last-child td{border-bottom:0}
 </section>
 
 <!-- ============ SALVAS ============ -->
+<!-- ============ CONTRATO ============ -->
+<section class="tab" id="tab-ctr">
+  <div class="split">
+    <div>
+
+      <div class="panel">
+        <h3>Contrato <span class="sp">gerado a partir da proposta atual</span></h3>
+        <div class="pad">
+          <div class="row r2">
+            <label class="f"><span>Tipo de contrato</span>
+              <select class="in" id="ctrTipo">
+                <option value="mensal">Serviços contábeis mensais (continuado)</option>
+                <option value="eventual">Serviços eventuais (abertura, alteração…)</option>
+              </select></label>
+            <label class="f"><span>Início da vigência</span>
+              <input class="in" type="date" data-c="inicio"></label>
+          </div>
+          <div class="btns">
+            <button class="btn p" id="ctrBaixar">Baixar contrato</button>
+            <button class="btn" id="ctrAbrir">Abrir</button>
+            <button class="btn" id="ctrImprimir">Imprimir / PDF</button>
+          </div>
+          <p class="hint">O contrato puxa automaticamente os serviços, valores e escopo da proposta.
+            Serviços <b>mensais</b> vão para o contrato continuado; serviços <b>únicos</b> vão para o eventual.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>A contratada <span class="sp">seus dados — preencha uma vez, fica salvo</span></h3>
+        <div class="pad">
+          <div class="row r2">
+            <label class="f"><span>Razão social</span><input class="in" data-c="ctdRazao" data-base="1" placeholder="Equilíbrio Consultoria Contábil Ltda"></label>
+            <label class="f"><span>CNPJ</span><input class="in" data-c="ctdCnpj" data-base="1" placeholder="00.000.000/0001-00"></label>
+          </div>
+          <div class="row r2">
+            <label class="f"><span>Registro no CRC (organização)</span><input class="in" data-c="ctdCrc" data-base="1" placeholder="CRC 2SP000000/O-0"></label>
+            <label class="f"><span>Endereço completo</span><input class="in" data-c="ctdEnd" data-base="1" placeholder="Rua, nº, bairro, cidade/UF, CEP"></label>
+          </div>
+          <div class="row r3">
+            <label class="f"><span>Responsável técnico</span><input class="in" data-c="ctdResp" data-base="1" placeholder="Nome completo"></label>
+            <label class="f"><span>Categoria</span>
+              <select class="in" data-c="ctdRespCat" data-base="1">
+                <option>Contador(a)</option><option>Técnico(a) em Contabilidade</option>
+              </select></label>
+            <label class="f"><span>CRC do responsável</span><input class="in" data-c="ctdRespCrc" data-base="1" placeholder="1SP000000/O-0"></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>O contratante <span class="sp">dados do cliente desta proposta</span></h3>
+        <div class="pad">
+          <div class="row r2">
+            <label class="f"><span>Tipo</span>
+              <select class="in" data-c="cliTipo">
+                <option value="pj">Pessoa jurídica</option><option value="pf">Pessoa física</option>
+              </select></label>
+            <label class="f"><span>CNPJ / CPF</span><input class="in" data-c="cliDoc" placeholder="00.000.000/0001-00"></label>
+          </div>
+          <label class="f"><span>Endereço completo</span><input class="in" data-c="cliEnd" placeholder="Rua, nº, bairro, cidade/UF, CEP"></label>
+          <div class="row r2">
+            <label class="f"><span>Representante legal</span><input class="in" data-c="cliRep" placeholder="Nome de quem assina"></label>
+            <label class="f"><span>CPF do representante</span><input class="in" data-c="cliRepCpf" placeholder="000.000.000-00"></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Condições comerciais</h3>
+        <div class="pad">
+          <div class="row r3">
+            <label class="f"><span>Vencimento (dia)</span><input class="in" type="number" min="1" max="28" data-c="diaVenc"></label>
+            <label class="f"><span>Entrega de documentos (dia)</span><input class="in" type="number" min="1" max="28" data-c="diaDoc"></label>
+            <label class="f"><span>Aviso prévio (dias)</span><input class="in" type="number" min="1" data-c="aviso"></label>
+          </div>
+          <div class="row r3">
+            <label class="f"><span>Índice de reajuste</span>
+              <select class="in" data-c="indice"><option>IPCA</option><option>IGP-M</option><option>INPC</option></select></label>
+            <label class="f"><span>Multa por atraso (%)</span><input class="in" type="number" step="0.5" data-c="multa"></label>
+            <label class="f"><span>Suspensão após (dias)</span><input class="in" type="number" data-c="diasInad"></label>
+          </div>
+          <div class="row r3">
+            <label class="f"><span>Prazo de conclusão — eventual (dias)</span><input class="in" type="number" data-c="prazoDias"></label>
+            <label class="f"><span>Honorário adicional anual</span>
+              <select class="in" data-c="decimo"><option value="">Não cobrar</option><option value="1">Cobrar 1 mensalidade</option></select></label>
+            <label class="f"><span>Mês da cobrança</span>
+              <select class="in" data-c="decimoMes"><option>novembro</option><option>dezembro</option></select></label>
+          </div>
+          <label class="f"><span>Foro</span><input class="in" data-c="foro" placeholder="Rio Claro, Estado de São Paulo"></label>
+          <p class="hint">O reajuste não pode ser vinculado ao salário mínimo (art. 7.º, IV, da Constituição).
+            O honorário adicional anual só é devido se estiver escrito no contrato.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="panel pv">
+      <h3>Prévia <span class="sp" id="ctrInfo"></span></h3>
+      <iframe id="ctrPv"></iframe>
+    </div>
+  </div>
+</section>
+
 <section class="tab" id="tab-salvas">
   <div class="split">
     <div class="panel">
@@ -333,6 +437,14 @@ const PADRAO = {
     email:'contato@equilibriumcont.com',
     site:'https://equilibrium-site-blush.vercel.app/', siteFmt:'equilibriumcont.com',
     horario:'Segunda a sexta, 9h às 18h', seq:1
+  },
+  contrato:{
+    ctdRazao:'', ctdCnpj:'', ctdCrc:'', ctdEnd:'',
+    ctdResp:'', ctdRespCat:'Contador(a)', ctdRespCrc:'',
+    cliTipo:'pj', cliDoc:'', cliEnd:'', cliRep:'', cliRepCpf:'',
+    inicio:'', diaVenc:10, diaDoc:5, aviso:30, indice:'IPCA',
+    multa:2, diasInad:60, prazoDias:30, decimo:false, decimoMes:'dezembro',
+    foro:'Rio Claro, Estado de São Paulo'
   },
   hon:[
     {n:'Abertura de CNPJ', d:'Viabilidade, contrato social, Receita Federal, Prefeitura e inscrição municipal', v:500, t:'unico', ref:800},
@@ -980,16 +1092,498 @@ function novaProposta(key){
   P = {
     preset:key, num:`${new Date().getFullYear()}-${seq}`, cliente:'',
     emissao:new Date().toISOString().slice(0,10), validade:30, waCli:'',
-    blocos: pre.blocos.map(t=>TIPOS[t].novo())
+    blocos: pre.blocos.map(t=>TIPOS[t].novo()),
+    contrato: clone(DB.contrato || {})
   };
   P.b = t => P.blocos.find(b=>b.t===t) || {};
   if(pre.prep) pre.prep(P);
   sel = 0;
 }
 
+/* ==================== CONTRATOS ==================== */
+/* Base: Resolução CFC n.º 1.590/2020 (art. 2.º, alíneas "a" a "m"), Código Civil
+   (arts. 593 a 609), NBC PG 01 (Código de Ética), NBC ITG 1000 (Carta de
+   Responsabilidade da Administração), Lei n.º 9.613/1998 + Resolução CFC n.º
+   1.721/2024 (COAF) e Lei n.º 13.709/2018 (LGPD). */
+
+const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho',
+  'agosto','setembro','outubro','novembro','dezembro'];
+
+function dataExt(iso){
+  if(!iso) return '____ de ______________ de ______';
+  const [a,m,d] = iso.split('-').map(Number);
+  return `${d} de ${MESES[m-1]} de ${a}`;
+}
+
+/* --- serviços puxados da proposta --- */
+function ctrServicos(tipo){
+  const out = [];
+  const bl = t => P.blocos.find(b => b.t===t && b.on!==false);
+  const pre = bl('preco'), val = bl('val');
+  if(tipo==='mensal'){
+    if(pre && pre.nome) out.push({n:pre.nome, d:pre.desc||'', v:+pre.valor||0, t:'mensal'});
+    if(val) val.itens.filter(i=>i.n && i.t==='mensal').forEach(i=>out.push({n:i.n,d:i.d||'',v:+i.v||0,t:'mensal'}));
+  } else {
+    if(val) val.itens.filter(i=>i.n && i.t!=='mensal').forEach(i=>out.push({n:i.n,d:i.d||'',v:+i.v||0,t:i.t}));
+  }
+  return out;
+}
+function ctrEscopo(){
+  const bl = t => P.blocos.find(b => b.t===t && b.on!==false);
+  const g = bl('grupos');
+  if(g && (g.grupos||[]).length) return g.grupos.filter(x=>x.h).map(x=>({h:x.h, itens:(x.itens||[]).filter(Boolean)}));
+  const e = bl('escopo');
+  if(e && (e.itens||[]).length) return [{h:'Serviços contratados',
+    itens:e.itens.filter(i=>i.b).map(i=>i.b + (i.s ? ' — ' + i.s : ''))}];
+  return [];
+}
+function ctrTaxas(){
+  const b = P.blocos.find(x => x.t==='taxas' && x.on!==false);
+  return b ? (b.itens||[]).filter(i=>i.n) : [];
+}
+
+/* --- cláusulas --- */
+function ctrClausulas(tipo){
+  const c = P.contrato || {};
+  const mensal = tipo==='mensal';
+  const venc = c.diaVenc || 10;
+  const entrega = c.diaDoc || 5;
+  const aviso = c.aviso || 30;
+  const idx = c.indice || 'IPCA';
+  const cl = [];
+
+  cl.push({t:'DO OBJETO', p:[
+    mensal
+      ? `O presente contrato tem por objeto a prestação, pela CONTRATADA à CONTRATANTE, de serviços contábeis de forma <b>habitual e continuada</b>, compreendendo a escrituração contábil e fiscal, a apuração de tributos, a administração de pessoal e o cumprimento das obrigações acessórias, conforme detalhamento constante do <b>Quadro de Serviços</b> e do <b>Escopo Detalhado</b> que integram este instrumento.`
+      : `O presente contrato tem por objeto a prestação, pela CONTRATADA à CONTRATANTE, de serviços contábeis de forma <b>eventual</b>, com escopo determinado, conforme detalhamento constante do <b>Quadro de Serviços</b> que integra este instrumento.`,
+    `Os serviços não expressamente descritos neste contrato e em seus anexos <b>não estão incluídos</b> no objeto ora contratado e, caso venham a ser solicitados, serão orçados e formalizados à parte, mediante aceite prévio e expresso da CONTRATANTE.`
+  ]});
+
+  cl.push({t:'DA EXECUÇÃO E DOS LIMITES DA RESPONSABILIDADE TÉCNICA', p:[
+    `Os serviços serão executados por profissional da contabilidade legalmente habilitado e registrado no Conselho Regional de Contabilidade, sob a responsabilidade técnica do profissional identificado no preâmbulo deste instrumento.`,
+    `A responsabilidade técnica da CONTRATADA limita-se aos serviços expressamente contratados e ao período de vigência deste contrato, e é exercida com base exclusivamente nos documentos e nas informações fornecidos pela CONTRATANTE.`,
+    `A CONTRATADA poderá transferir parcialmente a execução dos serviços a outro profissional, mantendo integralmente para si a responsabilidade técnica, nos termos do item 5 da NBC PG 01.`
+  ]});
+
+  cl.push({t:'DAS OBRIGAÇÕES DA CONTRATANTE', p:[
+    `Entregar à CONTRATADA, até o dia <b>${entrega}</b> de cada mês, ou em prazo que permita o cumprimento tempestivo das obrigações, todos os documentos, informações e arquivos necessários à execução dos serviços, em meio físico ou eletrônico.`,
+    `Responder pela <b>veracidade, integridade e idoneidade</b> dos documentos e das informações fornecidos, bem como pela existência e adequação de seus controles internos.`,
+    `Observar as orientações técnicas transmitidas pela CONTRATADA, ficando esta eximida das consequências decorrentes da inobservância dessas orientações.`,
+    `Comunicar previamente à CONTRATADA qualquer alteração societária, de atividade, de endereço, de regime tributário ou de quadro de pessoal que repercuta na execução dos serviços.`,
+    `Efetuar, nos respectivos vencimentos, o pagamento dos tributos e das contribuições apurados, cabendo exclusivamente à CONTRATANTE a disponibilização dos recursos financeiros correspondentes.`,
+    `Executar diretamente, quando assim ajustado no Quadro de Serviços, as tarefas ali atribuídas à CONTRATANTE, na forma da alínea "c" do art. 2.º da Resolução CFC n.º 1.590/2020.`
+  ]});
+
+  cl.push({t:'DAS OBRIGAÇÕES DA CONTRATADA', p:[
+    `Executar os serviços contratados com zelo, diligência e observância das Normas Brasileiras de Contabilidade e da legislação aplicável.`,
+    `Entregar à CONTRATANTE, mediante protocolo ou por meio eletrônico rastreável e em tempo hábil, os balancetes, as demonstrações contábeis, as guias de recolhimento e os comprovantes de entrega das obrigações acessórias.`,
+    `Manter <b>sigilo profissional</b> sobre todas as informações e documentos a que tiver acesso em razão deste contrato, nos termos do item 4 da NBC PG 01, obrigação que subsiste após o término da relação contratual.`,
+    `Manter sob guarda e conservação os livros e documentos que lhe forem confiados, enquanto perdurar a prestação dos serviços, restituindo-os na forma da cláusula de rescisão.`,
+    `Comunicar tempestivamente à CONTRATANTE os prazos e as exigências legais que dependam de providência desta.`
+  ]});
+
+  cl.push({t:'DOS HONORÁRIOS', p:[
+    mensal
+      ? `Pelos serviços descritos neste contrato, a CONTRATANTE pagará à CONTRATADA os honorários discriminados, por serviço, no <b>Quadro de Serviços</b>, cujos valores integram este instrumento para todos os fins.`
+      : `Pelos serviços descritos neste contrato, a CONTRATANTE pagará à CONTRATADA os honorários discriminados, por serviço, no <b>Quadro de Serviços</b>, em caráter <b>eventual</b>, sem geração de obrigação de prestação continuada.`,
+    `Os honorários não incluem taxas, emolumentos, custas e tributos devidos a órgãos públicos, conselhos de classe e entidades congêneres, os quais serão suportados diretamente pela CONTRATANTE ou a ela repassados sem qualquer acréscimo, mediante comprovante.`
+  ].concat(mensal && c.decimo ? [
+    `As partes ajustam, de forma expressa, o pagamento de honorário adicional equivalente a <b>1 (uma) mensalidade</b>, devido no mês de <b>${c.decimoMes||'dezembro'}</b> de cada ano, em razão do acréscimo de serviços decorrente da folha do 13.º salário, do encerramento da escrituração contábil e da preparação das obrigações acessórias anuais.`
+  ] : [])});
+
+  cl.push({t:'DO PAGAMENTO', p:[
+    mensal
+      ? `Os honorários mensais vencem no dia <b>${venc}</b> de cada mês, referentes à competência do mês imediatamente anterior.`
+      : `Os honorários serão pagos na forma e nas condições indicadas no Quadro de Serviços.`,
+    `O atraso no pagamento sujeitará a CONTRATANTE a multa de <b>${c.multa||2}%</b> sobre o valor em aberto, juros de mora de <b>1% ao mês</b>, calculados <i>pro rata die</i>, e atualização monetária pelo ${idx}.`,
+    `O inadimplemento por período superior a <b>${c.diasInad||60} dias</b> autoriza a CONTRATADA a suspender a execução dos serviços, mediante prévia comunicação escrita, sem prejuízo da cobrança dos valores devidos e sem que tal suspensão configure descumprimento contratual de sua parte.`
+  ]});
+
+  if(mensal) cl.push({t:'DO REAJUSTE', p:[
+    `Os honorários serão reajustados <b>anualmente</b>, na data-base de aniversário deste contrato, pela variação acumulada do <b>${idx}</b> no período, ou por índice que venha a substituí-lo.`,
+    `Independentemente do reajuste anual, os honorários poderão ser renegociados na hipótese de <b>desequilíbrio econômico superveniente</b>, assim entendido o aumento relevante do volume ou da complexidade dos serviços, tais como alteração de regime tributário, aumento do quadro de empregados, do número de estabelecimentos ou do volume de documentos processados.`,
+    `É vedada a vinculação do reajuste ao salário mínimo, na forma do art. 7.º, inciso IV, da Constituição da República.`
+  ]});
+
+  cl.push({t:'DA RESPONSABILIDADE DAS PARTES', p:[
+    `As multas, os juros e as penalidades decorrentes da <b>entrega intempestiva de documentos ou informações pela CONTRATANTE</b>, ou da inobservância das orientações técnicas transmitidas pela CONTRATADA, serão suportados exclusivamente pela CONTRATANTE.`,
+    `As multas e as penalidades que decorrerem <b>comprovadamente de culpa da CONTRATADA</b>, no atraso ou na incorreção do cumprimento de obrigação de sua atribuição, serão por ela suportadas, limitada a sua responsabilidade, salvo dolo, ao valor correspondente aos honorários do serviço que lhes deu causa.`,
+    `A CONTRATADA não responde por informações, documentos ou declarações falsos, incompletos ou inidôneos fornecidos pela CONTRATANTE, nem por atos de gestão praticados por esta.`
+  ]});
+
+  cl.push({t:'DA CARTA DE RESPONSABILIDADE DA ADMINISTRAÇÃO', p:[
+    `A CONTRATANTE obriga-se a fornecer à CONTRATADA, <b>anualmente e antes do encerramento do exercício social</b>, a Carta de Responsabilidade da Administração de que trata a NBC ITG 1000, declarando a fidedignidade das informações prestadas, a idoneidade dos documentos entregues e a sua responsabilidade pelos controles internos da entidade.`,
+    `A recusa injustificada na entrega da Carta de Responsabilidade autoriza a CONTRATADA a avaliar os riscos para a continuidade da prestação dos serviços e a adotar as salvaguardas cabíveis, inclusive a rescisão deste contrato, na forma do art. 3.º da Resolução CFC n.º 1.590/2020.`
+  ]});
+
+  cl.push({t:'DA PREVENÇÃO À LAVAGEM DE DINHEIRO', p:[
+    `A CONTRATANTE declara <b>ciência</b> de que a CONTRATADA está sujeita à Lei n.º 9.613/1998 e à Resolução CFC n.º 1.721/2024, que dispõem sobre os crimes de lavagem ou ocultação de bens, direitos e valores.`,
+    `Em razão dessa sujeição, a CONTRATADA tem o <b>dever legal</b> de comunicar ao Conselho de Controle de Atividades Financeiras (COAF), independentemente de aviso prévio à CONTRATANTE, as operações que, após análise, apresentem sérios indícios da ocorrência dos crimes previstos na referida lei, não configurando tal comunicação quebra do sigilo profissional.`
+  ]});
+
+  cl.push({t:'DA PROTEÇÃO DE DADOS PESSOAIS', p:[
+    `As partes obrigam-se a observar a Lei n.º 13.709/2018 (LGPD) no tratamento dos dados pessoais necessários à execução deste contrato.`,
+    `Para os fins da LGPD, a <b>CONTRATANTE atua como CONTROLADORA</b> dos dados pessoais de seus sócios, empregados e terceiros, cabendo-lhe as decisões sobre o tratamento e a licitude da coleta; e a <b>CONTRATADA atua como OPERADORA</b>, realizando o tratamento em nome e segundo as instruções da CONTRATANTE.`,
+    `O tratamento limita-se às finalidades de execução deste contrato e de cumprimento de obrigações legais e regulatórias, observados os princípios da finalidade, adequação, necessidade, segurança e prevenção.`,
+    `A CONTRATADA adotará medidas técnicas e administrativas aptas a proteger os dados pessoais de acessos não autorizados e de situações acidentais ou ilícitas, e <b>comunicará à CONTRATANTE, em até 2 (dois) dias úteis</b>, a ocorrência de qualquer incidente de segurança relevante.`,
+    `Encerrado o contrato, a CONTRATADA eliminará ou devolverá os dados pessoais tratados, ressalvada a conservação daqueles cuja guarda seja exigida por obrigação legal, regulatória ou para o exercício regular de direitos.`
+  ]});
+
+  cl.push({t:'DOS SERVIÇOS EXTRAORDINÁRIOS', p:[
+    `Os serviços não compreendidos no objeto deste contrato — tais como, exemplificativamente, perícias, defesas administrativas, parcelamentos, recuperação de créditos, levantamentos retroativos, atendimento a fiscalizações e reconstituição de escrituração de períodos anteriores — serão orçados à parte e somente executados após <b>aceite prévio e expresso</b> da CONTRATANTE.`
+  ]});
+
+  cl.push({t:'DO ADITAMENTO', p:[
+    `Qualquer alteração, correção, esclarecimento ou complementação das cláusulas deste contrato, bem como a inclusão ou a exclusão de serviços e a revisão de honorários, será formalizada por <b>termo aditivo escrito</b>, datado e assinado pelas partes, que passará a integrar este instrumento.`
+  ]});
+
+  cl.push({t:'DA VIGÊNCIA', p: mensal ? [
+    `Este contrato entra em vigor em <b>${fmtData(c.inicio || P.emissao)}</b> e vigora por <b>prazo indeterminado</b>, permanecendo eficaz até que qualquer das partes manifeste, na forma da cláusula seguinte, o interesse em rescindi-lo.`
+  ] : [
+    `Este contrato entra em vigor em <b>${fmtData(c.inicio || P.emissao)}</b> e vigora até a <b>conclusão dos serviços</b> que constituem o seu objeto, extinguindo-se de pleno direito com a entrega do resultado contratado, independentemente de aviso ou notificação.`,
+    `O prazo estimado para a conclusão dos serviços é de <b>${c.prazoDias||30} dias</b>, contados do recebimento, pela CONTRATADA, da integralidade dos documentos e das informações necessários, ficando suspensa a sua contagem enquanto pendente providência a cargo da CONTRATANTE ou de órgão público.`
+  ]});
+
+  cl.push({t:'DA RESCISÃO E DO DISTRATO', p: (mensal ? [
+    `Este contrato poderá ser rescindido por qualquer das partes, a qualquer tempo, mediante <b>comunicação escrita com antecedência mínima de ${aviso} dias</b>, período durante o qual permanecem íntegras as obrigações de ambas.`,
+    `Constitui, ainda, causa de rescisão o inadimplemento de qualquer obrigação contratual, o descumprimento reiterado dos deveres de colaboração e a recusa na entrega da Carta de Responsabilidade da Administração.`
+  ] : [
+    `Este contrato poderá ser rescindido por qualquer das partes mediante <b>comunicação escrita com antecedência mínima de ${aviso} dias</b>, ou de imediato na hipótese de inadimplemento de obrigação contratual.`,
+    `Na rescisão anterior à conclusão dos serviços, serão devidos à CONTRATADA os honorários proporcionais às etapas já executadas, bem como o reembolso das taxas e dos emolumentos já recolhidos.`
+  ]).concat([
+    `O rompimento do vínculo contratual implica a <b>celebração obrigatória de distrato</b> entre as partes, com o estabelecimento da cessação das responsabilidades, na forma dos arts. 6.º e 7.º da Resolução CFC n.º 1.590/2020. Na impossibilidade de sua celebração, a CONTRATADA notificará a CONTRATANTE quanto ao fim da relação contratual.`,
+    `Encerrada a relação, a CONTRATADA obriga-se a: (i) comunicar ao novo responsável técnico os fatos de que deva tomar conhecimento; (ii) <b>devolver os livros contábeis e auxiliares, os documentos e os arquivos das obrigações fiscais entregues ao Fisco, inclusive os arquivos eletrônicos</b>, mediante protocolo; (iii) elaborar as demonstrações contábeis do período correspondente à sua responsabilidade técnica; e (iv) cumprir as obrigações acessórias cuja competência tenha decorrido na vigência deste contrato, ainda que o vencimento seja posterior, salvo disposição expressa em contrário no distrato.`,
+    `É <b>vedada a retenção abusiva</b> de livros, papéis ou documentos, inclusive arquivos eletrônicos, confiados à guarda da CONTRATADA, ainda que a título de garantia de honorários, na forma da alínea "l" do item 5 da NBC PG 01.`
+  ])});
+
+  cl.push({t:'DAS DISPOSIÇÕES GERAIS', p:[
+    `A tolerância de qualquer das partes quanto ao descumprimento de obrigação da outra constitui mera liberalidade, não implicando novação, renúncia ou alteração do pactuado.`,
+    `A nulidade de qualquer cláusula não invalida as demais, que permanecem em pleno vigor.`,
+    `As comunicações entre as partes serão feitas por escrito, admitidos o correio eletrônico e os aplicativos de mensagens nos endereços e números indicados no preâmbulo.`,
+    `Os casos omissos serão resolvidos de comum acordo, à luz do Código Civil, das Normas Brasileiras de Contabilidade e da Resolução CFC n.º 1.590/2020.`
+  ]});
+
+  cl.push({t:'DO FORO', p:[
+    `As partes elegem o foro da Comarca de <b>${esc(c.foro || 'Rio Claro, Estado de São Paulo')}</b> para dirimir as controvérsias oriundas deste contrato, com renúncia a qualquer outro, por mais privilegiado que seja.`
+  ]});
+
+  return cl;
+}
+
+/* --- documento --- */
+const ORD = ['PRIMEIRA','SEGUNDA','TERCEIRA','QUARTA','QUINTA','SEXTA','SÉTIMA','OITAVA',
+  'NONA','DÉCIMA','DÉCIMA PRIMEIRA','DÉCIMA SEGUNDA','DÉCIMA TERCEIRA','DÉCIMA QUARTA',
+  'DÉCIMA QUINTA','DÉCIMA SEXTA','DÉCIMA SÉTIMA','DÉCIMA OITAVA','DÉCIMA NONA','VIGÉSIMA'];
+
+function contratoHTML(tipo){
+  const m = DB.marca, c = P.contrato || {};
+  const mensal = tipo === 'mensal';
+  const servs = ctrServicos(tipo);
+  const esc0 = ctrEscopo();
+  const taxas = ctrTaxas();
+  const suf = {unico:'', mensal:' / mês', anual:' / ano'};
+
+  const linhas = servs.map(s => `<tr><td><b>${esc(s.n)}</b>${s.d?`<span>${esc(s.d)}</span>`:''}</td>
+      <td class="tp">${s.t==='mensal'?'Habitual':'Eventual'}</td>
+      <td class="vl">${R$(s.v)}${suf[s.t]||''}</td></tr>`).join('');
+  const totMes = servs.filter(s=>s.t==='mensal').reduce((a,s)=>a+(+s.v||0),0);
+  const totUni = servs.filter(s=>s.t!=='mensal').reduce((a,s)=>a+(+s.v||0),0);
+  const totLin = mensal
+    ? (totMes ? `<tr class="tt"><td colspan="2">Total mensal</td><td class="vl">${R$(totMes)} / mês</td></tr>` : '')
+    : (totUni ? `<tr class="tt"><td colspan="2">Total</td><td class="vl">${R$(totUni)}</td></tr>` : '');
+
+  const escopoHTML = (mensal && esc0.length) ? `
+  <div class="bloco">
+    <h2>Escopo detalhado dos serviços</h2>
+    <div class="esc">${esc0.map(g=>`<div class="eg"><h4>${esc(g.h)}</h4><ul>${
+      g.itens.map(i=>`<li>${bmd(i)}</li>`).join('')}</ul></div>`).join('')}</div>
+  </div>` : '';
+
+  const taxasHTML = (mensal && taxas.length) ? `
+  <div class="bloco">
+    <h2>Serviços não incluídos no objeto</h2>
+    <table class="qs"><tbody>${taxas.map(t=>`<tr><td><b>${esc(t.n)}</b>${t.d?`<span>${esc(t.d)}</span>`:''}</td>
+      <td class="vl">${(t.na&&String(t.na).trim())?esc(t.na):R$(t.v)+(suf[t.t]||'')}</td></tr>`).join('')}</tbody></table>
+  </div>` : '';
+
+  const cls = ctrClausulas(tipo);
+  const clsHTML = cls.map((k,i)=>`
+    <section class="cl">
+      <h3>CLÁUSULA ${ORD[i]||('N.º '+(i+1))} — ${esc(k.t)}</h3>
+      ${k.p.map((p,j)=>`<p><span class="n">${i+1}.${j+1}.</span> ${p}</p>`).join('')}
+    </section>`).join('');
+
+  const titulo = mensal
+    ? 'CONTRATO DE PRESTAÇÃO DE SERVIÇOS CONTÁBEIS'
+    : 'CONTRATO DE PRESTAÇÃO DE SERVIÇOS CONTÁBEIS EVENTUAIS';
+  const subt = mensal ? 'Serviços habituais e continuados' : 'Escopo determinado · serviços eventuais';
+
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(titulo)} — ${esc(P.cliente||'Cliente')}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--teal:#24646C;--t900:#0E2C32;--t400:#5E9AA2;--bone:#F2F0EA;--paper:#FBFAF7;
+  --ink:#16201E;--ink-2:#4E5B58;--ink-3:#8B9491;--line:#E3DFD5;--good:#2C7A59;
+  --serif:"Fraunces",Georgia,serif;--sans:"Inter",system-ui,sans-serif}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--sans);color:var(--ink);background:var(--bone);
+  font-size:10.5pt;line-height:1.62;-webkit-font-smoothing:antialiased}
+.pg{max-width:820px;margin:0 auto;background:#fff;
+  box-shadow:0 1px 3px rgba(14,44,50,.07),0 12px 40px rgba(14,44,50,.06)}
+
+/* topo */
+.cab{background:var(--t900);color:#fff;padding:30px 54px 26px;
+  display:flex;align-items:center;justify-content:space-between;gap:22px}
+.cab img{height:34px;width:auto;display:block}
+.cab .meta{text-align:right;font-size:8pt;line-height:1.7;color:rgba(255,255,255,.62)}
+.cab .meta b{display:block;color:#fff;font-size:8.5pt;letter-spacing:.11em;
+  text-transform:uppercase;margin-bottom:3px}
+.faixa{height:3px;background:linear-gradient(90deg,var(--teal),var(--t400))}
+
+/* título */
+.tit{padding:38px 54px 0;text-align:center}
+.tit .eyebrow{font-size:7.6pt;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--teal);font-weight:600;margin-bottom:10px}
+.tit h1{font-family:var(--serif);font-size:19pt;font-weight:400;line-height:1.25;
+  letter-spacing:-.01em}
+.tit .sub{margin-top:8px;font-size:9pt;color:var(--ink-3)}
+.tit .rule{width:52px;height:2px;background:var(--teal);margin:16px auto 0;border-radius:2px}
+
+.corpo{padding:30px 54px 44px}
+
+/* partes */
+.partes{display:grid;gap:12px;margin:26px 0 8px}
+.pt{background:var(--paper);border:1px solid var(--line);border-radius:10px;
+  border-left:3px solid var(--teal);padding:16px 20px}
+.pt h4{font-size:7.6pt;letter-spacing:.17em;text-transform:uppercase;color:var(--teal);
+  font-weight:600;margin-bottom:7px}
+.pt p{font-size:9.6pt;color:var(--ink-2);line-height:1.6}
+.pt b{color:var(--ink);font-weight:600}
+.pre{margin:20px 0 6px;font-size:9.8pt;color:var(--ink-2);text-align:justify}
+
+/* blocos / tabelas */
+.bloco{margin:26px 0}
+.bloco h2{font-family:var(--serif);font-size:12.5pt;font-weight:600;margin-bottom:12px;
+  padding-bottom:8px;border-bottom:1px solid var(--line)}
+table.qs{width:100%;border-collapse:collapse;border:1px solid var(--line);border-radius:10px;
+  overflow:hidden;background:var(--paper)}
+table.qs td{padding:12px 16px;border-bottom:1px solid var(--line);vertical-align:top;font-size:9.6pt}
+table.qs tr:last-child td{border-bottom:0}
+table.qs td b{display:block;font-weight:600;font-size:9.8pt}
+table.qs td span{display:block;font-size:8.4pt;color:var(--ink-3);margin-top:2px;line-height:1.45}
+table.qs td.tp{width:88px;font-size:8.2pt;color:var(--ink-3);text-transform:uppercase;
+  letter-spacing:.08em;white-space:nowrap}
+table.qs td.vl{width:150px;text-align:right;font-weight:600;white-space:nowrap;font-size:10pt}
+table.qs tr.tt td{background:var(--t900);color:#fff;font-weight:600;border-bottom:0}
+table.qs tr.tt td.vl{color:#fff;font-family:var(--serif);font-size:12pt}
+
+.esc{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.eg{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:14px 18px}
+.eg h4{font-size:7.6pt;letter-spacing:.16em;text-transform:uppercase;color:var(--teal);
+  font-weight:600;margin-bottom:8px}
+.eg ul{list-style:none}
+.eg li{font-size:8.9pt;color:var(--ink-2);padding:3px 0 3px 14px;position:relative;line-height:1.5}
+.eg li::before{content:"";position:absolute;left:0;top:9px;width:5px;height:5px;
+  border-radius:50%;background:var(--t400)}
+.eg li b{color:var(--ink);font-weight:600}
+
+/* cláusulas */
+.cls{margin-top:30px}
+.cl{margin-bottom:20px;break-inside:avoid}
+.cl h3{font-size:8.6pt;letter-spacing:.1em;font-weight:600;color:var(--teal);
+  text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:10px}
+.cl h3::after{content:"";flex:1;height:1px;background:var(--line)}
+.cl p{font-size:9.7pt;color:var(--ink-2);text-align:justify;margin-bottom:7px;
+  padding-left:34px;position:relative}
+.cl p .n{position:absolute;left:0;top:0;color:var(--t400);font-weight:600;font-size:8.8pt}
+.cl p b{color:var(--ink);font-weight:600}
+
+/* assinaturas */
+.fecho{margin-top:34px;font-size:9.7pt;color:var(--ink-2);text-align:justify}
+.local{margin-top:26px;text-align:center;font-size:9.7pt;color:var(--ink-2)}
+.ass{display:grid;grid-template-columns:1fr 1fr;gap:38px;margin-top:44px;break-inside:avoid}
+.sig{text-align:center}
+.sig .ln{border-top:1px solid var(--ink-3);margin-bottom:8px}
+.sig b{display:block;font-size:9.4pt;font-weight:600}
+.sig span{display:block;font-size:8.2pt;color:var(--ink-3);line-height:1.5;margin-top:2px}
+.sig .rot{font-size:7.4pt;letter-spacing:.15em;text-transform:uppercase;color:var(--teal);
+  font-weight:600;margin-bottom:2px}
+.test{margin-top:40px}
+.test h4{font-size:7.6pt;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;margin-bottom:22px;text-align:center}
+
+/* rodapé */
+.rod{background:var(--t900);color:rgba(255,255,255,.55);padding:20px 54px;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:8pt}
+.rod img{height:22px;opacity:.85}
+.rod a{color:var(--t400);text-decoration:none}
+
+@media print{
+  @page{size:A4;margin:14mm 0}
+  body{background:#fff;font-size:10pt}
+  .pg{box-shadow:none;max-width:none}
+  .cab,.rod{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  table.qs tr.tt td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .cl,.ass,.bloco{break-inside:avoid}
+}
+@media(max-width:640px){
+  .cab,.tit,.corpo,.rod{padding-left:22px;padding-right:22px}
+  .esc,.ass{grid-template-columns:1fr}
+  .cab{flex-direction:column;align-items:flex-start}
+  .cab .meta{text-align:left}
+}
+</style></head><body>
+<div class="pg">
+
+  <header class="cab">
+    <img src="${LH}" alt="${esc(m.nome)}">
+    <div class="meta"><b>Contrato ${esc(P.num)}</b>${esc(m.cidade)}<br>${esc(m.waFmt)}</div>
+  </header>
+  <div class="faixa"></div>
+
+  <div class="tit">
+    <div class="eyebrow">Instrumento particular</div>
+    <h1>${esc(titulo)}</h1>
+    <div class="sub">${esc(subt)}</div>
+    <div class="rule"></div>
+  </div>
+
+  <div class="corpo">
+
+    <div class="partes">
+      <div class="pt">
+        <h4>Contratante</h4>
+        <p><b>${esc(P.cliente||'____________________')}</b>, ${c.cliTipo==='pf'?'pessoa física':'pessoa jurídica de direito privado'},
+        inscrita no ${c.cliTipo==='pf'?'CPF':'CNPJ'} sob o n.º <b>${esc(c.cliDoc||'____________________')}</b>,
+        com sede em <b>${esc(c.cliEnd||'____________________________________________')}</b>${
+        c.cliRep?`, neste ato representada por <b>${esc(c.cliRep)}</b>${c.cliRepCpf?`, CPF n.º ${esc(c.cliRepCpf)}`:''}`:''}.</p>
+      </div>
+      <div class="pt">
+        <h4>Contratada</h4>
+        <p><b>${esc(c.ctdRazao||m.nome)}</b>, organização contábil inscrita no CNPJ sob o n.º
+        <b>${esc(c.ctdCnpj||'____________________')}</b>, registrada no CRC sob o n.º <b>${esc(c.ctdCrc||'____________')}</b>,
+        com sede em <b>${esc(c.ctdEnd||m.cidade)}</b>, neste ato representada por
+        <b>${esc(c.ctdResp||'____________________')}</b>, ${esc(c.ctdRespCat||'Contador(a)')}, CRC n.º
+        <b>${esc(c.ctdRespCrc||'____________')}</b>.</p>
+      </div>
+    </div>
+
+    <p class="pre">As partes acima qualificadas, doravante designadas <b>CONTRATANTE</b> e <b>CONTRATADA</b>,
+    têm entre si justo e contratado o presente instrumento particular de prestação de serviços contábeis,
+    celebrado nos termos dos arts. 593 a 609 do Código Civil e da Resolução CFC n.º 1.590/2020, que se
+    regerá pelas cláusulas e condições seguintes, precedido da proposta de serviços n.º ${esc(P.num)},
+    formalmente aceita pela CONTRATANTE.</p>
+
+    ${linhas ? `<div class="bloco">
+      <h2>Quadro de serviços e honorários</h2>
+      <table class="qs"><tbody>${linhas}${totLin}</tbody></table>
+    </div>` : ''}
+
+    ${escopoHTML}
+    ${taxasHTML}
+
+    <div class="cls">${clsHTML}</div>
+
+    <p class="fecho">E por estarem assim justas e contratadas, as partes firmam o presente instrumento,
+    que passa a vigorar entre elas e seus sucessores, admitida a assinatura eletrônica, na forma do
+    art. 10, § 2.º, da Medida Provisória n.º 2.200-2/2001.</p>
+
+    <p class="local">${esc(m.cidade.split('/')[0].trim())}, ${dataExt(c.inicio || P.emissao)}.</p>
+
+    <div class="ass">
+      <div class="sig">
+        <div class="ln"></div>
+        <div class="rot">Contratante</div>
+        <b>${esc(P.cliente||'____________________')}</b>
+        <span>${c.cliRep?esc(c.cliRep)+'<br>':''}${c.cliTipo==='pf'?'CPF':'CNPJ'} ${esc(c.cliDoc||'____________')}</span>
+      </div>
+      <div class="sig">
+        <div class="ln"></div>
+        <div class="rot">Contratada</div>
+        <b>${esc(c.ctdResp||m.nome)}</b>
+        <span>${esc(c.ctdRespCat||'Contador(a)')} · CRC n.º ${esc(c.ctdRespCrc||'____________')}<br>${esc(c.ctdRazao||m.nome)}</span>
+      </div>
+    </div>
+
+    <div class="test">
+      <h4>Testemunhas</h4>
+      <div class="ass" style="margin-top:0">
+        <div class="sig"><div class="ln"></div><b>&nbsp;</b><span>Nome:<br>CPF:</span></div>
+        <div class="sig"><div class="ln"></div><b>&nbsp;</b><span>Nome:<br>CPF:</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer class="rod">
+    <img src="${LH}" alt="">
+    <div>${esc(m.email)} · ${esc(m.waFmt)} · <a href="${esc(m.site)}">${esc(m.siteFmt)}</a></div>
+  </footer>
+
+</div>
+</body></html>`;
+}
+
 /* ==================== UI ==================== */
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
+
+function ctrNomeArq(tipo){
+  const c = (P.cliente||'cliente').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-zA-Z0-9]+/g,'-').toLowerCase().replace(/^-|-$/g,'');
+  return `contrato-${tipo}-${P.num}-${c}.html`;
+}
+let tCtr;
+function ctrPv(){
+  clearTimeout(tCtr);
+  tCtr = setTimeout(()=>{
+    const f = $('#ctrPv'); if(!f) return;
+    const tipo = ($('#ctrTipo')||{}).value || 'mensal';
+    try{
+      f.srcdoc = contratoHTML(tipo);
+      const n = ctrServicos(tipo).length;
+      $('#ctrInfo').textContent = n ? `${n} serviço${n>1?'s':''} da proposta` : 'nenhum serviço deste tipo na proposta';
+    }catch(err){ $('#ctrInfo').textContent = 'erro: ' + err.message; }
+  }, 180);
+}
+function ctrUI(){
+  if(!P) return;
+  P.contrato = P.contrato || clone(DB.contrato || {});
+  const c = P.contrato;
+  $$('#tab-ctr [data-c]').forEach(el=>{
+    const k = el.dataset.c;
+    const v = c[k] != null && c[k] !== '' ? c[k] : (DB.contrato ? DB.contrato[k] : '');
+    el.value = (k === 'decimo') ? (v ? '1' : '') : (v == null ? '' : v);
+    el.oninput = el.onchange = ()=>{
+      let val = el.type === 'number' ? (parseFloat(el.value) || 0) : el.value;
+      if(k === 'decimo') val = !!el.value;
+      c[k] = val;
+      if(el.dataset.base){ DB.contrato = DB.contrato || {}; DB.contrato[k] = val; salvarBase(); }
+      ctrPv();
+    };
+  });
+  const tp = $('#ctrTipo'); if(tp) tp.onchange = ctrPv;
+  ctrPv();
+}
+$('#ctrBaixar').onclick = ()=>{
+  const tipo = $('#ctrTipo').value;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([contratoHTML(tipo)],{type:'text/html'}));
+  a.download = ctrNomeArq(tipo); a.click(); URL.revokeObjectURL(a.href);
+  toast('Contrato baixado');
+};
+$('#ctrAbrir').onclick = ()=>{
+  const w = window.open('','_blank');
+  w.document.write(contratoHTML($('#ctrTipo').value)); w.document.close();
+};
+$('#ctrImprimir').onclick = ()=>{
+  const w = window.open('','_blank');
+  w.document.write(contratoHTML($('#ctrTipo').value)); w.document.close();
+  w.onload = ()=>{ w.focus(); w.print(); };
+};
 
 document.addEventListener('click', e=>{
   const t = e.target.closest('nav button[data-tab]');
@@ -997,6 +1591,7 @@ document.addEventListener('click', e=>{
   $$('nav button').forEach(b=>b.classList.toggle('on', b===t));
   $$('.tab').forEach(s=>s.classList.toggle('on', s.id==='tab-'+t.dataset.tab));
   if(t.dataset.tab==='salvas') listarSalvas();
+  if(t.dataset.tab==='ctr') ctrUI();
 });
 
 let tPv;
@@ -1285,7 +1880,7 @@ function bindTopo(){
     if(v[0]==='m' && !PRESETS[v]){
       const m = DB.modelos[+v.slice(1)];
       const cli = P.cliente;
-      P = clone(m.p); P.b = t=>P.blocos.find(b=>b.t===t)||{};
+      P = clone(m.p); P.b = t=>P.blocos.find(b=>b.t===t)||{}; P.contrato = P.contrato || clone(DB.contrato||{});
       P.preset = v; P.cliente = cli;
       P.num = `${new Date().getFullYear()}-${String(DB.marca.seq).padStart(3,'0')}`;
       P.emissao = new Date().toISOString().slice(0,10);
@@ -1494,7 +2089,7 @@ async function listarSalvas(){
     <button class="btn dg" data-del="${k}">✕</button></div>`).join('');
   c.querySelectorAll('[data-use]').forEach(el=>el.onclick=async()=>{
     const v = await store.get(el.dataset.use); if(!v) return;
-    P = v.p; P.b = t=>P.blocos.find(b=>b.t===t)||{};
+    P = v.p; P.b = t=>P.blocos.find(b=>b.t===t)||{}; P.contrato = P.contrato || clone(DB.contrato||{});
     sel=0; $$('nav button')[0].click(); bindTopo(); listaBlocos(); editor(); pv();
   });
   c.querySelectorAll('[data-del]').forEach(el=>el.onclick=async()=>{
