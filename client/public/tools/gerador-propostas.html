@@ -113,6 +113,43 @@ tr:last-child td{border-bottom:0}
 .ref{font-size:.76rem;color:var(--txt3);white-space:nowrap}
 .ref.low{color:var(--warn)}
 
+.wzbar{display:flex;gap:6px;padding:12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.st{flex:1;min-width:120px;display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:10px;
+  background:var(--bg2);border:1px solid var(--line);color:var(--txt3);cursor:pointer;font:inherit;
+  font-size:13px;text-align:left;transition:.15s}
+.st:hover{border-color:var(--line2);color:var(--txt2)}
+.st.on{background:var(--bg3);border-color:var(--teal);color:var(--txt)}
+.st.done{color:var(--txt2)}
+.st i{flex:none;width:22px;height:22px;border-radius:50%;background:var(--line);color:var(--txt2);
+  display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:600}
+.st.on i{background:var(--teal);color:#06231f}
+.st.done i{background:var(--good);color:#06231f}
+.wzp{display:none}
+.wzp.on{display:block}
+.wznav{display:flex;gap:8px;justify-content:space-between;padding:12px;border-top:1px solid var(--line);
+  position:sticky;bottom:0;background:var(--bg2)}
+.mods{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:6px}
+.mod{padding:11px 13px;border-radius:10px;background:var(--bg3);border:1px solid var(--line);
+  color:var(--txt2);cursor:pointer;font:inherit;font-size:12.5px;text-align:left;transition:.15s}
+.mod:hover{border-color:var(--teal);color:var(--txt)}
+.mod b{display:block;color:var(--txt);font-size:13px;font-weight:600;margin-bottom:2px}
+.svc{display:flex;flex-direction:column;gap:5px}
+.svci{display:flex;align-items:center;gap:10px;padding:8px 11px;border-radius:9px;
+  background:var(--bg2);border:1px solid var(--line);transition:.15s}
+.svci.on{border-color:var(--teal);background:var(--bg3)}
+.svci input[type=checkbox]{flex:none;width:16px;height:16px;accent-color:var(--teal);cursor:pointer}
+.svci .n{flex:1;min-width:0;font-size:13px;color:var(--txt)}
+.svci .n span{display:block;font-size:11px;color:var(--txt3);line-height:1.35;margin-top:1px}
+.svci .in{width:96px;flex:none;padding:6px 8px;font-size:12.5px}
+.svci select.in{width:88px}
+.sec{margin:14px 0 7px;font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--teal);font-weight:600}
+.cfg{background:var(--bg2);border:1px solid var(--line);border-left:2px solid var(--teal);
+  border-radius:10px;padding:12px 14px;margin-top:8px}
+.cfg h4{font-size:12.5px;color:var(--txt);margin-bottom:9px;font-weight:600}
+.sum{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:10px}
+.sum .l{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:12.5px;color:var(--txt2)}
+.sum .l b{color:var(--txt);white-space:nowrap}
+.sum .l.t{border-top:1px solid var(--line);margin-top:5px;padding-top:9px;color:var(--txt);font-weight:600}
 .hint{font-size:.78rem;color:var(--txt3);line-height:1.55;margin-top:8px}
 .hint b{color:var(--txt2)}
 .alerta{background:rgba(224,164,88,.1);border:1px solid rgba(224,164,88,.35);border-radius:9px;
@@ -144,7 +181,7 @@ tr:last-child td{border-bottom:0}
       <button class="on" data-tab="prop">Proposta</button>
       <button data-tab="cat">Catálogo</button>
       <button data-tab="fisc">Fiscal</button>
-      <button data-tab="ctr">Contrato</button>
+      <button data-tab="ctr">Base contrato</button>
       <button data-tab="salvas">Salvas</button>
     </nav>
   </div>
@@ -155,45 +192,110 @@ tr:last-child td{border-bottom:0}
 <!-- ============ PROPOSTA ============ -->
 <section class="tab on" id="tab-prop">
   <div class="split">
-
     <div>
       <div class="panel">
-        <h3>Proposta <span class="sp" id="numLbl"></span></h3>
-        <div class="pad">
-          <div class="row r2">
-            <label class="f"><span>Modelo</span>
-              <select class="in" id="preset"></select>
-            </label>
-            <label class="f"><span>Cliente</span>
-              <input class="in" id="cliente" placeholder="Nome do cliente">
-            </label>
-          </div>
-          <div class="row r3">
-            <label class="f"><span>Emissão</span><input class="in" type="date" id="emissao"></label>
-            <label class="f"><span>Validade (dias)</span><input class="in" type="number" id="validade" min="1"></label>
-            <label class="f"><span>WhatsApp do cliente</span><input class="in" id="waCli" placeholder="19 99999-9999"></label>
-          </div>
-          <div class="btns">
-            <button class="btn p" id="bSalvar">Salvar proposta</button>
-            <button class="btn" id="bBaixar">Baixar .html</button>
-            <button class="btn" id="bAbrir">Abrir</button>
-            <button class="btn" id="bWa">Enviar no WhatsApp</button>
-            <button class="btn gh" id="bModelo">Salvar como modelo</button>
+        <div class="wzbar">
+          <button class="st on" data-step="1"><i>1</i> Cliente</button>
+          <button class="st" data-step="2"><i>2</i> Serviços</button>
+          <button class="st" data-step="3"><i>3</i> Textos</button>
+          <button class="st" data-step="4"><i>4</i> Gerar</button>
+        </div>
+
+        <!-- PASSO 1 -->
+        <div class="wzp on" id="wz1">
+          <div class="pad">
+            <p class="hint" style="margin:0 0 10px">Preencha o que souber. <b>Campo em branco não trava nada</b> —
+              no contrato vira uma linha para preencher à mão.</p>
+            <div class="row r2">
+              <label class="f"><span>Nome / razão social</span>
+                <input class="in" id="cliente" placeholder="Nome do cliente"></label>
+              <label class="f"><span>Tipo</span>
+                <select class="in" data-c="cliTipo">
+                  <option value="pj">Pessoa jurídica</option><option value="pf">Pessoa física</option>
+                </select></label>
+            </div>
+            <div class="row r2">
+              <label class="f"><span>CNPJ / CPF</span><input class="in" data-c="cliDoc" placeholder="00.000.000/0001-00"></label>
+              <label class="f"><span>Inscrição estadual / municipal</span><input class="in" data-c="cliIe" placeholder="opcional"></label>
+            </div>
+            <label class="f"><span>Endereço completo</span>
+              <input class="in" data-c="cliEnd" placeholder="Rua, nº, bairro, cidade/UF, CEP"></label>
+            <div class="row r2">
+              <label class="f"><span>Representante legal</span><input class="in" data-c="cliRep" placeholder="Quem assina"></label>
+              <label class="f"><span>CPF do representante</span><input class="in" data-c="cliRepCpf" placeholder="000.000.000-00"></label>
+            </div>
+            <div class="row r2">
+              <label class="f"><span>E-mail</span><input class="in" data-c="cliEmail" placeholder="opcional"></label>
+              <label class="f"><span>WhatsApp</span><input class="in" id="waCli" placeholder="19 99999-9999"></label>
+            </div>
+            <div class="row r3">
+              <label class="f"><span>Emissão</span><input class="in" type="date" id="emissao"></label>
+              <label class="f"><span>Validade (dias)</span><input class="in" type="number" id="validade" min="1"></label>
+              <label class="f"><span>Início da vigência</span><input class="in" type="date" data-c="inicio"></label>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="panel">
-        <h3>Blocos <span class="sp">arraste com ↑ ↓ · desligue o que não usar</span></h3>
-        <div class="blocos" id="listaBlocos"></div>
-        <div style="padding:0 12px 12px">
-          <select class="in" id="addBloco"><option value="">+ adicionar bloco…</option></select>
+        <!-- PASSO 2 -->
+        <div class="wzp" id="wz2">
+          <div class="pad">
+            <div class="sec">Modelos prontos — pode somar mais de um</div>
+            <div class="mods" id="mods"></div>
+            <div class="sec">Nossos serviços <span class="sp" style="text-transform:none;letter-spacing:0">marque e ajuste o valor</span></div>
+            <div class="svc" id="svcHon"></div>
+            <div class="sec">Taxas de terceiros <span class="sp" style="text-transform:none;letter-spacing:0">só na proposta, nunca no contrato</span></div>
+            <div class="svc" id="svcTax"></div>
+            <div id="cfgMensal"></div>
+            <div class="sum" id="resumo"></div>
+          </div>
         </div>
-      </div>
 
-      <div class="panel" id="editorPanel">
-        <h3 id="editorTit">Editor</h3>
-        <div class="pad" id="editor"></div>
+        <!-- PASSO 3 -->
+        <div class="wzp" id="wz3">
+          <div class="pad" style="padding-bottom:0">
+            <p class="hint" style="margin:0">Ajuste os textos da proposta. Os valores vieram do passo anterior.</p>
+          </div>
+          <div class="blocos" id="listaBlocos"></div>
+          <div style="padding:0 12px 12px">
+            <select class="in" id="addBloco"><option value="">+ adicionar bloco…</option></select>
+          </div>
+          <div class="panel" id="editorPanel" style="margin:0;border:0;border-top:1px solid var(--line)">
+            <h3 id="editorTit">Editor</h3>
+            <div class="pad" id="editor"></div>
+          </div>
+        </div>
+
+        <!-- PASSO 4 -->
+        <div class="wzp" id="wz4">
+          <div class="pad">
+            <div class="sec">Proposta</div>
+            <div class="btns">
+              <button class="btn p" id="bBaixar">Baixar proposta</button>
+              <button class="btn" id="bAbrir">Abrir</button>
+              <button class="btn" id="bWa">Enviar no WhatsApp</button>
+            </div>
+            <div class="sec">Contrato <span class="sp" style="text-transform:none;letter-spacing:0" id="ctrTipoLbl"></span></div>
+            <div class="btns">
+              <button class="btn p" id="ctrBaixar">Baixar contrato</button>
+              <button class="btn" id="ctrAbrir">Abrir</button>
+              <button class="btn" id="ctrImprimir">Imprimir / PDF</button>
+              <button class="btn gh" id="ctrVer">Ver na prévia</button>
+            </div>
+            <div class="sec">Guardar</div>
+            <div class="btns">
+              <button class="btn" id="bSalvar">Salvar proposta</button>
+              <button class="btn gh" id="bModelo">Salvar como modelo</button>
+            </div>
+            <p class="hint">O contrato formaliza <b>apenas os nossos honorários</b>. Taxas de Junta,
+              Prefeitura e conselhos aparecem só na proposta, como informativo.</p>
+          </div>
+        </div>
+
+        <div class="wznav">
+          <button class="btn" id="wzPrev">← Voltar</button>
+          <span class="sp" id="numLbl" style="align-self:center"></span>
+          <button class="btn p" id="wzNext">Próximo →</button>
+        </div>
       </div>
     </div>
 
@@ -201,7 +303,6 @@ tr:last-child td{border-bottom:0}
       <h3>Prévia <span class="sp" id="pvInfo"></span></h3>
       <iframe id="pv"></iframe>
     </div>
-
   </div>
 </section>
 
@@ -311,28 +412,6 @@ tr:last-child td{border-bottom:0}
     <div>
 
       <div class="panel">
-        <h3>Contrato <span class="sp">gerado a partir da proposta atual</span></h3>
-        <div class="pad">
-          <div class="row r2">
-            <label class="f"><span>Tipo de contrato</span>
-              <select class="in" id="ctrTipo">
-                <option value="mensal">Serviços contábeis mensais (continuado)</option>
-                <option value="eventual">Serviços eventuais (abertura, alteração…)</option>
-              </select></label>
-            <label class="f"><span>Início da vigência</span>
-              <input class="in" type="date" data-c="inicio"></label>
-          </div>
-          <div class="btns">
-            <button class="btn p" id="ctrBaixar">Baixar contrato</button>
-            <button class="btn" id="ctrAbrir">Abrir</button>
-            <button class="btn" id="ctrImprimir">Imprimir / PDF</button>
-          </div>
-          <p class="hint">O contrato puxa automaticamente os serviços, valores e escopo da proposta.
-            Serviços <b>mensais</b> vão para o contrato continuado; serviços <b>únicos</b> vão para o eventual.</p>
-        </div>
-      </div>
-
-      <div class="panel">
         <h3>A contratada <span class="sp">seus dados — preencha uma vez, fica salvo</span></h3>
         <div class="pad">
           <div class="row r2">
@@ -355,24 +434,6 @@ tr:last-child td{border-bottom:0}
       </div>
 
       <div class="panel">
-        <h3>O contratante <span class="sp">dados do cliente desta proposta</span></h3>
-        <div class="pad">
-          <div class="row r2">
-            <label class="f"><span>Tipo</span>
-              <select class="in" data-c="cliTipo">
-                <option value="pj">Pessoa jurídica</option><option value="pf">Pessoa física</option>
-              </select></label>
-            <label class="f"><span>CNPJ / CPF</span><input class="in" data-c="cliDoc" placeholder="00.000.000/0001-00"></label>
-          </div>
-          <label class="f"><span>Endereço completo</span><input class="in" data-c="cliEnd" placeholder="Rua, nº, bairro, cidade/UF, CEP"></label>
-          <div class="row r2">
-            <label class="f"><span>Representante legal</span><input class="in" data-c="cliRep" placeholder="Nome de quem assina"></label>
-            <label class="f"><span>CPF do representante</span><input class="in" data-c="cliRepCpf" placeholder="000.000.000-00"></label>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel">
         <h3>Condições comerciais</h3>
         <div class="pad">
           <div class="row r3">
@@ -384,6 +445,7 @@ tr:last-child td{border-bottom:0}
             <label class="f"><span>Índice de reajuste</span>
               <select class="in" data-c="indice"><option>IPCA</option><option>IGP-M</option><option>INPC</option></select></label>
             <label class="f"><span>Multa por atraso (%)</span><input class="in" type="number" step="0.5" data-c="multa"></label>
+            <label class="f"><span>Juros ao mês (%)</span><input class="in" type="number" step="0.5" data-c="juros"></label>
             <label class="f"><span>Suspensão após (dias)</span><input class="in" type="number" data-c="diasInad"></label>
           </div>
           <div class="row r3">
@@ -455,6 +517,7 @@ const PADRAO = {
     {n:'Acompanhamento mensal — autônomo', d:'Carnê-leão, guias e suporte', v:100, t:'mensal', ref:259},
     {n:'Emissão de notas de serviço', d:'Emissão mensal das suas NFS-e', v:50, t:'mensal', ref:50},
     {n:'Folha de pagamento — por funcionário', d:'Admissão, guias mensais, eSocial e rescisão', v:50, t:'mensal', ref:165.5},
+    {n:'Encerramento de empresa', d:'Baixa na Receita Federal, Junta Comercial e Prefeitura', v:1500, t:'unico', ref:1800},
     {n:'Declaração de IRPF', d:'Elaboração e envio da declaração anual', v:300, t:'unico', ref:300},
     {n:'Consultoria avulsa — por hora', d:'Orientação técnica pontual, presencial ou online', v:250, t:'unico', ref:250},
     {n:'Diagnóstico da Reforma Tributária', d:'Impacto do IBS/CBS e adequação de NF-e / NFS-e ao novo padrão', v:800, t:'unico', ref:1200}
@@ -1093,7 +1156,9 @@ function novaProposta(key){
     preset:key, num:`${new Date().getFullYear()}-${seq}`, cliente:'',
     emissao:new Date().toISOString().slice(0,10), validade:30, waCli:'',
     blocos: pre.blocos.map(t=>TIPOS[t].novo()),
-    contrato: clone(DB.contrato || {})
+    contrato: clone(DB.contrato || {}),
+    itens: [],
+    mensal: {venc:10, func:{modo:'incluso',valor:50}, notas:{modo:'incluso',qtd:10,valor:5}}
   };
   P.b = t => P.blocos.find(b=>b.t===t) || {};
   if(pre.prep) pre.prep(P);
@@ -1484,7 +1549,7 @@ function ctrUI(){
   if(!P) return;
   P.contrato = P.contrato || clone(DB.contrato || {});
   const c = P.contrato;
-  $$('#tab-ctr [data-c]').forEach(el=>{
+  $$('[data-c]').forEach(el=>{
     const k = el.dataset.c;
     const v = c[k] != null && c[k] !== '' ? c[k] : (DB.contrato ? DB.contrato[k] : '');
     el.value = (k === 'decimo') ? (v ? '1' : '') : (v == null ? '' : v);
@@ -1499,6 +1564,15 @@ function ctrUI(){
   const tp = $('#ctrTipo'); if(tp) tp.onchange = ctrPv;
   ctrPv();
 }
+$('#wzNext').onclick = ()=> wzGo(wzStep+1);
+$('#wzPrev').onclick = ()=> wzGo(wzStep-1);
+document.addEventListener('click', e=>{
+  const b = e.target.closest('.st[data-step]');
+  if(b) wzGo(+b.dataset.step);
+});
+$('#ctrVer').onclick = ()=>{
+  const f = $('#pv'); if(f){ f.srcdoc = contratoHTML(); $('#pvInfo').textContent = 'contrato'; }
+};
 $('#ctrBaixar').onclick = ()=>{
   const tipo = $('#ctrTipo').value;
   const a = document.createElement('a');
@@ -1515,6 +1589,220 @@ $('#ctrImprimir').onclick = ()=>{
   w.document.write(contratoHTML()); w.document.close();
   w.onload = ()=>{ w.focus(); w.print(); };
 };
+
+/* ==================== FLUXO POR PASSOS ==================== */
+const PACOTES = [
+  {n:'Contabilidade mensal', d:'Mensalidade + rotina completa',
+   hon:['Acompanhamento mensal — CNPJ'], tax:[]},
+  {n:'Abertura de empresa', d:'CNPJ + inscrições',
+   hon:['Abertura de CNPJ'], tax:['Taxas de registro — Junta e Prefeitura']},
+  {n:'Alteração contratual', d:'Alteração + reenquadramento',
+   hon:['Alteração contratual + desenquadramento'], tax:['Taxas de registro — Junta e Prefeitura']},
+  {n:'Migração de contador', d:'Assume a rotina, sem custo de migração',
+   hon:['Acompanhamento mensal — CNPJ'], tax:[]},
+  {n:'Encerramento', d:'Baixa nos órgãos',
+   hon:['Encerramento de empresa'], tax:[]},
+  {n:'MEI', d:'Mensalidade reduzida',
+   hon:['Acompanhamento mensal — MEI'], tax:[]},
+];
+
+let wzStep = 1;
+function wzGo(n){
+  wzStep = Math.max(1, Math.min(4, n));
+  $$('.wzp').forEach(el => el.classList.toggle('on', el.id === 'wz'+wzStep));
+  $$('.st').forEach(b => {
+    const k = +b.dataset.step;
+    b.classList.toggle('on', k === wzStep);
+    b.classList.toggle('done', k < wzStep);
+  });
+  const prev = $('#wzPrev'), next = $('#wzNext');
+  if(prev) prev.style.visibility = wzStep === 1 ? 'hidden' : 'visible';
+  if(next) next.style.visibility = wzStep === 4 ? 'hidden' : 'visible';
+  if(wzStep === 2){ modsRender(); svcRender(); }
+  if(wzStep === 3){ sincBlocos(); listaBlocos(); editor(); }
+  if(wzStep === 4){ ctrTipoLbl(); }
+  pv();
+}
+
+/* --- seleção de serviços --- */
+const itemIgual = (a,b) => a.n === b.n && a.k === b.k;
+function selIdx(it){ return (P.itens||[]).findIndex(x => itemIgual(x,it)); }
+function toggleItem(src, k, on){
+  P.itens = P.itens || [];
+  const it = {n:src.n, d:src.d||'', v:+src.v||0, t:src.t||'unico', k};
+  const i = selIdx(it);
+  if(on && i < 0) P.itens.push(it);
+  if(!on && i >= 0) P.itens.splice(i,1);
+}
+function modsRender(){
+  const box = $('#mods'); if(!box) return;
+  box.innerHTML = PACOTES.map((p,i)=>
+    `<button class="mod" data-pac="${i}"><b>${esc(p.n)}</b>${esc(p.d)}</button>`).join('');
+  box.querySelectorAll('[data-pac]').forEach(b=>{
+    b.onclick = ()=>{
+      const pac = PACOTES[+b.dataset.pac];
+      P.itens = P.itens || [];
+      pac.hon.forEach(nome=>{ const src = DB.hon.find(x=>x.n===nome); if(src) toggleItem(src,'hon',true); });
+      pac.tax.forEach(nome=>{ const src = DB.tax.find(x=>x.n===nome); if(src) toggleItem(src,'tax',true); });
+      svcRender(); toast(pac.n + ' adicionado');
+    };
+  });
+}
+function svcLinha(src, k, i){
+  const it = {n:src.n, d:src.d||'', v:src.v, t:src.t, k};
+  const j = selIdx(it);
+  const on = j >= 0;
+  const val = on ? P.itens[j].v : src.v;
+  const tp  = on ? P.itens[j].t : (src.t||'unico');
+  return `<label class="svci${on?' on':''}">
+    <input type="checkbox" data-sk="${k}" data-si="${i}" ${on?'checked':''}>
+    <div class="n">${esc(src.n)}${src.d?`<span>${esc(src.d)}</span>`:''}</div>
+    <input class="in v" type="number" step="0.01" data-sv="${k}:${i}" value="${val}" ${on?'':'disabled'}>
+    <select class="in t" data-st2="${k}:${i}" ${on?'':'disabled'}>
+      <option value="unico"${tp==='unico'?' selected':''}>único</option>
+      <option value="mensal"${tp==='mensal'?' selected':''}>/mês</option>
+      <option value="anual"${tp==='anual'?' selected':''}>/ano</option>
+    </select></label>`;
+}
+function svcRender(){
+  const h = $('#svcHon'), t = $('#svcTax'); if(!h) return;
+  h.innerHTML = DB.hon.map((x,i)=>svcLinha(x,'hon',i)).join('');
+  t.innerHTML = DB.tax.map((x,i)=>svcLinha(x,'tax',i)).join('');
+  [h,t].forEach(box=>{
+    box.querySelectorAll('[data-sk]').forEach(cb=>{
+      cb.onchange = ()=>{
+        const k = cb.dataset.sk, i = +cb.dataset.si;
+        toggleItem(k==='hon'?DB.hon[i]:DB.tax[i], k, cb.checked);
+        svcRender(); cfgMensalRender(); resumoRender(); pv();
+      };
+    });
+    box.querySelectorAll('[data-sv]').forEach(el=>{
+      el.oninput = ()=>{
+        const [k,i] = el.dataset.sv.split(':');
+        const src = k==='hon'?DB.hon[+i]:DB.tax[+i];
+        const j = selIdx({n:src.n,k});
+        if(j>=0){ P.itens[j].v = parseFloat(el.value)||0; resumoRender(); pv(); }
+      };
+    });
+    box.querySelectorAll('[data-st2]').forEach(el=>{
+      el.onchange = ()=>{
+        const [k,i] = el.dataset.st2.split(':');
+        const src = k==='hon'?DB.hon[+i]:DB.tax[+i];
+        const j = selIdx({n:src.n,k});
+        if(j>=0){ P.itens[j].t = el.value; cfgMensalRender(); resumoRender(); pv(); }
+      };
+    });
+  });
+  cfgMensalRender(); resumoRender();
+}
+
+/* --- configuração do acompanhamento mensal --- */
+function cfgMensalRender(){
+  const box = $('#cfgMensal'); if(!box) return;
+  if(!ctrTemMensal()){ box.innerHTML = ''; return; }
+  P.mensal = P.mensal || {venc:10, func:{modo:'incluso',valor:50}, notas:{modo:'incluso',qtd:10,valor:5}};
+  const m = P.mensal;
+  box.innerHTML = `<div class="cfg">
+    <h4>Como funciona o acompanhamento mensal</h4>
+    <div class="row r2">
+      <label class="f"><span>Vencimento da mensalidade (dia)</span>
+        <input class="in" type="number" min="1" max="28" data-m="venc" value="${m.venc||10}"></label>
+      <label class="f"><span>Funcionários</span>
+        <select class="in" data-m="func.modo">
+          <option value="incluso"${m.func.modo==='incluso'?' selected':''}>Quadro atual incluso, novos à parte</option>
+          <option value="porFunc"${m.func.modo==='porFunc'?' selected':''}>Cobrar por funcionário</option>
+          <option value="nao"${m.func.modo==='nao'?' selected':''}>Não fazemos folha</option>
+        </select></label>
+    </div>
+    ${m.func.modo!=='nao'?`<label class="f"><span>Valor por funcionário (R$)</span>
+      <input class="in" type="number" step="0.01" data-m="func.valor" value="${m.func.valor||50}"></label>`:''}
+    <div class="row r2">
+      <label class="f"><span>Emissão de notas fiscais</span>
+        <select class="in" data-m="notas.modo">
+          <option value="incluso"${m.notas.modo==='incluso'?' selected':''}>Incluso no honorário</option>
+          <option value="porNota"${m.notas.modo==='porNota'?' selected':''}>Cobrar por nota</option>
+          <option value="nao"${m.notas.modo==='nao'?' selected':''}>Não emitimos</option>
+        </select></label>
+      ${m.notas.modo==='incluso'?`<label class="f"><span>Quantas por mês (0 = ilimitado)</span>
+        <input class="in" type="number" min="0" data-m="notas.qtd" value="${m.notas.qtd||0}"></label>`:''}
+      ${m.notas.modo==='porNota'?`<label class="f"><span>Valor por nota (R$)</span>
+        <input class="in" type="number" step="0.01" data-m="notas.valor" value="${m.notas.valor||0}"></label>`:''}
+    </div>
+  </div>`;
+  box.querySelectorAll('[data-m]').forEach(el=>{
+    el.oninput = el.onchange = ()=>{
+      const path = el.dataset.m.split('.');
+      const v = el.type==='number' ? (parseFloat(el.value)||0) : el.value;
+      if(path.length===1) P.mensal[path[0]] = v; else P.mensal[path[0]][path[1]] = v;
+      if(el.tagName==='SELECT') cfgMensalRender();
+      resumoRender(); pv();
+    };
+  });
+}
+
+/* --- resumo --- */
+function resumoRender(){
+  const box = $('#resumo'); if(!box) return;
+  const its = P.itens || [];
+  if(!its.length){ box.innerHTML = '<div class="l">Nenhum serviço selecionado ainda.</div>'; return; }
+  const hon = its.filter(i=>i.k!=='tax'), tax = its.filter(i=>i.k==='tax');
+  const som = (a,t) => a.filter(i=>t?i.t===t:i.t!=='mensal').reduce((x,i)=>x+(+i.v||0),0);
+  const l = [];
+  const hm = som(hon,'mensal'), hu = som(hon), tu = som(tax);
+  if(hm) l.push(`<div class="l"><span>Honorário mensal</span><b>${R$(hm)}/mês</b></div>`);
+  if(hu) l.push(`<div class="l"><span>Honorários únicos</span><b>${R$(hu)}</b></div>`);
+  if(tu) l.push(`<div class="l"><span>Taxas de terceiros (fora do contrato)</span><b>${R$(tu)}</b></div>`);
+  l.push(`<div class="l t"><span>${hu||tu?'Para começar':'Total'}</span><b>${R$(hu+tu)}${hm?` + ${R$(hm)}/mês`:''}</b></div>`);
+  box.innerHTML = l.join('');
+}
+
+/* --- P.itens alimenta os blocos da proposta --- */
+function sincBlocos(){
+  const its = P.itens || [];
+  if(!its.length) return;
+  const hon = its.filter(i=>i.k!=='tax'), tax = its.filter(i=>i.k==='tax');
+  const mensais = hon.filter(i=>i.t==='mensal'), unicos = hon.filter(i=>i.t!=='mensal');
+  const achaOuCria = t => {
+    let b = P.blocos.find(x=>x.t===t);
+    if(!b){ b = TIPOS[t].novo(); const i = P.blocos.findIndex(x=>x.t==='fech');
+      P.blocos.splice(i<0?P.blocos.length:i, 0, b); }
+    return b;
+  };
+  /* caso simples: uma única mensalidade e nada mais -> caixa de preço único */
+  const soMensalidade = mensais.length===1 && !unicos.length;
+  if(soMensalidade){
+    const b = achaOuCria('preco'); b.on = true;
+    b.nome = mensais[0].n; b.desc = mensais[0].d; b.valor = mensais[0].v; b.periodo = '/mês';
+    const v = P.blocos.find(x=>x.t==='val'); if(v) v.on = false;
+  } else {
+    const b = achaOuCria('val'); b.on = true;
+    const suf = {mensal:'mensal', anual:'anual', unico:'unico'};
+    b.itens = hon.map(i=>({n:i.n, d:i.d, v:i.v, t:suf[i.t]||'unico'}));
+    const pr = P.blocos.find(x=>x.t==='preco'); if(pr) pr.on = false;
+  }
+  /* taxas: só na proposta */
+  const bt = achaOuCria('taxas');
+  bt.on = tax.length > 0;
+  bt.itens = tax.map(i=>({n:i.n, d:i.d, v:i.v, t:i.t, na:''}));
+  /* extras do acompanhamento entram como linhas informativas */
+  const m = P.mensal;
+  if(m && ctrTemMensal()){
+    if(m.func && m.func.modo==='incluso' && +m.func.valor)
+      bt.itens.push({n:'Funcionário adicional', d:'Cada novo empregado além do quadro atual',
+        v:+m.func.valor, t:'mensal', na:''});
+    if(m.notas && m.notas.modo==='porNota' && +m.notas.valor)
+      bt.itens.push({n:'Emissão de nota fiscal', d:'Por nota emitida', v:+m.notas.valor, t:'unico', na:''});
+    if(m.notas && m.notas.modo==='nao')
+      bt.itens.push({n:'Emissão de notas fiscais', d:'Permanece a cargo do cliente', v:0, t:'unico', na:'Não incluso'});
+    bt.on = bt.itens.length > 0;
+  }
+}
+
+function ctrTipoLbl(){
+  const el = $('#ctrTipoLbl'); if(!el) return;
+  const M = ctrTemMensal(), U = ctrTemUnico();
+  el.textContent = (M&&U) ? 'eventual + continuado' : M ? 'continuado' : U ? 'eventual' : 'sem serviços selecionados';
+}
 
 document.addEventListener('click', e=>{
   const t = e.target.closest('nav button[data-tab]');
@@ -1802,6 +2090,7 @@ function editorMem(b){
 /* ---------- cabeçalho da proposta ---------- */
 function bindTopo(){
   const ps = $('#preset');
+  if(!ps){ bindCampos(); return; }
   ps.innerHTML = Object.entries(PRESETS).map(([k,v])=>`<option value="${k}">${v.nome}</option>`).join('')
     + (DB.modelos.length ? `<optgroup label="Meus modelos">${DB.modelos.map((m,i)=>
         `<option value="m${i}">${esc(m.nome)}</option>`).join('')}</optgroup>` : '');
@@ -1821,14 +2110,16 @@ function bindTopo(){
     }
     sel=0; bindTopo(); listaBlocos(); editor(); pv();
   };
-  $('#cliente').value = P.cliente;
-  $('#emissao').value = P.emissao;
-  $('#validade').value = P.validade;
-  $('#waCli').value = P.waCli;
-  $('#cliente').oninput = e=>{ P.cliente=e.target.value; pv(); };
-  $('#emissao').onchange = e=>{ P.emissao=e.target.value; pv(); };
-  $('#validade').oninput = e=>{ P.validade=+e.target.value||30; pv(); };
-  $('#waCli').oninput = e=>{ P.waCli=e.target.value; };
+  bindCampos();
+}
+function bindCampos(){
+  const set = (id, val, ev, fn) => { const el = $('#'+id); if(!el) return;
+    el.value = val == null ? '' : val; el[ev] = e => { fn(e.target.value); }; };
+  set('cliente', P.cliente, 'oninput', v=>{ P.cliente=v; pv(); });
+  set('emissao', P.emissao, 'onchange', v=>{ P.emissao=v; pv(); });
+  set('validade', P.validade, 'oninput', v=>{ P.validade=+v||30; pv(); });
+  set('waCli', P.waCli, 'oninput', v=>{ P.waCli=v; });
+  if(typeof ctrUI === 'function') ctrUI();
 }
 
 /* ---------- ações ---------- */
@@ -2036,7 +2327,7 @@ async function listarSalvas(){
                 marca:{...clone(PADRAO.marca), ...(b.marca||{})}};
   }
   novaProposta('abertura');
-  bindTopo(); listaBlocos(); editor(); catalogo(); fiscal(); pv();
+  bindTopo(); listaBlocos(); editor(); catalogo(); fiscal(); wzGo(1); pv();
 })();
 </script>
 </body>
