@@ -1590,6 +1590,207 @@ $('#ctrImprimir').onclick = ()=>{
   w.onload = ()=>{ w.focus(); w.print(); };
 };
 
+/* ==================== CONTEÚDO PADRÃO DA PROPOSTA ====================
+   Ao escolher os serviços no passo 2, os textos da proposta vêm prontos.
+   Tudo continua editável no passo 3 — e o que o usuário editar nunca é
+   sobrescrito (o bloco fica marcado com _auto = false). */
+
+const GRUPOS_MENSAL = [
+  {h:'Contábil', itens:['Escrituração contábil completa','Balancete mensal',
+    'Balanço Patrimonial e DRE','Livros Diário e Razão','Conciliação bancária']},
+  {h:'Fiscal', itens:['Apuração mensal dos tributos','**Emissão das suas notas fiscais**',
+    'Guia do DAS calculada e enviada pronta','PGDAS-D e DEFIS','Certidões negativas quando precisar']},
+  {h:'Folha de pagamento', itens:['**Folha do seu funcionário atual inclusa**','Folha mensal e holerites',
+    'Admissões, férias, 13º e rescisões','Guias de INSS e FGTS prontas','eSocial, FGTS Digital e DCTFweb']},
+  {h:'Sócios', itens:['Cálculo do pró-labore e das guias','Distribuição de lucros isenta de IR',
+    'Orientação sobre a melhor retirada']},
+  {h:'Atendimento', itens:['Suporte no WhatsApp, direto com quem faz','Resposta no mesmo dia útil',
+    'Calendário de obrigações — você sabe o que vence','Orientação tributária ao longo do ano']},
+  {h:'Reforma Tributária · 2026', itens:['Adequação das suas notas ao padrão IBS/CBS',
+    'Acompanhamento do ano-piloto de apuração','Revisão dos seus códigos de serviço',
+    'Você chega em 2027 sem correria']},
+];
+
+const COND_MENSAL = [
+  'Os valores desta proposta são válidos até a data de validade indicada acima.',
+  'A mensalidade é reajustada uma vez por ano, pelo **IPCA**. Nada de reajuste no meio do caminho.',
+  'Taxas de terceiros (Prefeitura, Junta Comercial, conselhos) são repassadas sem acréscimo, contra comprovante.',
+  'Serviços eventuais fora da rotina — perícias, defesas administrativas, recuperação de crédito — são orçados à parte, sempre com o seu aceite antes.',
+];
+
+const PASS_MENSAL = [
+  {b:'Você confirma pelo WhatsApp', s:'Um "sim" já basta. Respondemos no mesmo dia útil.'},
+  {b:'Alinhamos acessos e documentos', s:'Uma conversa rápida para entender a sua rotina e pegar o que é necessário.'},
+  {b:'Assumimos tudo no mês seguinte', s:'Sem interrupção na sua operação, sem retrabalho do seu lado.'},
+  {b:'Você só recebe as guias prontas', s:'E volta a pensar no seu negócio, não na burocracia.'},
+];
+
+const CONTEUDO = {
+  mensal:{
+    eyebrow:'Acompanhamento contábil',
+    titulo:'Sua contabilidade inteira,<br>por **um valor só**.',
+    lead:'Contábil, fiscal, folha de pagamento e suporte — tudo dentro de uma mensalidade única. Sem cobrança por serviço e sem surpresa no meio do caminho.',
+    titGrupos:'Tudo isto está incluso',
+    subGrupos:'Não é um pacote básico com adicionais escondidos. É a rotina completa da sua empresa, do balanço à guia do FGTS, dentro do mesmo valor.',
+    grupos:GRUPOS_MENSAL,
+    subTaxas:'Só isto é cobrado à parte. Nada mais — e nada entra sem o seu aceite antes.',
+    cond:COND_MENSAL,
+    pass:PASS_MENSAL,
+    fechTit:'Vamos começar?',
+    fechTxt:'Qualquer dúvida sobre o escopo ou sobre o valor, respondemos na hora. Sem compromisso.',
+  },
+  abertura:{
+    eyebrow:'Abertura de empresa',
+    titulo:'{{cliente}}, chegou a hora de<br>formalizar a sua **atividade**.',
+    lead:'Cuidamos de todo o processo de abertura — da viabilidade à inscrição municipal — e entregamos a empresa pronta para emitir a primeira nota.',
+    titGrupos:'O que fazemos por você',
+    subGrupos:'A abertura inteira por nossa conta. Você só assina o que for necessário.',
+    grupos:[
+      {h:'Constituição', itens:['Consulta de viabilidade e busca de nome','Elaboração do contrato social',
+        'Registro na Junta Comercial','CNPJ na Receita Federal']},
+      {h:'Inscrições', itens:['Inscrição municipal e alvará','Inscrição estadual, quando a atividade exigir',
+        'Cadastro para emissão de notas fiscais','Certificado digital orientado']},
+      {h:'Enquadramento', itens:['Escolha do regime tributário','Definição do anexo do Simples com análise do Fator R',
+        '**Enquadramento pensado para pagar menos imposto**','Orientação sobre pró-labore e distribuição de lucros']},
+    ],
+    subTaxas:'Taxas dos órgãos públicos, repassadas sem acréscimo.',
+    cond:[
+      'Os valores desta proposta são válidos até a data de validade indicada acima.',
+      'As **taxas de registro** dos órgãos públicos não estão inclusas no honorário e são repassadas sem acréscimo, contra comprovante.',
+      'O prazo de abertura depende da análise dos órgãos públicos e pode variar conforme a atividade e o município.',
+      'Serviços eventuais fora do escopo acima são orçados à parte, sempre com o seu aceite antes.',
+    ],
+    pass:[
+      {b:'Você confirma pelo WhatsApp', s:'Um "sim" já basta. Respondemos no mesmo dia útil.'},
+      {b:'Enviamos a lista de documentos', s:'Simples e objetiva — normalmente RG, CPF, comprovante de endereço e a atividade pretendida.'},
+      {b:'Cuidamos de todo o processo', s:'Viabilidade, contrato social, Receita, Junta e Prefeitura. Você acompanha sem precisar ir a lugar nenhum.'},
+      {b:'Sua empresa está pronta', s:'Com CNPJ, inscrições e tudo pronto para emitir a primeira nota.'},
+    ],
+    fechTit:'Vamos abrir a sua empresa?',
+    fechTxt:'Qualquer dúvida sobre o processo ou sobre o valor, respondemos na hora. Sem compromisso.',
+  },
+  alteracao:{
+    eyebrow:'Alteração contratual',
+    titulo:'{{cliente}}, sua empresa<br>precisa de um **ajuste**.',
+    lead:'Cuidamos da alteração do contrato social e de todos os registros que precisam ser atualizados, sem que a sua operação pare.',
+    titGrupos:'O que fazemos por você',
+    subGrupos:'A alteração completa, do documento ao registro em cada órgão.',
+    grupos:[
+      {h:'Documentação', itens:['Análise da alteração pretendida','Elaboração do contrato de alteração',
+        'Consulta de viabilidade, quando necessária']},
+      {h:'Registros', itens:['Registro na Junta Comercial','Atualização do CNPJ na Receita Federal',
+        'Atualização na Prefeitura e demais órgãos','Reenquadramento tributário, se for o caso']},
+    ],
+    subTaxas:'Taxas dos órgãos públicos, repassadas sem acréscimo.',
+    cond:[
+      'Os valores desta proposta são válidos até a data de validade indicada acima.',
+      'As **taxas de registro** não estão inclusas no honorário e são repassadas sem acréscimo, contra comprovante.',
+      'O prazo depende da análise dos órgãos públicos.',
+      'Alterações adicionais solicitadas durante o processo são orçadas à parte.',
+    ],
+    pass:[
+      {b:'Você confirma pelo WhatsApp', s:'Um "sim" já basta.'},
+      {b:'Levantamos o que precisa mudar', s:'Uma conversa rápida para entender a alteração e reunir os documentos.'},
+      {b:'Protocolamos em todos os órgãos', s:'Junta, Receita e Prefeitura. Você acompanha sem sair do lugar.'},
+      {b:'Empresa atualizada', s:'Com todos os registros em dia.'},
+    ],
+    fechTit:'Vamos resolver isso?',
+    fechTxt:'Qualquer dúvida sobre o processo ou sobre o valor, respondemos na hora.',
+  },
+  encerramento:{
+    eyebrow:'Encerramento de empresa',
+    titulo:'{{cliente}}, vamos encerrar<br>sua empresa **do jeito certo**.',
+    lead:'A baixa feita corretamente evita cobranças e pendências no seu CPF depois. Cuidamos de todo o processo, em todos os órgãos.',
+    titGrupos:'O que fazemos por você',
+    subGrupos:'A baixa completa — e nada fica pendente no seu nome.',
+    grupos:[
+      {h:'Regularização', itens:['Levantamento de pendências fiscais','Entrega das obrigações em atraso, se houver',
+        'Apuração final dos tributos','Certidões negativas']},
+      {h:'Baixa', itens:['Distrato social','Baixa na Junta Comercial','Baixa do CNPJ na Receita Federal',
+        'Baixa na Prefeitura e nos demais órgãos']},
+    ],
+    subTaxas:'Taxas dos órgãos públicos, repassadas sem acréscimo.',
+    cond:[
+      'Os valores desta proposta são válidos até a data de validade indicada acima.',
+      'As **taxas de baixa** não estão inclusas no honorário e são repassadas sem acréscimo.',
+      'Débitos, multas e obrigações em atraso existentes são de responsabilidade da empresa e podem exigir regularização antes da baixa.',
+      'O prazo depende da análise dos órgãos públicos e da existência de pendências.',
+    ],
+    pass:[
+      {b:'Você confirma pelo WhatsApp', s:'Um "sim" já basta.'},
+      {b:'Levantamos as pendências', s:'Verificamos o que precisa ser regularizado antes da baixa.'},
+      {b:'Regularizamos e damos baixa', s:'Em todos os órgãos, na ordem correta.'},
+      {b:'Empresa encerrada', s:'Sem deixar nada pendente no seu nome.'},
+    ],
+    fechTit:'Vamos encerrar?',
+    fechTxt:'Qualquer dúvida sobre o processo ou sobre o valor, respondemos na hora.',
+  },
+};
+
+/* qual conteúdo usar, conforme o que foi selecionado */
+function perfilProposta(){
+  const its = (P.itens||[]).filter(i=>i.k!=='tax');
+  const tem = re => its.some(i => re.test(i.n.toLowerCase()));
+  const mensal = its.some(i=>i.t==='mensal');
+  if(tem(/encerr|baixa/)) return 'encerramento';
+  if(tem(/abertura/)) return 'abertura';
+  if(tem(/altera/)) return 'alteracao';
+  if(mensal) return 'mensal';
+  return 'mensal';
+}
+
+/* preenche os textos, respeitando o que o usuário já editou */
+function sincTextos(){
+  const C = CONTEUDO[perfilProposta()];
+  if(!C) return;
+  const mensal = (P.itens||[]).some(i=>i.k!=='tax' && i.t==='mensal');
+  const livre = b => b && b._auto !== false;   /* false = usuário editou */
+
+  const capa = P.blocos.find(b=>b.t==='capa');
+  if(livre(capa)){
+    capa.eyebrow = C.eyebrow; capa.titulo = C.titulo; capa.lead = C.lead; capa._auto = true;
+  }
+  const g = P.blocos.find(b=>b.t==='grupos');
+  if(livre(g)){
+    g.tit = C.titGrupos; g.sub = C.subGrupos;
+    g.grupos = clone(C.grupos);
+    /* o escopo acompanha o que foi combinado no passo 2 */
+    if(mensal && P.mensal){
+      const f = P.mensal.func||{}, n = P.mensal.notas||{};
+      const folha = g.grupos.find(x=>/folha/i.test(x.h));
+      if(folha && f.modo==='nao') g.grupos = g.grupos.filter(x=>x!==folha);
+      else if(folha && f.modo==='porFunc')
+        folha.itens[0] = '**Folha de pagamento por funcionário**';
+      const fisc = g.grupos.find(x=>/fiscal/i.test(x.h));
+      if(fisc){
+        const i = fisc.itens.findIndex(x=>/notas fiscais/i.test(x));
+        if(i>=0){
+          if(n.modo==='nao') fisc.itens.splice(i,1);
+          else if(n.modo==='porNota') fisc.itens[i] = 'Emissão das suas notas fiscais, cobrada por nota';
+          else if(+n.qtd>0) fisc.itens[i] = `**Emissão de até ${+n.qtd} notas fiscais por mês**`;
+        }
+      }
+    }
+    g._auto = true;
+  }
+  const tx = P.blocos.find(b=>b.t==='taxas');
+  if(livre(tx) && !temTexto(tx.sub)){ tx.sub = C.subTaxas; }
+  const cd = P.blocos.find(b=>b.t==='cond');
+  if(livre(cd)){
+    cd.itens = C.cond.slice();
+    if(mensal && P.mensal){
+      const f = P.mensal.func||{};
+      if(f.modo==='incluso' && +f.valor)
+        cd.itens.splice(2, 0, `A folha está inclusa para o **quadro atual** de funcionários. Cada novo empregado admitido entra a **${R$(f.valor)} por mês**.`);
+    }
+    cd._auto = true;
+  }
+  const ps = P.blocos.find(b=>b.t==='pass');
+  if(livre(ps)){ ps.itens = clone(C.pass); ps._auto = true; }
+  const fe = P.blocos.find(b=>b.t==='fech');
+  if(livre(fe)){ fe.tit = C.fechTit; fe.txt = C.fechTxt; fe._auto = true; }
+}
+
 /* ==================== FLUXO POR PASSOS ==================== */
 const PACOTES = [
   {n:'Contabilidade mensal', d:'Mensalidade + rotina completa',
@@ -1756,46 +1957,57 @@ function resumoRender(){
   box.innerHTML = l.join('');
 }
 
-/* --- P.itens alimenta os blocos da proposta --- */
+/* --- P.itens monta a proposta inteira: estrutura, valores e textos --- */
+const ORDEM_BLOCOS = ['capa','grupos','preco','val','taxas','cond','pass','fech'];
 function sincBlocos(){
   const its = P.itens || [];
   if(!its.length) return;
   const hon = its.filter(i=>i.k!=='tax'), tax = its.filter(i=>i.k==='tax');
   const mensais = hon.filter(i=>i.t==='mensal'), unicos = hon.filter(i=>i.t!=='mensal');
-  const achaOuCria = t => {
+  const soMensalidade = mensais.length===1 && !unicos.length;
+
+  const pega = t => {
     let b = P.blocos.find(x=>x.t===t);
-    if(!b){ b = TIPOS[t].novo(); const i = P.blocos.findIndex(x=>x.t==='fech');
-      P.blocos.splice(i<0?P.blocos.length:i, 0, b); }
+    if(!b){ b = TIPOS[t].novo(); P.blocos.push(b); }
     return b;
   };
-  /* caso simples: uma única mensalidade e nada mais -> caixa de preço único */
-  const soMensalidade = mensais.length===1 && !unicos.length;
+  ['capa','grupos','taxas','cond','pass','fech'].forEach(pega);
+  const bp = pega('preco'), bv = pega('val');
+
+  /* valores */
   if(soMensalidade){
-    const b = achaOuCria('preco'); b.on = true;
-    b.nome = mensais[0].n; b.desc = mensais[0].d; b.valor = mensais[0].v; b.periodo = '/mês';
-    const v = P.blocos.find(x=>x.t==='val'); if(v) v.on = false;
+    bp.on = true; bv.on = false;
+    bp.tit = 'Investimento';
+    bp.nome = mensais[0].n; bp.desc = mensais[0].d; bp.valor = mensais[0].v; bp.periodo = '/mês';
   } else {
-    const b = achaOuCria('val'); b.on = true;
-    const suf = {mensal:'mensal', anual:'anual', unico:'unico'};
-    b.itens = hon.map(i=>({n:i.n, d:i.d, v:i.v, t:suf[i.t]||'unico'}));
-    const pr = P.blocos.find(x=>x.t==='preco'); if(pr) pr.on = false;
+    bv.on = true; bp.on = false;
+    bv.tit = 'Investimento';
+    bv.itens = hon.map(i=>({n:i.n, d:i.d, v:i.v, t:i.t==='mensal'?'mensal':(i.t==='anual'?'anual':'unico')}));
   }
-  /* taxas: só na proposta */
-  const bt = achaOuCria('taxas');
-  bt.on = tax.length > 0;
+
+  /* fora do pacote: taxas de terceiros + o que ficou de fora do acompanhamento */
+  const bt = pega('taxas');
+  bt.tit = 'Fora do pacote';
   bt.itens = tax.map(i=>({n:i.n, d:i.d, v:i.v, t:i.t, na:''}));
-  /* extras do acompanhamento entram como linhas informativas */
   const m = P.mensal;
-  if(m && ctrTemMensal()){
+  if(m && mensais.length){
     if(m.func && m.func.modo==='incluso' && +m.func.valor)
-      bt.itens.push({n:'Funcionário adicional', d:'Cada novo empregado além do quadro atual',
+      bt.itens.push({n:'Funcionário adicional', d:'Cada novo empregado admitido além do quadro atual',
         v:+m.func.valor, t:'mensal', na:''});
+    if(m.func && m.func.modo==='nao')
+      bt.itens.push({n:'Folha de pagamento', d:'Permanece a cargo do cliente', v:0, t:'unico', na:'Não incluso'});
     if(m.notas && m.notas.modo==='porNota' && +m.notas.valor)
       bt.itens.push({n:'Emissão de nota fiscal', d:'Por nota emitida', v:+m.notas.valor, t:'unico', na:''});
     if(m.notas && m.notas.modo==='nao')
       bt.itens.push({n:'Emissão de notas fiscais', d:'Permanece a cargo do cliente', v:0, t:'unico', na:'Não incluso'});
-    bt.on = bt.itens.length > 0;
   }
+  bt.on = bt.itens.length > 0;
+
+  /* textos */
+  sincTextos();
+
+  /* ordem final */
+  P.blocos.sort((a,b)=> ORDEM_BLOCOS.indexOf(a.t) - ORDEM_BLOCOS.indexOf(b.t));
 }
 
 function ctrTipoLbl(){
@@ -2017,6 +2229,7 @@ function editor(){
   /* binds */
   e.querySelectorAll('[data-p]').forEach(el=>{
     el.oninput = el.onchange = ()=>{
+      b._auto = false;
       const v = el.type==='number' ? (parseFloat(el.value)||0) : el.value;
       if(el.dataset.p==='_gruposText'){
         const gs=[]; let cur=null;
@@ -2034,6 +2247,7 @@ function editor(){
   });
   e.querySelectorAll('[data-l]').forEach(el=>{
     el.oninput = el.onchange = ()=>{
+      b._auto = false;
       const [k,f] = el.dataset.l.split('.');
       const v = el.type==='number' ? (parseFloat(el.value)||0) : el.value;
       if(f) b.itens[k][f] = v; else b.itens[k] = v;
