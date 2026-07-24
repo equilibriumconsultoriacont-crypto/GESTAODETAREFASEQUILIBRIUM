@@ -2399,17 +2399,21 @@ $('#bWa').onclick = ()=>{
 };
 $('#bSalvar').onclick = async ()=>{
   if(!store.ok) return toast('Sem armazenamento — use Baixar .html');
+  const novo = !P._key;
+  if(novo) P._key = 'prop:'+Date.now();
   const p = clone(P); delete p.b;
-  await store.set('prop:'+Date.now(), {num:P.num, cliente:P.cliente, data:P.emissao, p});
-  DB.marca.seq++; await salvarBase();
-  toast('Proposta '+P.num+' salva');
-  P.num = `${new Date().getFullYear()}-${String(DB.marca.seq).padStart(3,'0')}`;
+  await store.set(P._key, {num:P.num, cliente:P.cliente, data:P.emissao, p});
+  /* o número só é consumido quando a proposta é salva PELA PRIMEIRA VEZ;
+     regravar a mesma proposta não gasta outro número, e a proposta na tela
+     mantém o seu número (quem pega o próximo é a próxima proposta criada). */
+  if(novo){ DB.marca.seq++; await salvarBase(); }
+  toast('Proposta ' + P.num + (novo ? ' salva' : ' atualizada'));
   pv();
 };
 $('#bModelo').onclick = async ()=>{
   const nm = prompt('Nome do modelo:', P.cliente ? 'Modelo — '+P.cliente : 'Meu modelo');
   if(!nm) return;
-  const p = clone(P); delete p.b; p.cliente=''; p.waCli='';
+  const p = clone(P); delete p.b; delete p._key; p.cliente=''; p.waCli='';
   DB.modelos.push({nome:nm, p}); await salvarBase();
   bindTopo(); toast('Modelo salvo');
 };
@@ -2562,6 +2566,7 @@ async function listarSalvas(){
   c.querySelectorAll('[data-use]').forEach(el=>el.onclick=async()=>{
     const v = await store.get(el.dataset.use); if(!v) return;
     P = v.p; P.b = t=>P.blocos.find(b=>b.t===t)||{}; P.contrato = P.contrato || clone(DB.contrato||{});
+    P._key = el.dataset.use;
     sel=0; $$('nav button')[0].click(); bindTopo(); listaBlocos(); editor(); pv();
   });
   c.querySelectorAll('[data-del]').forEach(el=>el.onclick=async()=>{
