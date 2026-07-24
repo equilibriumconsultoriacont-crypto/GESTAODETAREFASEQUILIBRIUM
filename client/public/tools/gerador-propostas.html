@@ -224,6 +224,12 @@ tr:last-child td{border-bottom:0}
               <label class="f"><span>Representante legal</span><input class="in" data-c="cliRep" placeholder="Quem assina"></label>
               <label class="f"><span>CPF do representante</span><input class="in" data-c="cliRepCpf" placeholder="000.000.000-00"></label>
             </div>
+            <label class="f"><span>Situação atual do cliente <span class="sp">abre a proposta com um texto de contexto</span></span>
+              <select class="in" data-c="situacao">
+                <option value="">Não incluir esta seção</option>
+                <option value="informal">Já trabalha, mas está informal</option>
+                <option value="comecando">Vai começar agora e quer fazer certo</option>
+              </select></label>
             <div class="row r2">
               <label class="f"><span>E-mail</span><input class="in" data-c="cliEmail" placeholder="opcional"></label>
               <label class="f"><span>WhatsApp</span><input class="in" id="waCli" placeholder="19 99999-9999"></label>
@@ -711,6 +717,7 @@ function bCapa(b){
   </header>`;
 }
 function bDiag(b){
+  if(!temTexto(b.txt)) return '';
   return `<section class="rv"><div class="sechead"><h2 class="serif">${esc(b.tit)}</h2></div>
     <div class="card"><p style="color:var(--ink-2)">${nl2(b.txt)}</p></div></section>`;
 }
@@ -817,6 +824,7 @@ function bGrupos(b){
     <div class="grps">${grps}</div></section>`;
 }
 function bPreco(b){
+  if(!temTexto(b.nome) && !(+b.valor)) return '';
   const per = b.periodo?` <i>${esc(b.periodo)}</i>`:'';
   const incl = (b.incl||[]).filter(x=>x.b).map(x=>`<div><b>${esc(x.b)}</b>${x.s?`<span>${esc(x.s)}</span>`:''}</div>`).join('');
   return `<section class="rv"><div class="sechead"><h2 class="serif">${esc(b.tit)}</h2></div>
@@ -1559,7 +1567,9 @@ function ctrUI(){
       if(k === 'decimo') val = !!el.value;
       c[k] = val;
       if(el.dataset.base){ DB.contrato = DB.contrato || {}; DB.contrato[k] = val; salvarBase(); }
-      ctrPv();
+      if(k === 'situacao'){ const d = P.blocos.find(b=>b.t==='diag'); if(d) d._auto = true;
+        sincBlocos(); if(typeof listaBlocos==='function') listaBlocos(); }
+      pv(); ctrPv();
     };
   });
   const tp = $('#ctrTipo'); if(tp) tp.onchange = ctrPv;
@@ -1733,6 +1743,18 @@ const CONTEUDO = {
   },
 };
 
+/* situação atual do cliente — abre a proposta contextualizando */
+const SITUACAO = {
+  informal:{
+    tit:'A situação hoje',
+    txt:'Você já vende e já tem clientes — o que falta é o CNPJ. Trabalhar sem formalização cobra um preço que nem sempre aparece na conta: você não emite nota, perde vendas para empresas que só compram de quem emite, não acessa crédito com condições de pessoa jurídica e fica exposto a autuação.\n\nA boa notícia é que regularizar costuma ser mais simples e mais barato do que a maioria imagina — e, na maior parte dos casos, o imposto sobre o que você já fatura é menor do que se pagaria como pessoa física.'
+  },
+  comecando:{
+    tit:'A situação hoje',
+    txt:'Você está começando agora e quer fazer do jeito certo desde o primeiro dia. É a decisão que evita o retrabalho mais caro que existe: abrir de qualquer jeito e ter que corrigir depois — enquadramento errado, atividade que não corresponde ao que a empresa realmente faz, imposto pago a mais por anos.\n\nComeçar formalizado significa emitir nota desde a primeira venda, poder atender empresas que exigem CNPJ e construir histórico para crédito e crescimento.'
+  }
+};
+
 /* qual conteúdo usar, conforme o que foi selecionado */
 function perfilProposta(){
   const its = (P.itens||[]).filter(i=>i.k!=='tax');
@@ -1752,6 +1774,14 @@ function sincTextos(){
   const mensal = (P.itens||[]).some(i=>i.k!=='tax' && i.t==='mensal');
   const livre = b => b && b._auto !== false;   /* false = usuário editou */
 
+  const sit = SITUACAO[(P.contrato||{}).situacao];
+  const dg = P.blocos.find(b=>b.t==='diag');
+  if(dg && livre(dg)){
+    dg.tit = sit ? sit.tit : 'A situação hoje';
+    dg.txt = sit ? sit.txt : '';
+    dg.on = !!sit;
+    dg._auto = true;
+  }
   const capa = P.blocos.find(b=>b.t==='capa');
   if(livre(capa)){
     capa.eyebrow = C.eyebrow; capa.titulo = C.titulo; capa.lead = C.lead; capa._auto = true;
@@ -1964,7 +1994,7 @@ function resumoRender(){
 }
 
 /* --- P.itens monta a proposta inteira: estrutura, valores e textos --- */
-const ORDEM_BLOCOS = ['capa','grupos','preco','val','taxas','cond','pass','fech'];
+const ORDEM_BLOCOS = ['capa','diag','grupos','preco','val','taxas','cond','pass','fech'];
 function sincBlocos(){
   const its = P.itens || [];
   if(!its.length) return;
@@ -1977,7 +2007,7 @@ function sincBlocos(){
     if(!b){ b = TIPOS[t].novo(); P.blocos.push(b); }
     return b;
   };
-  ['capa','grupos','taxas','cond','pass','fech'].forEach(pega);
+  ['capa','diag','grupos','taxas','cond','pass','fech'].forEach(pega);
   const bp = pega('preco'), bv = pega('val');
 
   /* valores */
