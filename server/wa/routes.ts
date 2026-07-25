@@ -96,8 +96,12 @@ export function registerWaRoutes(app: Express) {
     if (!contact) return res.status(404).json({ error: "contato não encontrado" });
 
     try {
+      // Nome do atendente vai no topo da mensagem que o cliente recebe (estilo Onvio)
+      const agent = (await db.select({ name: users.name, role: users.role }).from(users).where(eq(users.id, user.id)).limit(1))[0];
+      const label = agent?.name || (agent?.role === "admin" ? "Administrador" : "Atendente");
+      const outgoing = `*${label}*\n${text}`;
       const target = contact.jid || (contact.waNumber.includes("@") ? contact.waNumber : contact.waNumber + "@s.whatsapp.net");
-      const sent = await sendToJid(target, text);
+      const sent = await sendToJid(target, outgoing);
       const waId = (sent as any)?.key?.id || null;
       await db.insert(waMessages).values({
         conversationId: id,

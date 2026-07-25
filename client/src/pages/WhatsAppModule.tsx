@@ -126,11 +126,12 @@ export default function WhatsAppModule() {
 
   useEffect(() => { loadConvs(); }, [loadConvs]);
 
+  // Tempo real via WebSocket — com reconexão automática se a conexão cair
   useEffect(() => {
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    let ws: WebSocket;
-    try { ws = new WebSocket(`${proto}://${location.host}/api/wa/ws`); } catch { return; }
-    ws.onmessage = (e) => {
+    let ws: WebSocket | null = null;
+    let stopped = false;
+    let retry: any;
+    const handle = (e: MessageEvent) => {
       let ev: any; try { ev = JSON.parse(e.data); } catch { return; }
       if (ev.kind === "message") {
         loadConvs();
@@ -152,8 +153,29 @@ export default function WhatsAppModule() {
         if (ev.status === "qr" || ev.status === "open") loadConn();
       } else if (ev.kind === "conversation") { loadConvs(); }
     };
-    return () => { try { ws.close(); } catch {} };
+    const open = () => {
+      if (stopped) return;
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      try { ws = new WebSocket(`${proto}://${location.host}/api/wa/ws`); }
+      catch { retry = setTimeout(open, 4000); return; }
+      ws.onmessage = handle;
+      ws.onclose = () => { if (!stopped) { clearTimeout(retry); retry = setTimeout(open, 4000); } };
+      ws.onerror = () => { try { ws?.close(); } catch {} };
+    };
+    open();
+    return () => { stopped = true; clearTimeout(retry); try { ws?.close(); } catch {} };
   }, [loadConvs, loadMsgs, loadConn]);
+
+  // Rede de segurança: se o WebSocket falhar, o polling garante que as mensagens apareçam
+  useEffect(() => {
+    const iv = setInterval(loadConvs, 5000);
+    return () => clearInterval(iv);
+  }, [loadConvs]);
+  useEffect(() => {
+    if (!active) return;
+    const iv = setInterval(() => loadMsgs(active.id), 3500);
+    return () => clearInterval(iv);
+  }, [active, loadMsgs]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
