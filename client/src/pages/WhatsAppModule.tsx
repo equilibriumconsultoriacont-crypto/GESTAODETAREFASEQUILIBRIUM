@@ -782,8 +782,23 @@ export default function WhatsAppModule() {
                           borderRadius: 16, borderBottomRightRadius: me ? 5 : 16, borderBottomLeftRadius: me ? 16 : 5,
                           padding: "8px 12px 6px", fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word",
                           opacity: m.status === "sending" ? 0.72 : 1 }}>
-                          {nonText && <span style={{ color: t.textFaint, fontStyle: "italic" }}>[{m.messageType}] </span>}
-                          {m.content || (nonText ? "" : "—")}
+                          {nonText && !m.fromMe && ["image", "video", "audio", "document", "sticker"].includes(m.messageType) ? (
+                            <a href={`/api/wa/media/${m.id}`} target="_blank" rel="noreferrer"
+                              style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontWeight: 600, fontSize: 13,
+                                color: me ? t.accentText : t.accent, background: me ? "rgba(255,255,255,.15)" : t.accentSoft,
+                                padding: "6px 10px", borderRadius: 9 }}>
+                              {m.messageType === "image" ? <ImageIcon size={15} /> : m.messageType === "document" ? <FileText size={15} /> : <Paperclip size={15} />}
+                              {m.messageType === "image" ? "Abrir imagem" : m.messageType === "document" ? "Abrir documento" : m.messageType === "audio" ? "Abrir áudio" : m.messageType === "video" ? "Abrir vídeo" : "Abrir arquivo"}
+                            </a>
+                          ) : nonText ? (
+                            <span style={{ color: t.textFaint, fontStyle: "italic" }}>[{m.messageType}] </span>
+                          ) : null}
+                          {(() => {
+                            const isMedia = nonText && !m.fromMe && ["image", "video", "audio", "document", "sticker"].includes(m.messageType);
+                            const caption = m.content && !/^\[(image|video|audio|document|sticker|imagem|vídeo|áudio|documento)\]$/i.test(m.content.trim()) ? m.content : "";
+                            if (isMedia) return caption ? <div style={{ marginTop: 5 }}>{caption}</div> : null;
+                            return m.content || (nonText ? "" : "—");
+                          })()}
                           <span style={{ fontSize: 10, color: m.status === "failed" ? t.danger : t.textFaint, marginLeft: 8, float: "right",
                             position: "relative", top: 5, display: "inline-flex", alignItems: "center", gap: 3 }}>
                             {m.status === "failed" ? "falhou" : fmtTime(m.createdAt)}

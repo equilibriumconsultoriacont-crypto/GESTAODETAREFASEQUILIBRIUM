@@ -112,6 +112,11 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
       status: fromMe ? "sent" : "received",
     });
 
+    // baixa mídia recebida (imagem/vídeo/áudio/documento) em 2º plano e guarda como data URL
+    if (!fromMe && msg.key?.id && ["image", "video", "audio", "document", "sticker"].includes(type)) {
+      downloadAndStoreMedia(_sock, msg, msg.key.id, conv.id).catch(() => {});
+    }
+
     // atualiza a conversa
     await db
       .update(waConversations)
@@ -142,4 +147,35 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
       console.error("[WA] falha ao processar uma mensagem recebida (segue para a próxima):", e?.message);
     }
   }
+}
+
+// ── Download de mídia recebida (best-effort) ──────────────────────────────────
+function extractMime(m: any): string | null {
+  const c = m?.imageMessage || m?.videoMessage || m?.audioMessage || m?.documentMessage || m?.stickerMessage;
+  return c?.mimetype || null;
+}
+
+const silentLogger: any = {
+  level: "silent", child: () => silentLogger,
+  error: () => {}, warn: () => {}, info: () => {}, debug: () => {}, trace: () => {}, fatal: () => {},
+};
+
+async function downloadAndStoreMedia(sock: any, msg: any, waId: string, convId: number) {
+  try {
+    const baileys: any = await import("baileys");
+    const download = baileys.downloadMediaMessage;
+    if (typeof download !== "function") return;
+    const buffer: Buffer = await download(
+      msg, "buffer", {},
+      { logger: silentLogger, reuploadRequest: sock?.updateMediaMessage },
+    );
+    if (!buffer || !buffer.length || buffer.length > 15 * 1024 * 1024) return; // ~15MB
+    const mime = extractMime(msg.message) || "application/octet-stream";
+    const dataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
+    const db = await getDb();
+    if (db) {
+      await db.update(waMessages).set({ mediaUrl: dataUrl }).where(eq(waMessages.waMessageId, waId));
+      waEvents.emit("wa", { kind: "message", conversationId: convId, contactId: 0, number: "", fromMe: false, text: "", type: "media-ready" });
+    }
+  } catch { /* best-effort: se falhar, fica só o placeholder */ }
 }

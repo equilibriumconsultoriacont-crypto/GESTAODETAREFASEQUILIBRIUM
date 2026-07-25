@@ -159,6 +159,20 @@ export function registerWaRoutes(app: Express) {
     res.json({ count: Number(r[0]?.total || 0) });
   });
 
+  // Serve a mídia recebida (imagem/documento/áudio) guardada como data URL
+  app.get("/api/wa/media/:msgId", async (req, res) => {
+    if (!(await auth(req, res))) return;
+    const db = await getDb();
+    if (!db) return res.status(500).end();
+    const msgId = parseInt(req.params.msgId);
+    const m = (await db.select({ mediaUrl: waMessages.mediaUrl }).from(waMessages).where(eq(waMessages.id, msgId)).limit(1))[0];
+    const match = /^data:([^;]+);base64,(.*)$/s.exec(m?.mediaUrl || "");
+    if (!match) return res.status(404).json({ error: "mídia ainda não disponível" });
+    res.setHeader("Content-Type", match[1]);
+    res.setHeader("Cache-Control", "private, max-age=86400");
+    res.send(Buffer.from(match[2], "base64"));
+  });
+
   // Histórico de uma conversa
   app.get("/api/wa/conversations/:id/messages", async (req, res) => {
     if (!(await auth(req, res))) return;
