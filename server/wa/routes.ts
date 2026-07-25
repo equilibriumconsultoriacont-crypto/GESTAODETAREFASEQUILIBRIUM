@@ -22,6 +22,15 @@ function normalizeBR(phone: string): string {
   return d;
 }
 
+async function convJid(db: any, convId: number): Promise<{ jid: string | null; conv: any; contact: any }> {
+  const conv = (await db.select().from(waConversations).where(eq(waConversations.id, convId)).limit(1))[0];
+  if (!conv) return { jid: null, conv: null, contact: null };
+  const contact = (await db.select().from(waContacts).where(eq(waContacts.id, conv.contactId)).limit(1))[0];
+  if (!contact) return { jid: null, conv, contact: null };
+  const jid = contact.jid || (contact.waNumber.includes("@") ? contact.waNumber : contact.waNumber + "@s.whatsapp.net");
+  return { jid, conv, contact };
+}
+
 async function auth(req: any, res: any, adminOnly = false) {
   const { sdk } = await import("../_core/sdk");
   let user: any = null;
@@ -186,6 +195,76 @@ export function registerWaRoutes(app: Express) {
     } catch (e: any) {
       res.status(502).json({ error: e?.message || "falha ao enviar" });
     }
+  });
+
+  // Enviar mídia (imagem, documento, áudio) — recebe base64
+  app.post("/api/wa/conversations/:id/send-media", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    const db = await getDb();
+    if (!db) return res.status(500).json({ error: "sem banco" });
+    const id = parseInt(req.params.id);
+    const { type, dataBase64, mimetype, fileName, caption } = req.body || {};
+    if (!dataBase64) return res.status(400).json({ error: "arquivo vazio" });
+    const { jid, conv, contact } = await convJid(db, id);
+    if (!jid || !conv || !contact) return res.status(404).json({ error: "conversa não encontrada" });
+    try {
+      const buffer = Buffer.from(String(dataBase64).split(",").pop() || "", "base64");
+      const { sendMedia } = await import("./connection");
+      const sent = await sendMedia(jid, { type: type || "document", data: buffer, mimetype, fileName, caption });
+      const waId = (sent as any)?.key?.id || null;
+      await db.insert(waMessages).values({
+        conversationId: id, senderType: "agent", fromMe: true,
+        content: caption || fileName || null, messageType: (type || "document") as any,
+        waMessageId: waId, status: "sent", agentId: user.id,
+      });
+      const claim = conv.status === "queue" || !conv.assignedAgentId;
+      await db.update(waConversations).set({ lastMessageAt: new Date(), status: "active", ...(claim ? { assignedAgentId: user.id } : {}) }).where(eq(waConversations.id, id));
+      waEvents.emit("wa", { kind: "message", conversationId: id, contactId: contact.id, number: contact.waNumber, fromMe: true, text: caption || fileName || "", type: type || "document" });
+      res.json({ ok: true });
+    } catch (e: any) { res.status(502).json({ error: e?.message || "falha ao enviar mídia" }); }
+  });
+
+  // Excluir mensagem (apaga para todos) — só as que o atendente enviou
+  app.post("/api/wa/conversations/:id/messages/:msgId/delete", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    const db = await getDb();
+    if (!db) return res.status(500).json({ error: "sem banco" });
+    const msgId = parseInt(req.params.msgId);
+    const m = (await db.select().from(waMessages).where(eq(waMessages.id, msgId)).limit(1))[0];
+    if (!m || !m.waMessageId || !m.fromMe) return res.status(400).json({ error: "só é possível apagar mensagens enviadas por você" });
+    const { jid } = await convJid(db, m.conversationId);
+    if (!jid) return res.status(404).json({ error: "conversa não encontrada" });
+    try {
+      const { deleteMessage } = await import("./connection");
+      await deleteMessage(jid, { remoteJid: jid, id: m.waMessageId, fromMe: true });
+      await db.update(waMessages).set({ content: "🚫 Mensagem apagada", messageType: "other" }).where(eq(waMessages.id, msgId));
+      waEvents.emit("wa", { kind: "message", conversationId: m.conversationId, contactId: 0, number: "", fromMe: true, text: "", type: "delete" });
+      res.json({ ok: true });
+    } catch (e: any) { res.status(502).json({ error: e?.message || "falha ao apagar" }); }
+  });
+
+  // Editar mensagem — só as que o atendente enviou (texto)
+  app.post("/api/wa/conversations/:id/messages/:msgId/edit", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    const db = await getDb();
+    if (!db) return res.status(500).json({ error: "sem banco" });
+    const msgId = parseInt(req.params.msgId);
+    const text = (req.body?.text || "").toString().trim();
+    if (!text) return res.status(400).json({ error: "texto vazio" });
+    const m = (await db.select().from(waMessages).where(eq(waMessages.id, msgId)).limit(1))[0];
+    if (!m || !m.waMessageId || !m.fromMe) return res.status(400).json({ error: "só é possível editar mensagens enviadas por você" });
+    const { jid } = await convJid(db, m.conversationId);
+    if (!jid) return res.status(404).json({ error: "conversa não encontrada" });
+    try {
+      const { editMessage } = await import("./connection");
+      await editMessage(jid, { remoteJid: jid, id: m.waMessageId, fromMe: true }, text);
+      await db.update(waMessages).set({ content: text }).where(eq(waMessages.id, msgId));
+      waEvents.emit("wa", { kind: "message", conversationId: m.conversationId, contactId: 0, number: "", fromMe: true, text: "", type: "edit" });
+      res.json({ ok: true });
+    } catch (e: any) { res.status(502).json({ error: e?.message || "falha ao editar" }); }
   });
 
   // Marcar como lida (zera não lidas)

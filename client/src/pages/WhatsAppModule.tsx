@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import {
   ArrowLeft, ChevronLeft, Send, QrCode, Search, Sun, Moon, RotateCw, Check, CheckCheck, Clock, MessageSquare,
+  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2,
 } from "lucide-react";
 
 /* ── Temas ─────────────────────────────────────────────────────────────────── */
@@ -308,6 +309,78 @@ export default function WhatsAppModule() {
     setTimeout(loadConn, 1200);
   };
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [recording, setRecording] = useState(false);
+  const mediaRecRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+
+  const fileToBase64 = (file: Blob): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+
+  const sendMediaFile = async (file: File | Blob, type: string, fileName?: string, caption?: string) => {
+    if (!active) return;
+    try {
+      const dataBase64 = await fileToBase64(file);
+      const r = await api(`/api/wa/conversations/${active.id}/send-media`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, dataBase64, mimetype: (file as any).type || undefined, fileName, caption }),
+      }).catch(() => ({ error: "falha" } as any));
+      if (r?.ok) { loadMsgs(active.id); loadConvs(); }
+      else alert(r?.error || "Não foi possível enviar o arquivo.");
+    } catch { alert("Não foi possível ler o arquivo."); }
+  };
+
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const type = file.type.startsWith("image/") ? "image"
+      : file.type.startsWith("video/") ? "video"
+      : file.type.startsWith("audio/") ? "audio" : "document";
+    await sendMediaFile(file, type, file.name);
+  };
+
+  const toggleRecord = async () => {
+    if (recording) { mediaRecRef.current?.stop(); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported("audio/ogg;codecs=opus") ? "audio/ogg;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "";
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      chunksRef.current = [];
+      rec.ondataavailable = (ev) => { if (ev.data.size) chunksRef.current.push(ev.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((tk) => tk.stop());
+        setRecording(false);
+        const blob = new Blob(chunksRef.current, { type: mime || "audio/ogg" });
+        if (blob.size > 0) await sendMediaFile(blob, "audio", "audio.ogg");
+      };
+      mediaRecRef.current = rec;
+      rec.start();
+      setRecording(true);
+    } catch { alert("Não foi possível acessar o microfone."); }
+  };
+
+  const deleteMsg = async (m: Msg) => {
+    if (!active || !confirm("Apagar esta mensagem para todos?")) return;
+    const r = await api(`/api/wa/conversations/${active.id}/messages/${m.id}/delete`, { method: "POST" }).catch(() => ({ error: "falha" } as any));
+    if (r?.ok) loadMsgs(active.id); else alert(r?.error || "Não foi possível apagar.");
+  };
+  const editMsg = async (m: Msg) => {
+    const text = prompt("Editar mensagem:", m.content || "");
+    if (text === null || !text.trim() || !active) return;
+    const r = await api(`/api/wa/conversations/${active.id}/messages/${m.id}/edit`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: text.trim() }),
+    }).catch(() => ({ error: "falha" } as any));
+    if (r?.ok) loadMsgs(active.id); else alert(r?.error || "Não foi possível editar.");
+  };
+
+
   // Badge de não lidas no ícone do app instalado (PWA)
   const totalUnread = convs.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
   useEffect(() => {
@@ -359,6 +432,11 @@ export default function WhatsAppModule() {
         }
         @media (prefers-reduced-motion: reduce) { *, .wa-tap { transition: none !important; } }
         @keyframes waPulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+        @keyframes waRecBlink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+        .wa-rec-dot { animation: waRecBlink 1s ease-in-out infinite; }
+        .wa-msg-actions { transition: opacity .12s; }
+        @media (hover: hover) { .wa-msg-actions { opacity: 0; } .wa-msg:hover .wa-msg-actions { opacity: 1; } }
+        @media (hover: none) { .wa-msg-actions { opacity: .45; } }
       `}</style>
 
       {/* ── Barra superior ── */}
@@ -657,13 +735,26 @@ export default function WhatsAppModule() {
                     const showLabel = me && label !== prevLabel;
                     const nonText = m.messageType !== "text" && m.messageType !== "template";
                     return (
-                      <div key={m.id} style={{ alignSelf: me ? "flex-end" : "flex-start", maxWidth: "76%", marginTop: grouped && !showLabel ? 0 : 6 }}>
+                      <div key={m.id} className="wa-msg" style={{ alignSelf: me ? "flex-end" : "flex-start", maxWidth: "76%", marginTop: grouped && !showLabel ? 0 : 6, display: "flex", flexDirection: "column", alignItems: me ? "flex-end" : "flex-start" }}>
                         {showLabel && (
                           <div style={{ fontSize: 11, fontWeight: 600, color: t.accent, textAlign: "right", margin: "0 4px 3px 0" }}>
                             {label}
                           </div>
                         )}
-                        <div style={{ background: me ? t.bubbleMe : t.bubbleThem, color: t.text,
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, maxWidth: "100%" }}>
+                          {me && m.messageType === "text" && !!m.content && m.content !== "🚫 Mensagem apagada" && (
+                            <div className="wa-msg-actions" style={{ display: "flex", gap: 2, flex: "none" }}>
+                              <button onClick={() => editMsg(m)} className="wa-tap" aria-label="Editar" title="Editar"
+                                style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: t.surfaceHi, color: t.textMuted, cursor: "pointer", display: "grid", placeItems: "center" }}>
+                                <Pencil size={13} />
+                              </button>
+                              <button onClick={() => deleteMsg(m)} className="wa-tap" aria-label="Apagar" title="Apagar"
+                                style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: t.surfaceHi, color: t.danger, cursor: "pointer", display: "grid", placeItems: "center" }}>
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          )}
+                          <div style={{ background: me ? t.bubbleMe : t.bubbleThem, color: t.text,
                           border: me ? "none" : `1px solid ${t.border}`, boxShadow: t.shadow,
                           borderRadius: 16, borderBottomRightRadius: me ? 5 : 16, borderBottomLeftRadius: me ? 16 : 5,
                           padding: "8px 12px 6px", fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word",
@@ -678,6 +769,7 @@ export default function WhatsAppModule() {
                               : m.status === "sending" ? <Clock size={12} />
                               : <Check size={13} />)}
                           </span>
+                          </div>
                         </div>
                       </div>
                     );
@@ -686,23 +778,50 @@ export default function WhatsAppModule() {
 
                 {/* composer */}
                 <div style={{ flex: "none", padding: 12, background: t.surface, borderTop: `1px solid ${t.border}`,
-                  display: "flex", gap: 10, alignItems: "flex-end", transition: "background .25s, border-color .25s" }}>
-                  <textarea value={text} onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-                    placeholder={conn.status === "open" ? "Mensagem" : "Conecte o WhatsApp para enviar"}
-                    disabled={conn.status !== "open"} rows={1}
-                    style={{ flex: 1, resize: "none", background: t.surfaceHi, border: `1px solid ${t.border}`,
-                      borderRadius: 22, padding: "11px 16px", color: t.text, outline: "none", fontSize: 14,
-                      maxHeight: 120, lineHeight: 1.4 }} />
-                  <button onClick={send} disabled={sending || conn.status !== "open" || !text.trim()} className="wa-tap"
-                    aria-label="Enviar"
-                    style={{ width: 44, height: 44, flex: "none", borderRadius: "50%", border: "none",
-                      display: "grid", placeItems: "center",
-                      background: text.trim() && conn.status === "open" ? t.accent : t.surfaceHi,
-                      color: text.trim() && conn.status === "open" ? t.accentText : t.textFaint,
-                      cursor: text.trim() && conn.status === "open" ? "pointer" : "default" }}>
-                    <Send size={18} />
-                  </button>
+                  display: "flex", gap: 8, alignItems: "flex-end", transition: "background .25s, border-color .25s" }}>
+                  <input type="file" ref={fileInputRef} onChange={onPickFile} style={{ display: "none" }}
+                    accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip" />
+                  {!recording && (
+                    <button onClick={() => fileInputRef.current?.click()} disabled={conn.status !== "open"} className="wa-tap" aria-label="Anexar"
+                      style={{ width: 44, height: 44, flex: "none", borderRadius: "50%", border: "none", display: "grid", placeItems: "center",
+                        background: t.surfaceHi, color: conn.status === "open" ? t.textMuted : t.textFaint,
+                        cursor: conn.status === "open" ? "pointer" : "default" }}>
+                      <Paperclip size={18} />
+                    </button>
+                  )}
+                  {recording ? (
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, background: t.surfaceHi,
+                      border: `1px solid ${t.dangerBorder}`, borderRadius: 22, padding: "12px 16px" }}>
+                      <span className="wa-rec-dot" style={{ width: 10, height: 10, borderRadius: "50%", background: t.danger, flex: "none" }} />
+                      <span style={{ color: t.text, fontSize: 14 }}>Gravando áudio… toque em parar para enviar</span>
+                    </div>
+                  ) : (
+                    <textarea value={text} onChange={(e) => setText(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+                      placeholder={conn.status === "open" ? "Mensagem" : "Conecte o WhatsApp para enviar"}
+                      disabled={conn.status !== "open"} rows={1}
+                      style={{ flex: 1, resize: "none", background: t.surfaceHi, border: `1px solid ${t.border}`,
+                        borderRadius: 22, padding: "11px 16px", color: t.text, outline: "none", fontSize: 14,
+                        maxHeight: 120, lineHeight: 1.4 }} />
+                  )}
+                  {text.trim() && !recording ? (
+                    <button onClick={send} disabled={sending || conn.status !== "open"} className="wa-tap" aria-label="Enviar"
+                      style={{ width: 44, height: 44, flex: "none", borderRadius: "50%", border: "none", display: "grid", placeItems: "center",
+                        background: conn.status === "open" ? t.accent : t.surfaceHi,
+                        color: conn.status === "open" ? t.accentText : t.textFaint,
+                        cursor: conn.status === "open" ? "pointer" : "default" }}>
+                      <Send size={18} />
+                    </button>
+                  ) : (
+                    <button onClick={toggleRecord} disabled={conn.status !== "open"} className="wa-tap"
+                      aria-label={recording ? "Parar e enviar" : "Gravar áudio"}
+                      style={{ width: 44, height: 44, flex: "none", borderRadius: "50%", border: "none", display: "grid", placeItems: "center",
+                        background: recording ? t.danger : conn.status === "open" ? t.accent : t.surfaceHi,
+                        color: recording ? "#fff" : conn.status === "open" ? t.accentText : t.textFaint,
+                        cursor: conn.status === "open" ? "pointer" : "default" }}>
+                      {recording ? <Square size={16} /> : <Mic size={18} />}
+                    </button>
+                  )}
                 </div>
               </>
             )}

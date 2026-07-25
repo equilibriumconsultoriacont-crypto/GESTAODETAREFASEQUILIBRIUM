@@ -125,6 +125,26 @@ export async function sendToJid(jid: string, text: string) {
   return sock.sendMessage(jid, { text });
 }
 
+export async function sendMedia(jid: string, opts: { type: string; data: Buffer; mimetype?: string; fileName?: string; caption?: string; ptt?: boolean }) {
+  if (!sock || status !== "open") throw new Error("WhatsApp não está conectado.");
+  let content: any;
+  if (opts.type === "image") content = { image: opts.data, caption: opts.caption || undefined };
+  else if (opts.type === "video") content = { video: opts.data, caption: opts.caption || undefined };
+  else if (opts.type === "audio") content = { audio: opts.data, mimetype: opts.mimetype || "audio/ogg; codecs=opus", ptt: opts.ptt ?? true };
+  else content = { document: opts.data, mimetype: opts.mimetype || "application/octet-stream", fileName: opts.fileName || "arquivo" };
+  return sock.sendMessage(jid, content);
+}
+
+export async function deleteMessage(jid: string, key: any) {
+  if (!sock || status !== "open") throw new Error("WhatsApp não está conectado.");
+  return sock.sendMessage(jid, { delete: key });
+}
+
+export async function editMessage(jid: string, key: any, text: string) {
+  if (!sock || status !== "open") throw new Error("WhatsApp não está conectado.");
+  return sock.sendMessage(jid, { text, edit: key });
+}
+
 export async function markRead(number: string, messageId: string) {
   if (!sock || status !== "open") return;
   try {
