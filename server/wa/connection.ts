@@ -72,7 +72,11 @@ export async function startWhatsApp(): Promise<void> {
         const code = (lastDisconnect?.error as Boom)?.output?.statusCode;
         lastError = "Conexão fechada" + (code ? ` (código ${code})` : "") +
           (lastDisconnect?.error?.message ? ": " + lastDisconnect.error.message : "");
-        if (code === DisconnectReason.loggedOut) {
+        if (code === DisconnectReason.restartRequired) {
+          // 515: normal logo após parear — reinicia JÁ com as credenciais salvas
+          console.log("[WA] 515 restart required — reconectando imediatamente");
+          setTimeout(() => startWhatsApp().catch(() => {}), 300);
+        } else if (code === DisconnectReason.loggedOut) {
           console.warn("[WA] logout — limpando sessão, novo QR será necessário");
           await clearMySQLAuthState(SESSION);
           setTimeout(() => startWhatsApp().catch(() => {}), 1500);
