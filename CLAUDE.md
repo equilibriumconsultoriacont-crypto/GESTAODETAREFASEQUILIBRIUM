@@ -96,6 +96,34 @@ Detalhes que já custaram pesquisa:
 - A assinatura da contratada precisa trazer nome, categoria e número do CRC (NBC PG 01, item 4, "r").
 - O rompimento exige **distrato**; é vedada a retenção de documentos como garantia de honorários.
 
+## Atendimento WhatsApp (Baileys)
+
+Painel de atendimento estilo Digisac, via conector nao-oficial **Baileys** (`baileys` v7, ESM).
+Decisao consciente do dono: aceita o risco de ban do numero e roda em Render **pago**
+(conexao de socket 24/7 nao sobrevive no free — dorme e derruba, alem dos limites de
+750h/mes e trafego de saida). Alternativa oficial sem ban seria Cloud API via Twilio
+(ja existe `server/whatsapp.ts` com Twilio), mas nao da o "WhatsApp Web completo".
+
+Arquitetura (`server/wa/`):
+- `authState.ts` — auth state do Baileys **persistido no MySQL** (tabela `wa_sessions`),
+  nao em arquivo. Sem isso o QR precisaria ser lido a cada deploy (filesystem do Render
+  e efemero). Segue a estrutura do `useMultiFileAuthState` oficial.
+- `connection.ts` — conecta, gera QR (data URL), reconecta sozinho no `connection.update`
+  com `close`, exceto em `DisconnectReason.loggedOut` (ai limpa a sessao e pede novo QR).
+- `handlers.ts` — `messages.upsert` → grava contato/conversa/mensagem e emite evento.
+- `events.ts` — EventEmitter que faz a ponte para a camada WebSocket do painel.
+
+Tabelas: `wa_contacts`, `wa_conversations`, `wa_messages`, `wa_tags`,
+`wa_conversation_tags`, `wa_sessions`. **Agentes reusam a tabela `users`** (nao ha tabela
+`agents` separada). Enums e mediumtext ja no `ensureSchema`.
+
+Env: `WA_ENABLED` (so `true` quando for parear) e `WA_SESSION_NAME`.
+Rotas: `GET /api/wa/status` (status + QR), `POST /api/wa/start`, `POST /api/wa/logout`.
+
+Pendente (proximas etapas): servidor WebSocket (ws) para o tempo real, endpoints REST
+do painel (listar conversas, historico, enviar, atribuir, fechar, tags) e a tela React
+`Atendimento.tsx`. O envio ja existe em `connection.ts` (`sendText`).
+
 ## Segurança
 
 - **Nunca commitar segredos.** Credenciais (banco, Resend, token do GitHub, secret do `/admin/setup`)

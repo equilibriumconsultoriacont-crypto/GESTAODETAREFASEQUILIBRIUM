@@ -252,6 +252,15 @@ async function startServer() {
         "ALTER TABLE `tasks` MODIFY COLUMN `taskType` enum('DAS','NFS','DCTF','SPED','OUTROS','PIS','COFINS','ICMS','ISSQN','PGDAS') NOT NULL",
         "ALTER TABLE `task_templates` ADD COLUMN `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
         "ALTER TABLE `recurring_tasks` ADD COLUMN `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
+        // WhatsApp — Atendimento
+        "CREATE TABLE IF NOT EXISTS `wa_contacts` (`id` int AUTO_INCREMENT NOT NULL, `waNumber` varchar(32) NOT NULL, `name` varchar(255), `avatarUrl` mediumtext, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `wa_contacts_id` PRIMARY KEY(`id`), CONSTRAINT `wa_contacts_waNumber_unique` UNIQUE(`waNumber`))",
+        "CREATE TABLE IF NOT EXISTS `wa_conversations` (`id` int AUTO_INCREMENT NOT NULL, `contactId` int NOT NULL, `status` enum('open','pending','closed') NOT NULL DEFAULT 'open', `assignedAgentId` int, `unreadCount` int NOT NULL DEFAULT 0, `lastMessageAt` timestamp NOT NULL DEFAULT (now()), `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_conversations_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `wa_messages` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `senderType` enum('contact','agent','system') NOT NULL, `fromMe` boolean NOT NULL DEFAULT false, `content` text, `messageType` enum('text','image','audio','video','document','sticker','location','template','other') NOT NULL DEFAULT 'text', `mediaUrl` mediumtext, `waMessageId` varchar(128), `status` enum('received','sent','delivered','read','failed') NOT NULL DEFAULT 'sent', `agentId` int, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_messages_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `wa_tags` (`id` int AUTO_INCREMENT NOT NULL, `name` varchar(64) NOT NULL, `color` varchar(20) NOT NULL DEFAULT '#3E9AA6', CONSTRAINT `wa_tags_id` PRIMARY KEY(`id`), CONSTRAINT `wa_tags_name_unique` UNIQUE(`name`))",
+        "CREATE TABLE IF NOT EXISTS `wa_conversation_tags` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `tagId` int NOT NULL, CONSTRAINT `wa_conversation_tags_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `wa_sessions` (`id` int AUTO_INCREMENT NOT NULL, `sessionName` varchar(64) NOT NULL, `keyId` varchar(255) NOT NULL, `keyData` mediumtext, `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `wa_sessions_id` PRIMARY KEY(`id`), CONSTRAINT `wa_sessions_name_key_unique` UNIQUE(`sessionName`,`keyId`))",
+        "CREATE INDEX `wa_messages_conv_idx` ON `wa_messages` (`conversationId`, `createdAt`)",
+        "CREATE INDEX `wa_conversations_status_idx` ON `wa_conversations` (`status`, `lastMessageAt`)",
       ];
 
       const results: string[] = [];
@@ -522,8 +531,42 @@ async function startServer() {
     })
   );
 
+  // ── WhatsApp: status/QR, pareamento e logout ─────────────────────────────
+  const waAuth = async (req: any, res: any, adminOnly = false) => {
+    const { sdk } = await import("./sdk");
+    let user: any = null;
+    try { user = await sdk.authenticateRequest(req); } catch {}
+    const ok = user && (user.role === "admin" || (!adminOnly && user.role === "user"));
+    if (!ok) { res.status(401).json({ error: "não autorizado" }); return null; }
+    return user;
+  };
+  app.get("/api/wa/status", async (req, res) => {
+    if (!(await waAuth(req, res))) return;
+    const { getWAStatus } = await import("../wa/connection");
+    res.json(getWAStatus());
+  });
+  app.post("/api/wa/start", async (req, res) => {
+    if (!(await waAuth(req, res, true))) return;
+    const { startWhatsApp } = await import("../wa/connection");
+    startWhatsApp().catch(() => {});
+    res.json({ ok: true });
+  });
+  app.post("/api/wa/logout", async (req, res) => {
+    if (!(await waAuth(req, res, true))) return;
+    const { logoutWhatsApp } = await import("../wa/connection");
+    await logoutWhatsApp();
+    res.json({ ok: true });
+  });
+
   // ── Migração automática de schema (roda 1x quando o banco está atrás do código) ──
   await ensureSchema();
+
+  // ── WhatsApp: reconecta usando a sessão salva no Aiven (se habilitado) ──
+  if (process.env.WA_ENABLED === "true") {
+    import("../wa/connection")
+      .then(({ startWhatsApp }) => startWhatsApp().catch((e) => console.error("[WA]", e?.message)))
+      .catch((e) => console.error("[WA] módulo:", e?.message));
+  }
 
   // ── Static / Vite ─────────────────────────────────────────────────────────
   if (process.env.NODE_ENV === "development") {

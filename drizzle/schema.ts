@@ -7,6 +7,7 @@ import {
   varchar,
   boolean,
   bigint,
+  mediumtext,
 } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
@@ -363,3 +364,63 @@ export const proposals = mysqlTable("proposals", {
 
 export type Proposal = typeof proposals.$inferSelect;
 export type InsertProposal = typeof proposals.$inferInsert;
+
+// ─── WhatsApp: Atendimento ────────────────────────────────────────────────────
+export const waContacts = mysqlTable("wa_contacts", {
+  id: int("id").autoincrement().primaryKey(),
+  waNumber: varchar("waNumber", { length: 32 }).notNull().unique(),
+  name: varchar("name", { length: 255 }),
+  avatarUrl: mediumtext("avatarUrl"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type WaContact = typeof waContacts.$inferSelect;
+
+export const waConversations = mysqlTable("wa_conversations", {
+  id: int("id").autoincrement().primaryKey(),
+  contactId: int("contactId").notNull(),
+  status: mysqlEnum("status", ["open", "pending", "closed"]).default("open").notNull(),
+  assignedAgentId: int("assignedAgentId"), // users.id
+  unreadCount: int("unreadCount").default(0).notNull(),
+  lastMessageAt: timestamp("lastMessageAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type WaConversation = typeof waConversations.$inferSelect;
+
+export const waMessages = mysqlTable("wa_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: int("conversationId").notNull(),
+  senderType: mysqlEnum("senderType", ["contact", "agent", "system"]).notNull(),
+  fromMe: boolean("fromMe").default(false).notNull(),
+  content: text("content"),
+  messageType: mysqlEnum("messageType", ["text", "image", "audio", "video", "document", "sticker", "location", "template", "other"]).default("text").notNull(),
+  mediaUrl: mediumtext("mediaUrl"),
+  waMessageId: varchar("waMessageId", { length: 128 }),
+  status: mysqlEnum("status", ["received", "sent", "delivered", "read", "failed"]).default("sent").notNull(),
+  agentId: int("agentId"), // users.id quando senderType = agent
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type WaMessage = typeof waMessages.$inferSelect;
+
+export const waTags = mysqlTable("wa_tags", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 64 }).notNull().unique(),
+  color: varchar("color", { length: 20 }).default("#3E9AA6").notNull(),
+});
+
+export const waConversationTags = mysqlTable("wa_conversation_tags", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: int("conversationId").notNull(),
+  tagId: int("tagId").notNull(),
+});
+
+// Persiste as chaves de autenticação do Baileys no banco (o filesystem do Render é
+// efêmero — sem isso, o QR precisaria ser lido de novo a cada reinício).
+export const waSessions = mysqlTable("wa_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionName: varchar("sessionName", { length: 64 }).notNull(),
+  keyId: varchar("keyId", { length: 255 }).notNull(),
+  keyData: mediumtext("keyData"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
