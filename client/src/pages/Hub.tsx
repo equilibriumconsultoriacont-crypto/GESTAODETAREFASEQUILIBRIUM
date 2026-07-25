@@ -25,11 +25,11 @@ const MODULES = [
   {
     id: "whatsapp",
     name: "Atendimento WhatsApp",
-    description: "Central de atendimento multi-atendente. Em breve.",
+    description: "Central de atendimento multi-atendente, em tempo real.",
     icon: MessageCircle,
     color: "#4ade80",
     path: "/whatsapp",
-    available: false, // placeholder — será ativado no futuro
+    available: true,
   },
 ];
 
