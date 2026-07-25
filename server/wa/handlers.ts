@@ -2,7 +2,7 @@
 // depois emite um evento para o painel atualizar em tempo real.
 
 import type { WASocket } from "baileys";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { waContacts, waConversations, waMessages } from "../../drizzle/schema";
 import { waEvents } from "./events";
@@ -64,17 +64,17 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
     }
     if (!contact) continue;
 
-    // conversa aberta (ou cria)
+    // conversa em andamento (fila ou em atendimento); se a última foi concluída/desconsiderada, abre nova
     let conv = (
       await db
         .select()
         .from(waConversations)
-        .where(and(eq(waConversations.contactId, contact.id), eq(waConversations.status, "open")))
+        .where(and(eq(waConversations.contactId, contact.id), sql`${waConversations.status} in ('queue','active','open','pending')`))
         .orderBy(desc(waConversations.lastMessageAt))
         .limit(1)
     )[0];
     if (!conv) {
-      await db.insert(waConversations).values({ contactId: contact.id, status: "open" });
+      await db.insert(waConversations).values({ contactId: contact.id, status: "queue" });
       conv = (
         await db
           .select()

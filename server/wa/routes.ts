@@ -24,12 +24,47 @@ async function auth(req: any, res: any, adminOnly = false) {
 }
 
 export function registerWaRoutes(app: Express) {
-  // Lista de conversas (com nome do contato, prévia e não lidas)
+  // Quem sou eu (id, nome, papel) — o painel usa para saber as ações e a visibilidade
+  app.get("/api/wa/me", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    res.json({
+      id: user.id,
+      name: user.name || (user.email ? user.email.split("@")[0] : "Atendente"),
+      role: user.role,
+    });
+  });
+
+  // Lista de conversas com VISIBILIDADE por papel:
+  // - admin vê tudo; funcionário vê a fila (de todos) + só os atendimentos DELE
   app.get("/api/wa/conversations", async (req, res) => {
-    if (!(await auth(req, res))) return;
+    const user = await auth(req, res);
+    if (!user) return;
     const db = await getDb();
     if (!db) return res.json([]);
-    const status = (req.query.status as string) || "all";
+    const isAdmin = user.role === "admin";
+    const filter = (req.query.filter as string) || "queue";
+
+    let where: any;
+    if (filter === "queue") {
+      where = eq(waConversations.status, "queue");
+    } else if (filter === "mine") {
+      where = and(eq(waConversations.status, "active"), eq(waConversations.assignedAgentId, user.id));
+    } else if (filter === "active") {
+      where = isAdmin
+        ? eq(waConversations.status, "active")
+        : and(eq(waConversations.status, "active"), eq(waConversations.assignedAgentId, user.id));
+    } else if (filter === "concluded") {
+      where = isAdmin
+        ? eq(waConversations.status, "concluded")
+        : and(eq(waConversations.status, "concluded"), eq(waConversations.assignedAgentId, user.id));
+    } else {
+      // "all": admin vê fila + em atendimento; funcionário vê fila + os seus
+      where = isAdmin
+        ? sql`${waConversations.status} in ('queue','active')`
+        : sql`${waConversations.status} = 'queue' or ${waConversations.assignedAgentId} = ${user.id}`;
+    }
+
     const rows = await db
       .select({
         id: waConversations.id,
@@ -37,6 +72,7 @@ export function registerWaRoutes(app: Express) {
         unreadCount: waConversations.unreadCount,
         lastMessageAt: waConversations.lastMessageAt,
         assignedAgentId: waConversations.assignedAgentId,
+        assignedAgentName: sql<string | null>`(select coalesce(nullif(name,''), substring_index(email,'@',1)) from users where id = ${waConversations.assignedAgentId})`,
         contactId: waContacts.id,
         name: waContacts.name,
         waNumber: waContacts.waNumber,
@@ -45,7 +81,7 @@ export function registerWaRoutes(app: Express) {
       })
       .from(waConversations)
       .innerJoin(waContacts, eq(waConversations.contactId, waContacts.id))
-      .where(status !== "all" ? eq(waConversations.status, status as any) : (undefined as any))
+      .where(where)
       .orderBy(desc(waConversations.lastMessageAt))
       .limit(300);
     res.json(rows);
@@ -122,9 +158,12 @@ export function registerWaRoutes(app: Express) {
         status: "sent",
         agentId: user.id,
       });
+      // Responder puxa a conversa para o atendente: vira "em atendimento" e, se não
+      // tinha dono, passa a ser de quem respondeu.
+      const claim = conv.status === "queue" || !conv.assignedAgentId;
       await db
         .update(waConversations)
-        .set({ lastMessageAt: new Date(), status: conv.status === "closed" ? "open" : conv.status })
+        .set({ lastMessageAt: new Date(), status: "active", ...(claim ? { assignedAgentId: user.id } : {}) })
         .where(eq(waConversations.id, id));
       waEvents.emit("wa", {
         kind: "message",
@@ -150,28 +189,52 @@ export function registerWaRoutes(app: Express) {
     res.json({ ok: true });
   });
 
-  // Atribuir a um agente
+  // Atender: puxa a conversa para si (admin pode atribuir a outro via agentId)
   app.post("/api/wa/conversations/:id/assign", async (req, res) => {
-    if (!(await auth(req, res))) return;
+    const user = await auth(req, res);
+    if (!user) return;
     const db = await getDb();
     if (!db) return res.json({ ok: true });
     const id = parseInt(req.params.id);
-    const agentId = req.body?.agentId ? parseInt(req.body.agentId) : null;
-    await db.update(waConversations).set({ assignedAgentId: agentId }).where(eq(waConversations.id, id));
+    const agentId = user.role === "admin" && req.body?.agentId ? parseInt(req.body.agentId) : user.id;
+    await db.update(waConversations).set({ assignedAgentId: agentId, status: "active", concludedAt: null }).where(eq(waConversations.id, id));
     waEvents.emit("wa", { kind: "conversation", conversationId: id, action: "assigned" });
     res.json({ ok: true });
   });
 
-  // Mudar status (open/pending/closed)
-  app.post("/api/wa/conversations/:id/status", async (req, res) => {
-    if (!(await auth(req, res))) return;
+  // Concluir atendimento
+  app.post("/api/wa/conversations/:id/conclude", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
     const db = await getDb();
     if (!db) return res.json({ ok: true });
     const id = parseInt(req.params.id);
-    const st = req.body?.status;
-    if (!["open", "pending", "closed"].includes(st)) return res.status(400).json({ error: "status inválido" });
-    await db.update(waConversations).set({ status: st }).where(eq(waConversations.id, id));
-    waEvents.emit("wa", { kind: "conversation", conversationId: id, action: st });
+    await db.update(waConversations).set({ status: "concluded", concludedAt: new Date() }).where(eq(waConversations.id, id));
+    waEvents.emit("wa", { kind: "conversation", conversationId: id, action: "concluded" });
+    res.json({ ok: true });
+  });
+
+  // Desconsiderar (tira da fila sem atender)
+  app.post("/api/wa/conversations/:id/dismiss", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    const db = await getDb();
+    if (!db) return res.json({ ok: true });
+    const id = parseInt(req.params.id);
+    await db.update(waConversations).set({ status: "dismissed" }).where(eq(waConversations.id, id));
+    waEvents.emit("wa", { kind: "conversation", conversationId: id, action: "dismissed" });
+    res.json({ ok: true });
+  });
+
+  // Devolver para a fila
+  app.post("/api/wa/conversations/:id/reopen", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    const db = await getDb();
+    if (!db) return res.json({ ok: true });
+    const id = parseInt(req.params.id);
+    await db.update(waConversations).set({ status: "queue", assignedAgentId: null, concludedAt: null }).where(eq(waConversations.id, id));
+    waEvents.emit("wa", { kind: "conversation", conversationId: id, action: "reopened" });
     res.json({ ok: true });
   });
 

@@ -120,6 +120,13 @@ Tabelas: `wa_contacts`, `wa_conversations`, `wa_messages`, `wa_tags`,
 Env: `WA_ENABLED` (so `true` quando for parear) e `WA_SESSION_NAME`.
 Rotas: `GET /api/wa/status` (status + QR), `POST /api/wa/start`, `POST /api/wa/logout`.
 
+Fluxo de atendimento (fila/RBAC): conversas tem status queue→active→concluded/dismissed.
+Nova mensagem entra na FILA (queue, sem dono, visivel a todos). Atender (assign) puxa para
+si (status active, assignedAgentId=user). Responder tambem puxa (auto-claim). Concluir,
+Desconsiderar, Devolver a fila. VISIBILIDADE por papel no GET /conversations?filter=: admin
+ve tudo; funcionario ve a fila + so os DELE (assignedAgentId=self). Abas: Fila/Meus/Concluidos
+(admin ganha Todos). Nome do atendente = users.name ou prefixo do email.
+
 Pendente (proximas etapas): servidor WebSocket (ws) para o tempo real, endpoints REST
 do painel (listar conversas, historico, enviar, atribuir, fechar, tags) e a tela React
 `Atendimento.tsx`. O envio ja existe em `connection.ts` (`sendText`).

@@ -45,6 +45,7 @@ const THEMES: Record<"dark" | "light", Theme> = {
 type Conv = {
   id: number; status: string; unreadCount: number; lastMessageAt: string;
   name: string | null; waNumber: string; lastMessage: string | null; lastFromMe: number;
+  assignedAgentId?: number | null; assignedAgentName?: string | null;
 };
 type Msg = {
   id: number; senderType: string; fromMe: number | boolean; content: string | null;
@@ -98,6 +99,8 @@ export default function WhatsAppModule() {
     return () => window.removeEventListener("resize", on);
   }, []);
 
+  useEffect(() => { api("/api/wa/me").then(setMe).catch(() => {}); }, []);
+
   // Notificações push + service worker: recebe aviso com o app fechado e badge no ícone
   useEffect(() => {
     (async () => {
@@ -124,7 +127,8 @@ export default function WhatsAppModule() {
 
   const [conn, setConn] = useState<{ status: string; qr: string | null; lastError?: string | null }>({ status: "closed", qr: null });
   const [convs, setConvs] = useState<Conv[]>([]);
-  const [filter, setFilter] = useState("all");
+  const [me, setMe] = useState<{ id: number; name: string; role: string } | null>(null);
+  const [filter, setFilter] = useState("queue");
   const [q, setQ] = useState("");
   const [active, setActive] = useState<Conv | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -136,7 +140,7 @@ export default function WhatsAppModule() {
 
   const loadConn = useCallback(() => api("/api/wa/status").then(setConn).catch(() => {}), []);
   const loadConvs = useCallback(
-    () => api(`/api/wa/conversations?status=${filter}`).then((r) => Array.isArray(r) && setConvs(r)).catch(() => {}),
+    () => api(`/api/wa/conversations?filter=${filter}`).then((r) => Array.isArray(r) && setConvs(r)).catch(() => {}),
     [filter],
   );
   const loadMsgs = useCallback(
@@ -239,12 +243,17 @@ export default function WhatsAppModule() {
     }
   };
 
-  const setConvStatus = async (st: string) => {
+  const doAction = async (action: "assign" | "conclude" | "dismiss" | "reopen") => {
     if (!active) return;
-    await api(`/api/wa/conversations/${active.id}/status`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: st }),
+    await api(`/api/wa/conversations/${active.id}/${action}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
     }).catch(() => {});
-    setActive({ ...active, status: st });
+    const map: Record<string, string> = { assign: "active", conclude: "concluded", dismiss: "dismissed", reopen: "queue" };
+    setActive({
+      ...active, status: map[action],
+      assignedAgentId: action === "assign" ? (me?.id ?? null) : action === "reopen" ? null : active.assignedAgentId,
+      assignedAgentName: action === "assign" ? (me?.name ?? null) : action === "reopen" ? null : active.assignedAgentName,
+    });
     loadConvs();
   };
 
@@ -281,6 +290,9 @@ export default function WhatsAppModule() {
     closed: { c: t.off, label: "Desconectado" },
   };
   const cm = connMeta[conn.status] || connMeta.closed;
+  const tabs: [string, string][] = me?.role === "admin"
+    ? [["queue", "Fila"], ["active", "Todos"], ["mine", "Meus"], ["concluded", "Concluídos"]]
+    : [["queue", "Fila"], ["mine", "Meus"], ["concluded", "Concluídos"]];
 
   const showList = !isMobile || !active;
   const showChat = !isMobile || !!active;
@@ -414,11 +426,12 @@ export default function WhatsAppModule() {
                   style={{ background: "none", border: "none", color: t.text, outline: "none", fontSize: 13.5, width: "100%" }} />
               </div>
               <div style={{ display: "flex", gap: 6 }}>
-                {([["all", "Todas"], ["open", "Abertas"], ["pending", "Pendentes"], ["closed", "Fechadas"]] as const).map(([k, lb]) => {
+                {tabs.map(([k, lb]) => {
                   const on = filter === k;
                   return (
                     <button key={k} onClick={() => setFilter(k)} className="wa-tap"
-                      style={{ flex: 1, padding: "7px 0", fontSize: 12, borderRadius: 9, cursor: "pointer", fontWeight: on ? 600 : 450,
+                      style={{ flex: 1, padding: "7px 4px", fontSize: 11.5, borderRadius: 9, cursor: "pointer", fontWeight: on ? 600 : 450,
+                        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                         background: on ? t.accent : "transparent", color: on ? t.accentText : t.textMuted,
                         border: `1px solid ${on ? t.accent : t.border}` }}>
                       {lb}
@@ -465,6 +478,13 @@ export default function WhatsAppModule() {
                             display: "grid", placeItems: "center" }}>{c.unreadCount}</span>
                         )}
                       </div>
+                      {c.assignedAgentName && c.status === "active" && (me?.role === "admin" || c.assignedAgentId !== me?.id) && (
+                        <div style={{ marginTop: 4 }}>
+                          <span style={{ fontSize: 10.5, fontWeight: 600, color: t.accent, background: t.accentSoft, padding: "1px 7px", borderRadius: 6 }}>
+                            {c.assignedAgentName}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </button>
                 );
@@ -501,13 +521,13 @@ export default function WhatsAppModule() {
                       <div style={{ fontSize: 14.5, fontWeight: 650 }}>{active.name || fmtNumber(active.waNumber)}</div>
                       <div style={{ fontSize: 12, color: t.textFaint }}>{fmtNumber(active.waNumber)}</div>
                     </div>
-                    <StatusSelect value={active.status} onChange={setConvStatus} t={t} />
+                    <WorkflowActions conv={active} me={me} t={t} onAction={doAction} />
                   </div>
                 )}
                 {isMobile && (
                   <div style={{ flex: "none", padding: "8px 14px", background: t.surface, borderBottom: `1px solid ${t.border}`,
                     display: "flex", justifyContent: "flex-end" }}>
-                    <StatusSelect value={active.status} onChange={setConvStatus} t={t} />
+                    <WorkflowActions conv={active} me={me} t={t} onAction={doAction} />
                   </div>
                 )}
 
@@ -584,14 +604,43 @@ function iconBtn(t: Theme): React.CSSProperties {
   return { width: 38, height: 38, borderRadius: 10, display: "grid", placeItems: "center", cursor: "pointer",
     background: t.surfaceHi, border: `1px solid ${t.border}`, color: t.textMuted };
 }
-function StatusSelect({ value, onChange, t }: { value: string; onChange: (s: string) => void; t: Theme }) {
+function WorkflowActions({ conv, me, t, onAction }: {
+  conv: Conv; me: { id: number; role: string } | null; t: Theme;
+  onAction: (a: "assign" | "conclude" | "dismiss" | "reopen") => void;
+}) {
+  const isMine = conv.assignedAgentId === me?.id;
+  const isAdmin = me?.role === "admin";
+  const btn = (label: string, action: "assign" | "conclude" | "dismiss" | "reopen", kind: "primary" | "ghost" | "danger") => (
+    <button onClick={() => onAction(action)} className="wa-tap"
+      style={{ height: 34, padding: "0 13px", borderRadius: 9, cursor: "pointer", fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap",
+        border: `1px solid ${kind === "danger" ? t.dangerBorder : kind === "primary" ? t.accent : t.border}`,
+        background: kind === "primary" ? t.accent : "transparent",
+        color: kind === "danger" ? t.danger : kind === "primary" ? t.accentText : t.textMuted }}>
+      {label}
+    </button>
+  );
+  if (conv.status === "queue") {
+    return <div style={{ display: "flex", gap: 6 }}>{btn("Atender", "assign", "primary")}{btn("Desconsiderar", "dismiss", "danger")}</div>;
+  }
+  if (conv.status === "active") {
+    if (isMine || isAdmin) {
+      return (
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {!isMine && conv.assignedAgentName && (
+            <span style={{ fontSize: 12, color: t.textFaint, marginRight: 2 }}>{conv.assignedAgentName}</span>
+          )}
+          {btn("Concluir", "conclude", "primary")}
+          {btn("Devolver", "reopen", "ghost")}
+        </div>
+      );
+    }
+    return <span style={{ fontSize: 12, color: t.textFaint }}>Em atendimento{conv.assignedAgentName ? ` · ${conv.assignedAgentName}` : ""}</span>;
+  }
+  // concluído / desconsiderado
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)}
-      style={{ background: t.surfaceHi, color: t.textMuted, border: `1px solid ${t.border}`, borderRadius: 9,
-        padding: "7px 10px", fontSize: 12.5, cursor: "pointer" }}>
-      <option value="open">Aberta</option>
-      <option value="pending">Pendente</option>
-      <option value="closed">Fechada</option>
-    </select>
+    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      <span style={{ fontSize: 12, color: t.textFaint }}>{conv.status === "concluded" ? "Concluído" : "Desconsiderado"}</span>
+      {btn("Reabrir", "assign", "ghost")}
+    </div>
   );
 }

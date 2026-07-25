@@ -380,10 +380,12 @@ export type WaContact = typeof waContacts.$inferSelect;
 export const waConversations = mysqlTable("wa_conversations", {
   id: int("id").autoincrement().primaryKey(),
   contactId: int("contactId").notNull(),
-  status: mysqlEnum("status", ["open", "pending", "closed"]).default("open").notNull(),
-  assignedAgentId: int("assignedAgentId"), // users.id
+  // fila (sem dono) → active (em atendimento) → concluded/dismissed
+  status: mysqlEnum("status", ["queue", "active", "concluded", "dismissed", "open", "pending", "closed"]).default("queue").notNull(),
+  assignedAgentId: int("assignedAgentId"), // users.id — quem está atendendo
   unreadCount: int("unreadCount").default(0).notNull(),
   lastMessageAt: timestamp("lastMessageAt").defaultNow().notNull(),
+  concludedAt: timestamp("concludedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type WaConversation = typeof waConversations.$inferSelect;
