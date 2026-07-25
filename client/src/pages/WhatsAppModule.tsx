@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import {
-  ArrowLeft, ChevronLeft, Send, QrCode, Search, Sun, Moon, RotateCw, Check, CheckCheck, MessageSquare,
+  ArrowLeft, ChevronLeft, Send, QrCode, Search, Sun, Moon, RotateCw, Check, CheckCheck, Clock, MessageSquare,
 } from "lucide-react";
 
 /* ── Temas ─────────────────────────────────────────────────────────────────── */
@@ -19,25 +19,25 @@ type Theme = {
 const THEMES: Record<"dark" | "light", Theme> = {
   dark: {
     name: "dark",
-    bg: "#0a1211", surface: "#0e1716", surfaceHi: "#13201e", surfaceActive: "#152420",
-    border: "#1d2b29", borderHi: "#294039",
-    text: "#e7edeb", textMuted: "#8ba09c", textFaint: "#576965",
-    accent: "#3db3a6", accentText: "#042420", accentSoft: "rgba(61,179,166,.12)",
-    bubbleMe: "#123f39", bubbleThem: "#182421",
+    bg: "#081311", surface: "#0d1917", surfaceHi: "#122220", surfaceActive: "#123029",
+    border: "#1d302d", borderHi: "#294640",
+    text: "#e6edeb", textMuted: "#8ba09b", textFaint: "#566a66",
+    accent: "#33a2b8", accentText: "#03211f", accentSoft: "rgba(51,162,184,.13)",
+    bubbleMe: "#104043", bubbleThem: "#17221f",
     danger: "#f87171", dangerSoft: "rgba(248,113,113,.10)", dangerBorder: "rgba(248,113,113,.25)",
-    ok: "#3ddc97", warn: "#e0a458", off: "#ef4444",
-    shadow: "none", scrollThumb: "#26383400",
+    ok: "#33c98f", warn: "#e0a458", off: "#ef4444",
+    shadow: "none", scrollThumb: "#24383300",
   },
   light: {
     name: "light",
-    bg: "#e9edec", surface: "#ffffff", surfaceHi: "#f5f8f7", surfaceActive: "#eef4f2",
-    border: "#e2e8e6", borderHi: "#cbd6d3",
-    text: "#15201e", textMuted: "#5c6b68", textFaint: "#97a4a1",
-    accent: "#1f7d74", accentText: "#ffffff", accentSoft: "rgba(31,125,116,.10)",
-    bubbleMe: "#d2efe8", bubbleThem: "#ffffff",
+    bg: "#e8edec", surface: "#ffffff", surfaceHi: "#f4f8f7", surfaceActive: "#e6f1f0",
+    border: "#e0e7e5", borderHi: "#c9d6d3",
+    text: "#132220", textMuted: "#5a6a67", textFaint: "#94a3a0",
+    accent: "#1c6675", accentText: "#ffffff", accentSoft: "rgba(28,102,117,.10)",
+    bubbleMe: "#cfe9ec", bubbleThem: "#ffffff",
     danger: "#dc2626", dangerSoft: "rgba(220,38,38,.06)", dangerBorder: "rgba(220,38,38,.20)",
-    ok: "#15926b", warn: "#c07c2b", off: "#e0483a",
-    shadow: "0 1px 2px rgba(20,40,38,.06)", scrollThumb: "#c9d4d1",
+    ok: "#12a06b", warn: "#c07c2b", off: "#e0483a",
+    shadow: "0 1px 2px rgba(16,64,64,.06)", scrollThumb: "#c9d4d1",
   },
 };
 
@@ -49,6 +49,7 @@ type Conv = {
 type Msg = {
   id: number; senderType: string; fromMe: number | boolean; content: string | null;
   messageType: string; status: string; createdAt: string;
+  agentName?: string | null; agentRole?: string | null;
 };
 
 const api = (path: string, opts?: RequestInit) =>
@@ -68,6 +69,8 @@ const fmtNumber = (n: string) => {
 const hue = (s: string) => { let h = 0; for (const c of s || "?") h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const avaBg = (s: string, t: Theme) => t.name === "dark" ? `hsl(${hue(s)} 26% 20%)` : `hsl(${hue(s)} 42% 92%)`;
 const avaFg = (s: string, t: Theme) => t.name === "dark" ? `hsl(${hue(s)} 45% 68%)` : `hsl(${hue(s)} 42% 36%)`;
+const agentLabel = (m: Msg) =>
+  m.agentName || (m.agentRole === "admin" ? "Administrador" : m.agentRole ? "Atendente" : "Atendimento");
 
 /* ── Componente ────────────────────────────────────────────────────────────── */
 export default function WhatsAppModule() {
@@ -86,6 +89,11 @@ export default function WhatsAppModule() {
     const on = () => setIsMobile(window.innerWidth < 760);
     window.addEventListener("resize", on);
     return () => window.removeEventListener("resize", on);
+  }, []);
+
+  // Notificações: pede permissão uma vez (ajuda o badge no app instalado também)
+  useEffect(() => {
+    try { if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {}); } catch {}
   }, []);
 
   const [conn, setConn] = useState<{ status: string; qr: string | null; lastError?: string | null }>({ status: "closed", qr: null });
@@ -128,6 +136,17 @@ export default function WhatsAppModule() {
         loadConvs();
         const a = activeRef.current;
         if (a && ev.conversationId === a.id) loadMsgs(a.id);
+        if (!ev.fromMe) {
+          try {
+            if ("Notification" in window && Notification.permission === "granted" &&
+                (document.hidden || !a || a.id !== ev.conversationId)) {
+              const n = new Notification("Nova mensagem no WhatsApp", {
+                body: ev.text || "Mensagem recebida", icon: "/logo.png", tag: `wa-${ev.conversationId}`,
+              });
+              n.onclick = () => { window.focus(); n.close(); };
+            }
+          } catch {}
+        }
       } else if (ev.kind === "status") {
         setConn((c) => ({ ...c, status: ev.status }));
         if (ev.status === "qr" || ev.status === "open") loadConn();
@@ -153,12 +172,23 @@ export default function WhatsAppModule() {
     const body = text.trim();
     if (!body || !active || sending) return;
     setSending(true);
+    setText("");
+    // Otimista: mostra a mensagem na hora (o envio real leva 1-2s pelo WhatsApp)
+    const tempId = -Date.now();
+    const temp: Msg = {
+      id: tempId, senderType: "agent", fromMe: 1, content: body, messageType: "text",
+      status: "sending", createdAt: new Date().toISOString(), agentName: "Você",
+    };
+    setMsgs((m) => [...m, temp]);
     const r = await api(`/api/wa/conversations/${active.id}/send`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: body }),
     }).catch(() => ({ error: "Sem conexão" }));
     setSending(false);
-    if (r?.ok) { setText(""); loadMsgs(active.id); loadConvs(); }
-    else alert(r?.error || "Não foi possível enviar. O WhatsApp está conectado?");
+    if (r?.ok) { loadMsgs(active.id); loadConvs(); }
+    else {
+      setMsgs((m) => m.map((x) => (x.id === tempId ? { ...x, status: "failed" } : x)));
+      alert(r?.error || "Não foi possível enviar. O WhatsApp está conectado?");
+    }
   };
 
   const setConvStatus = async (st: string) => {
@@ -176,6 +206,19 @@ export default function WhatsAppModule() {
     if (r?.error) { setConn((c) => ({ ...c, lastError: r.error })); return; }
     setTimeout(loadConn, 1200);
   };
+
+  // Badge de não lidas no ícone do app instalado (PWA)
+  const totalUnread = convs.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+  useEffect(() => {
+    try {
+      const nav = navigator as any;
+      if ("setAppBadge" in nav) {
+        if (totalUnread > 0) nav.setAppBadge(totalUnread);
+        else nav.clearAppBadge?.();
+      }
+      document.title = totalUnread > 0 ? `(${totalUnread}) Atendimento` : "Atendimento";
+    } catch {}
+  }, [totalUnread]);
 
   const shown = convs.filter((c) => {
     if (!q.trim()) return true;
@@ -427,20 +470,30 @@ export default function WhatsAppModule() {
                     const me = !!m.fromMe;
                     const prev = msgs[i - 1];
                     const grouped = prev && !!prev.fromMe === me;
+                    const label = me ? agentLabel(m) : null;
+                    const prevLabel = prev && !!prev.fromMe ? agentLabel(prev) : null;
+                    const showLabel = me && label !== prevLabel;
                     const nonText = m.messageType !== "text" && m.messageType !== "template";
                     return (
-                      <div key={m.id} style={{ alignSelf: me ? "flex-end" : "flex-start", maxWidth: "76%", marginTop: grouped ? 0 : 6 }}>
+                      <div key={m.id} style={{ alignSelf: me ? "flex-end" : "flex-start", maxWidth: "76%", marginTop: grouped && !showLabel ? 0 : 6 }}>
+                        {showLabel && (
+                          <div style={{ fontSize: 11, fontWeight: 600, color: t.accent, textAlign: "right", margin: "0 4px 3px 0" }}>
+                            {label}
+                          </div>
+                        )}
                         <div style={{ background: me ? t.bubbleMe : t.bubbleThem, color: t.text,
                           border: me ? "none" : `1px solid ${t.border}`, boxShadow: t.shadow,
                           borderRadius: 16, borderBottomRightRadius: me ? 5 : 16, borderBottomLeftRadius: me ? 16 : 5,
-                          padding: "8px 12px 6px", fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                          padding: "8px 12px 6px", fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word",
+                          opacity: m.status === "sending" ? 0.72 : 1 }}>
                           {nonText && <span style={{ color: t.textFaint, fontStyle: "italic" }}>[{m.messageType}] </span>}
                           {m.content || (nonText ? "" : "—")}
-                          <span style={{ fontSize: 10, color: t.textFaint, marginLeft: 8, float: "right",
+                          <span style={{ fontSize: 10, color: m.status === "failed" ? t.danger : t.textFaint, marginLeft: 8, float: "right",
                             position: "relative", top: 5, display: "inline-flex", alignItems: "center", gap: 3 }}>
-                            {fmtTime(m.createdAt)}
-                            {me && (m.status === "read" ? <CheckCheck size={13} style={{ color: t.accent }} />
+                            {m.status === "failed" ? "falhou" : fmtTime(m.createdAt)}
+                            {me && m.status !== "failed" && (m.status === "read" ? <CheckCheck size={13} style={{ color: t.accent }} />
                               : m.status === "delivered" ? <CheckCheck size={13} />
+                              : m.status === "sending" ? <Clock size={12} />
                               : <Check size={13} />)}
                           </span>
                         </div>

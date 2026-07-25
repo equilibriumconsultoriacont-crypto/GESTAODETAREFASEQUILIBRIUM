@@ -58,7 +58,21 @@ export function registerWaRoutes(app: Express) {
     if (!db) return res.json([]);
     const id = parseInt(req.params.id);
     const rows = await db
-      .select()
+      .select({
+        id: waMessages.id,
+        conversationId: waMessages.conversationId,
+        senderType: waMessages.senderType,
+        fromMe: waMessages.fromMe,
+        content: waMessages.content,
+        messageType: waMessages.messageType,
+        mediaUrl: waMessages.mediaUrl,
+        waMessageId: waMessages.waMessageId,
+        status: waMessages.status,
+        agentId: waMessages.agentId,
+        createdAt: waMessages.createdAt,
+        agentName: sql<string | null>`(select name from users where id = ${waMessages.agentId})`,
+        agentRole: sql<string | null>`(select role from users where id = ${waMessages.agentId})`,
+      })
       .from(waMessages)
       .where(eq(waMessages.conversationId, id))
       .orderBy(desc(waMessages.id))
