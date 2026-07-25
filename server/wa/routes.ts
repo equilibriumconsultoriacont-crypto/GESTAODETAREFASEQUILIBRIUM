@@ -10,9 +10,17 @@ import {
   waTags,
   waConversationTags,
   users,
+  clients,
 } from "../../drizzle/schema";
 import { sendText, sendToJid } from "./connection";
 import { waEvents } from "./events";
+
+function normalizeBR(phone: string): string {
+  let d = (phone || "").replace(/\D/g, "");
+  if (d.length >= 12 && d.startsWith("55")) return d;
+  if (d.length === 10 || d.length === 11) return "55" + d;
+  return d;
+}
 
 async function auth(req: any, res: any, adminOnly = false) {
   const { sdk } = await import("../_core/sdk");
@@ -323,5 +331,81 @@ export function registerWaRoutes(app: Express) {
       .from(users)
       .where(sql`${users.role} in ('admin','user')`);
     res.json(rows);
+  });
+
+  // Contatos salvos (com o cliente vinculado, se houver)
+  app.get("/api/wa/contacts", async (req, res) => {
+    if (!(await auth(req, res))) return;
+    const db = await getDb();
+    if (!db) return res.json([]);
+    const rows = await db
+      .select({
+        id: waContacts.id, waNumber: waContacts.waNumber, name: waContacts.name,
+        jid: waContacts.jid, clientId: waContacts.clientId,
+        clientName: sql<string | null>`(select name from clients where id = ${waContacts.clientId})`,
+      })
+      .from(waContacts)
+      .orderBy(waContacts.name)
+      .limit(500);
+    res.json(rows);
+  });
+
+  // Clientes cadastrados com telefone (para iniciar conversa)
+  app.get("/api/wa/clients", async (req, res) => {
+    if (!(await auth(req, res))) return;
+    const db = await getDb();
+    if (!db) return res.json([]);
+    const rows = await db
+      .select({ id: clients.id, name: clients.name, phone: clients.phone })
+      .from(clients)
+      .where(sql`${clients.phone} is not null and ${clients.phone} != '' and ${clients.active} = 1`)
+      .orderBy(clients.name)
+      .limit(1000);
+    res.json(rows);
+  });
+
+  // Iniciar conversa (por número novo ou por cliente cadastrado)
+  app.post("/api/wa/start-conversation", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    const db = await getDb();
+    if (!db) return res.status(500).json({ error: "sem banco" });
+    let name: string | null = req.body?.name || null;
+    const clientId = req.body?.clientId ? parseInt(req.body.clientId) : null;
+    let number = "";
+    if (clientId) {
+      const c = (await db.select().from(clients).where(eq(clients.id, clientId)).limit(1))[0];
+      if (!c?.phone) return res.status(400).json({ error: "cliente sem telefone cadastrado" });
+      number = normalizeBR(c.phone);
+      name = name || c.name;
+    } else {
+      number = normalizeBR(req.body?.number || "");
+    }
+    if (!number || number.length < 12) return res.status(400).json({ error: "número inválido" });
+    let contact = (await db.select().from(waContacts).where(eq(waContacts.waNumber, number)).limit(1))[0];
+    if (!contact) {
+      await db.insert(waContacts).values({ waNumber: number, jid: `${number}@s.whatsapp.net`, name, clientId });
+      contact = (await db.select().from(waContacts).where(eq(waContacts.waNumber, number)).limit(1))[0];
+    } else if (clientId && !contact.clientId) {
+      await db.update(waContacts).set({ clientId }).where(eq(waContacts.id, contact.id));
+    }
+    if (!contact) return res.status(500).json({ error: "falha ao criar contato" });
+    let conv = (await db.select().from(waConversations).where(and(eq(waConversations.contactId, contact.id), sql`${waConversations.status} in ('queue','active')`)).orderBy(desc(waConversations.lastMessageAt)).limit(1))[0];
+    if (!conv) {
+      await db.insert(waConversations).values({ contactId: contact.id, status: "active", assignedAgentId: user.id });
+      conv = (await db.select().from(waConversations).where(eq(waConversations.contactId, contact.id)).orderBy(desc(waConversations.id)).limit(1))[0];
+    }
+    res.json({ conversationId: conv?.id });
+  });
+
+  // Vincular um contato a um cliente cadastrado
+  app.post("/api/wa/contacts/:id/link", async (req, res) => {
+    if (!(await auth(req, res))) return;
+    const db = await getDb();
+    if (!db) return res.json({ ok: true });
+    const id = parseInt(req.params.id);
+    const clientId = req.body?.clientId ? parseInt(req.body.clientId) : null;
+    await db.update(waContacts).set({ clientId }).where(eq(waContacts.id, id));
+    res.json({ ok: true });
   });
 }

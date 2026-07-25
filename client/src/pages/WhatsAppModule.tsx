@@ -138,6 +138,10 @@ export default function WhatsAppModule() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferTo, setTransferTo] = useState("");
   const [transferNote, setTransferNote] = useState("");
+  const [view, setView] = useState<"chats" | "contacts">("chats");
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [clientsList, setClientsList] = useState<any[]>([]);
+  const [newNumber, setNewNumber] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<Conv | null>(null);
   activeRef.current = active;
@@ -259,6 +263,27 @@ export default function WhatsAppModule() {
       assignedAgentName: action === "assign" ? (me?.name ?? null) : action === "reopen" ? null : active.assignedAgentName,
     });
     loadConvs();
+  };
+
+  useEffect(() => {
+    if (view !== "contacts") return;
+    api("/api/wa/contacts").then((r) => Array.isArray(r) && setContacts(r)).catch(() => {});
+    api("/api/wa/clients").then((r) => Array.isArray(r) && setClientsList(r)).catch(() => {});
+  }, [view]);
+
+  const startConv = async (payload: any, displayName: string, displayNumber: string) => {
+    const r = await api("/api/wa/start-conversation", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    }).catch(() => ({} as any));
+    if (r?.conversationId) {
+      setView("chats"); setFilter("mine");
+      setActive({
+        id: r.conversationId, status: "active", unreadCount: 0, lastMessageAt: new Date().toISOString(),
+        name: displayName || null, waNumber: displayNumber, lastMessage: null, lastFromMe: 0,
+        assignedAgentId: me?.id ?? null, assignedAgentName: me?.name ?? null,
+      });
+      loadMsgs(r.conversationId); loadConvs();
+    } else alert(r?.error || "Não foi possível iniciar a conversa.");
   };
 
   const openTransfer = () => {
@@ -438,29 +463,57 @@ export default function WhatsAppModule() {
             borderRight: isMobile ? "none" : `1px solid ${t.border}`, display: "flex", flexDirection: "column",
             transition: "background .25s, border-color .25s" }}>
             <div style={{ padding: "12px 12px 10px", display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, background: t.surfaceHi,
-                border: `1px solid ${t.border}`, borderRadius: 11, padding: "9px 12px" }}>
-                <Search size={15} color={t.textFaint} />
-                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar conversa"
-                  style={{ background: "none", border: "none", color: t.text, outline: "none", fontSize: 13.5, width: "100%" }} />
+              <div style={{ display: "flex", gap: 4, background: t.surfaceHi, borderRadius: 11, padding: 3 }}>
+                {(["chats", "contacts"] as const).map((v) => (
+                  <button key={v} onClick={() => setView(v)} className="wa-tap"
+                    style={{ flex: 1, padding: "7px 0", fontSize: 12.5, fontWeight: view === v ? 600 : 450, borderRadius: 8, cursor: "pointer", border: "none",
+                      background: view === v ? t.surface : "transparent", color: view === v ? t.text : t.textMuted, boxShadow: view === v ? t.shadow : "none" }}>
+                    {v === "chats" ? "Conversas" : "Contatos"}
+                  </button>
+                ))}
               </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {tabs.map(([k, lb]) => {
-                  const on = filter === k;
-                  return (
-                    <button key={k} onClick={() => setFilter(k)} className="wa-tap"
-                      style={{ flex: 1, padding: "7px 4px", fontSize: 11.5, borderRadius: 9, cursor: "pointer", fontWeight: on ? 600 : 450,
-                        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                        background: on ? t.accent : "transparent", color: on ? t.accentText : t.textMuted,
-                        border: `1px solid ${on ? t.accent : t.border}` }}>
-                      {lb}
+              {view === "chats" ? (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, background: t.surfaceHi,
+                    border: `1px solid ${t.border}`, borderRadius: 11, padding: "9px 12px" }}>
+                    <Search size={15} color={t.textFaint} />
+                    <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar conversa"
+                      style={{ background: "none", border: "none", color: t.text, outline: "none", fontSize: 13.5, width: "100%" }} />
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {tabs.map(([k, lb]) => {
+                      const on = filter === k;
+                      return (
+                        <button key={k} onClick={() => setFilter(k)} className="wa-tap"
+                          style={{ flex: 1, padding: "7px 4px", fontSize: 11.5, borderRadius: 9, cursor: "pointer", fontWeight: on ? 600 : 450,
+                            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                            background: on ? t.accent : "transparent", color: on ? t.accentText : t.textMuted,
+                            border: `1px solid ${on ? t.accent : t.border}` }}>
+                          {lb}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, background: t.surfaceHi,
+                  border: `1px solid ${t.border}`, borderRadius: 11, padding: "9px 12px" }}>
+                  <Search size={15} color={t.textFaint} />
+                  <input value={newNumber} onChange={(e) => setNewNumber(e.target.value)} placeholder="Número com DDD"
+                    onKeyDown={(e) => { if (e.key === "Enter" && newNumber.replace(/\D/g, "").length >= 10) startConv({ number: newNumber }, "", newNumber); }}
+                    style={{ background: "none", border: "none", color: t.text, outline: "none", fontSize: 13.5, width: "100%" }} />
+                  {newNumber.replace(/\D/g, "").length >= 10 && (
+                    <button onClick={() => startConv({ number: newNumber }, "", newNumber)} className="wa-tap"
+                      style={{ background: t.accent, color: t.accentText, border: "none", borderRadius: 8, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                      Iniciar
                     </button>
-                  );
-                })}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="wa-scroll" style={{ flex: 1, overflowY: "auto", padding: "0 8px 8px" }}>
+              {view === "chats" && (<>
               {shown.length === 0 && (
                 <div style={{ padding: "40px 20px", textAlign: "center", color: t.textFaint, fontSize: 13 }}>
                   Nenhuma conversa por aqui.
@@ -508,6 +561,39 @@ export default function WhatsAppModule() {
                   </button>
                 );
               })}
+              </>)}
+
+              {view === "contacts" && (
+                <div>
+                  {contacts.length === 0 && clientsList.length === 0 && (
+                    <div style={{ padding: "40px 20px", textAlign: "center", color: t.textFaint, fontSize: 13 }}>
+                      Nenhum contato ainda. Digite um número acima para iniciar.
+                    </div>
+                  )}
+                  {contacts.length > 0 && (
+                    <div style={{ fontSize: 11, fontWeight: 600, color: t.textFaint, textTransform: "uppercase", letterSpacing: ".04em", padding: "10px 8px 4px" }}>Contatos</div>
+                  )}
+                  {contacts.map((c) => (
+                    <ContactRow key={"ct" + c.id}
+                      name={c.name || fmtNumber(c.waNumber)}
+                      sub={c.clientName ? `${fmtNumber(c.waNumber)} · ${c.clientName}` : fmtNumber(c.waNumber)}
+                      linked={!!c.clientName}
+                      onMessage={() => startConv({ number: c.waNumber }, c.name || "", c.waNumber)}
+                      t={t} />
+                  ))}
+                  {clientsList.length > 0 && (
+                    <div style={{ fontSize: 11, fontWeight: 600, color: t.textFaint, textTransform: "uppercase", letterSpacing: ".04em", padding: "14px 8px 4px" }}>Clientes cadastrados</div>
+                  )}
+                  {clientsList.map((c) => (
+                    <ContactRow key={"cl" + c.id}
+                      name={c.name}
+                      sub={fmtNumber(c.phone)}
+                      linked
+                      onMessage={() => startConv({ clientId: c.id }, c.name, c.phone)}
+                      t={t} />
+                  ))}
+                </div>
+              )}
             </div>
           </aside>
         )}
@@ -663,6 +749,26 @@ export default function WhatsAppModule() {
 }
 
 /* ── Peças ─────────────────────────────────────────────────────────────────── */
+function ContactRow({ name, sub, linked, onMessage, t }: { name: string; sub: string; linked?: boolean; onMessage: () => void; t: Theme }) {
+  return (
+    <div className="wa-row" style={{ display: "flex", gap: 11, alignItems: "center", padding: "10px 11px", borderRadius: 12 }}>
+      <div style={{ width: 40, height: 40, borderRadius: "50%", flex: "none", fontWeight: 600, fontSize: 15,
+        background: avaBg(name, t), color: avaFg(name, t), display: "grid", placeItems: "center" }}>
+        {name.replace(/[^\p{L}\p{N}]/gu, "").slice(0, 1).toUpperCase() || "?"}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
+        <div style={{ fontSize: 12, color: t.textFaint, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {linked && <span style={{ color: t.accent }}>● </span>}{sub}
+        </div>
+      </div>
+      <button onClick={onMessage} className="wa-tap" aria-label="Enviar mensagem"
+        style={{ width: 34, height: 34, flex: "none", borderRadius: 9, border: `1px solid ${t.border}`, background: "transparent", color: t.accent, cursor: "pointer", display: "grid", placeItems: "center" }}>
+        <Send size={15} />
+      </button>
+    </div>
+  );
+}
 function iconBtn(t: Theme): React.CSSProperties {
   return { width: 38, height: 38, borderRadius: 10, display: "grid", placeItems: "center", cursor: "pointer",
     background: t.surfaceHi, border: `1px solid ${t.border}`, color: t.textMuted };
