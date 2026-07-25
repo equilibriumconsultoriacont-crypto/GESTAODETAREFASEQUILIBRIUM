@@ -2,7 +2,7 @@
 // depois emite um evento para o painel atualizar em tempo real.
 
 import type { WASocket } from "baileys";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { waContacts, waConversations, waMessages } from "../../drizzle/schema";
 import { waEvents } from "./events";
@@ -28,12 +28,19 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
   for (const msg of ev.messages) {
     try {
     if (!msg.message) continue;
-    const jid: string = msg.key?.remoteJid || "";
+    const rawJid: string = msg.key?.remoteJid || "";
     // ignora grupos, status e transmissões
-    if (jid.endsWith("@g.us") || jid.endsWith("@broadcast") || jid === "status@broadcast") continue;
+    if (rawJid.endsWith("@g.us") || rawJid.endsWith("@broadcast") || rawJid === "status@broadcast") continue;
+    // v7: quando remoteJid é LID, remoteJidAlt traz o telefone (e vice-versa).
+    const altJid: string = (msg.key as any)?.remoteJidAlt || "";
 
     const fromMe = !!msg.key?.fromMe;
-    const number = jid.replace(/@(s\.whatsapp\.net|lid|c\.us)$/, "");
+    const digits = (j: string) => j.replace(/@(s\.whatsapp\.net|lid|c\.us)$/, "").replace(/:\d+$/, "");
+    const phoneJid = rawJid.endsWith("@s.whatsapp.net") ? rawJid : (altJid.endsWith("@s.whatsapp.net") ? altJid : "");
+    const lidJid = rawJid.endsWith("@lid") ? rawJid : (altJid.endsWith("@lid") ? altJid : "");
+    const canonicalJid = phoneJid || rawJid; // preferimos o telefone
+    const number = digits(phoneJid || rawJid);
+    const lidVal = lidJid ? digits(lidJid) : null;
     const { type, text } = extractContent(msg.message);
 
     // Dedupe: o envio pelo painel já grava a mensagem; o Baileys ecoa ela como
@@ -47,21 +54,28 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
       if (dup) continue;
     }
 
-    // contato (cria se novo)
+    // contato: casa por telefone OU por LID (inclusive contatos antigos criados com o LID
+    // no campo waNumber) — assim mensagens que chegam ora pelo telefone, ora pelo LID, caem
+    // sempre no MESMO contato.
+    const matchConds: any[] = [eq(waContacts.waNumber, number)];
+    if (lidVal) { matchConds.push(eq(waContacts.waNumber, lidVal)); matchConds.push(eq(waContacts.lid, lidVal)); }
     let contact = (
-      await db.select().from(waContacts).where(eq(waContacts.waNumber, number)).limit(1)
+      await db.select().from(waContacts).where(or(...matchConds)).limit(1)
     )[0];
     if (!contact) {
-      await db.insert(waContacts).values({ waNumber: number, jid, name: msg.pushName || null });
-      contact = (
-        await db.select().from(waContacts).where(eq(waContacts.waNumber, number)).limit(1)
-      )[0];
-    } else if ((msg.pushName && !contact.name) || !contact.jid) {
-      await db.update(waContacts).set({
-        ...(msg.pushName && !contact.name ? { name: msg.pushName } : {}),
-        ...(!contact.jid ? { jid } : {}),
-      }).where(eq(waContacts.id, contact.id));
-      if (!contact.jid) contact.jid = jid;
+      await db.insert(waContacts).values({ waNumber: number, lid: lidVal, jid: canonicalJid, name: msg.pushName || null });
+      contact = (await db.select().from(waContacts).where(or(...matchConds)).limit(1))[0];
+    } else {
+      // completa dados que faltam (LID, jid de telefone, nome) sem trocar o waNumber
+      const patch: any = {};
+      if (lidVal && !contact.lid) patch.lid = lidVal;
+      if (phoneJid && contact.jid !== canonicalJid) patch.jid = canonicalJid;
+      else if (!contact.jid) patch.jid = canonicalJid;
+      if (msg.pushName && !contact.name) patch.name = msg.pushName;
+      if (Object.keys(patch).length) {
+        await db.update(waContacts).set(patch).where(eq(waContacts.id, contact.id));
+        Object.assign(contact, patch);
+      }
     }
     if (!contact) continue;
 

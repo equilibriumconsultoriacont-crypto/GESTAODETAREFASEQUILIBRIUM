@@ -22,6 +22,34 @@ function normalizeBR(phone: string): string {
   return d;
 }
 
+// Nome do atendente (nome do login ou prefixo do email)
+async function nameOf(db: any, uid: number): Promise<string> {
+  return (
+    await db.select({ n: sql<string>`coalesce(nullif(name,''), substring_index(email,'@',1))` }).from(users).where(eq(users.id, uid)).limit(1)
+  )[0]?.n || "atendente";
+}
+
+// Data/hora no fuso de São Paulo, formato "às HH:MM de DD/MM/AAAA"
+function nowBR(): string {
+  try {
+    const parts: any = {};
+    for (const p of new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(new Date())) parts[p.type] = p.value;
+    return `às ${parts.hour}:${parts.minute} de ${parts.day}/${parts.month}/${parts.year}`;
+  } catch { return ""; }
+}
+
+// Registra uma nota interna (mensagem de sistema) — nunca é enviada ao cliente
+async function sysMsg(db: any, convId: number, content: string, agentId: number | null) {
+  await db.insert(waMessages).values({
+    conversationId: convId, senderType: "system", fromMe: false, content,
+    messageType: "other", status: "received", agentId,
+  });
+  waEvents.emit("wa", { kind: "message", conversationId: convId, contactId: 0, number: "", fromMe: false, text: "", type: "system" });
+}
+
 async function convJid(db: any, convId: number): Promise<{ jid: string | null; conv: any; contact: any }> {
   const conv = (await db.select().from(waConversations).where(eq(waConversations.id, convId)).limit(1))[0];
   if (!conv) return { jid: null, conv: null, contact: null };
@@ -200,6 +228,7 @@ export function registerWaRoutes(app: Express) {
         .update(waConversations)
         .set({ lastMessageAt: new Date(), status: "active", ...(claim ? { assignedAgentId: user.id } : {}) })
         .where(eq(waConversations.id, id));
+      if (claim) await sysMsg(db, id, `🟢 Atendimento iniciado por ${await nameOf(db, user.id)} ${nowBR()}`, user.id);
       waEvents.emit("wa", {
         kind: "message",
         conversationId: id,
@@ -303,6 +332,9 @@ export function registerWaRoutes(app: Express) {
     const id = parseInt(req.params.id);
     const agentId = user.role === "admin" && req.body?.agentId ? parseInt(req.body.agentId) : user.id;
     await db.update(waConversations).set({ assignedAgentId: agentId, status: "active", concludedAt: null }).where(eq(waConversations.id, id));
+    const who = await nameOf(db, agentId);
+    if (agentId === user.id) await sysMsg(db, id, `🟢 Atendimento iniciado por ${who} ${nowBR()}`, user.id);
+    else await sysMsg(db, id, `🟢 Atendimento atribuído por ${await nameOf(db, user.id)} para ${who} ${nowBR()}`, user.id);
     waEvents.emit("wa", { kind: "conversation", conversationId: id, action: "assigned" });
     res.json({ ok: true });
   });
@@ -315,6 +347,7 @@ export function registerWaRoutes(app: Express) {
     if (!db) return res.json({ ok: true });
     const id = parseInt(req.params.id);
     await db.update(waConversations).set({ status: "concluded", concludedAt: new Date() }).where(eq(waConversations.id, id));
+    await sysMsg(db, id, `✅ Atendimento concluído por ${await nameOf(db, user.id)} ${nowBR()}`, user.id);
     waEvents.emit("wa", { kind: "conversation", conversationId: id, action: "concluded" });
     res.json({ ok: true });
   });
@@ -339,6 +372,7 @@ export function registerWaRoutes(app: Express) {
     if (!db) return res.json({ ok: true });
     const id = parseInt(req.params.id);
     await db.update(waConversations).set({ status: "queue", assignedAgentId: null, concludedAt: null }).where(eq(waConversations.id, id));
+    await sysMsg(db, id, `↩️ Devolvido à fila por ${await nameOf(db, user.id)} ${nowBR()}`, user.id);
     waEvents.emit("wa", { kind: "conversation", conversationId: id, action: "reopened" });
     res.json({ ok: true });
   });
@@ -353,21 +387,10 @@ export function registerWaRoutes(app: Express) {
     const toId = parseInt(req.body?.agentId);
     const note = (req.body?.note || "").toString().trim();
     if (!toId) return res.status(400).json({ error: "selecione o atendente" });
-    const nameOf = async (uid: number) =>
-      (await db.select({ n: sql<string>`coalesce(nullif(name,''), substring_index(email,'@',1))` }).from(users).where(eq(users.id, uid)).limit(1))[0]?.n || "atendente";
-    const fromName = await nameOf(user.id);
-    const toName = await nameOf(toId);
+    const fromName = await nameOf(db, user.id);
+    const toName = await nameOf(db, toId);
     await db.update(waConversations).set({ assignedAgentId: toId, status: "active", concludedAt: null }).where(eq(waConversations.id, id));
-    await db.insert(waMessages).values({
-      conversationId: id,
-      senderType: "system",
-      fromMe: false,
-      content: `🔁 ${fromName} → ${toName}${note ? `\n${note}` : ""}`,
-      messageType: "other",
-      status: "received",
-      agentId: user.id,
-    });
-    waEvents.emit("wa", { kind: "message", conversationId: id, contactId: 0, number: "", fromMe: false, text: "", type: "system" });
+    await sysMsg(db, id, `🔁 Transferido por ${fromName} para ${toName} ${nowBR()}${note ? `\n💬 ${note}` : ""}`, user.id);
     waEvents.emit("wa", { kind: "conversation", conversationId: id, action: "transferred" });
     res.json({ ok: true });
   });
@@ -508,6 +531,49 @@ export function registerWaRoutes(app: Express) {
     const id = parseInt(req.params.id);
     const clientId = req.body?.clientId ? parseInt(req.body.clientId) : null;
     await db.update(waContacts).set({ clientId }).where(eq(waContacts.id, id));
+    res.json({ ok: true });
+  });
+
+  // Salvar um novo contato manualmente (qualquer usuário) — nome, número e empresa opcional
+  app.post("/api/wa/contacts", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    const db = await getDb();
+    if (!db) return res.status(500).json({ error: "sem banco" });
+    const number = normalizeBR(req.body?.number || "");
+    const name = (req.body?.name || "").toString().trim() || null;
+    const clientId = req.body?.clientId ? parseInt(req.body.clientId) : null;
+    if (!number || number.length < 12) return res.status(400).json({ error: "número inválido (use DDD)" });
+    const exists = (await db.select().from(waContacts).where(eq(waContacts.waNumber, number)).limit(1))[0];
+    if (exists) {
+      await db.update(waContacts).set({ ...(name ? { name } : {}), ...(clientId ? { clientId } : {}) }).where(eq(waContacts.id, exists.id));
+      return res.json({ ok: true, id: exists.id, existed: true });
+    }
+    await db.insert(waContacts).values({ waNumber: number, jid: `${number}@s.whatsapp.net`, name, clientId });
+    const created = (await db.select().from(waContacts).where(eq(waContacts.waNumber, number)).limit(1))[0];
+    res.json({ ok: true, id: created?.id });
+  });
+
+  // Editar contato: nome e empresa (qualquer usuário); número (SÓ administrador)
+  app.post("/api/wa/contacts/:id/edit", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    const db = await getDb();
+    if (!db) return res.status(500).json({ error: "sem banco" });
+    const id = parseInt(req.params.id);
+    const patch: any = {};
+    if (typeof req.body?.name === "string") patch.name = req.body.name.trim() || null;
+    if (req.body?.clientId !== undefined) patch.clientId = req.body.clientId ? parseInt(req.body.clientId) : null;
+    if (req.body?.number !== undefined && req.body.number !== null) {
+      if (user.role !== "admin") return res.status(403).json({ error: "apenas administradores podem alterar o número" });
+      const number = normalizeBR(req.body.number || "");
+      if (!number || number.length < 12) return res.status(400).json({ error: "número inválido (use DDD)" });
+      const clash = (await db.select().from(waContacts).where(eq(waContacts.waNumber, number)).limit(1))[0];
+      if (clash && clash.id !== id) return res.status(400).json({ error: "já existe um contato com esse número" });
+      patch.waNumber = number;
+      patch.jid = `${number}@s.whatsapp.net`;
+    }
+    if (Object.keys(patch).length) await db.update(waContacts).set(patch).where(eq(waContacts.id, id));
     res.json({ ok: true });
   });
 }

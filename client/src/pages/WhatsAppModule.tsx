@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import {
   ArrowLeft, ChevronLeft, Send, QrCode, Search, Sun, Moon, RotateCw, Check, CheckCheck, Clock, MessageSquare,
-  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2,
+  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus,
 } from "lucide-react";
 
 /* ── Temas ─────────────────────────────────────────────────────────────────── */
@@ -285,6 +285,21 @@ export default function WhatsAppModule() {
       });
       loadMsgs(r.conversationId); loadConvs();
     } else alert(r?.error || "Não foi possível iniciar a conversa.");
+  };
+
+  const [contactForm, setContactForm] = useState<any>(null);
+  const reloadContacts = () => api("/api/wa/contacts").then((r) => Array.isArray(r) && setContacts(r)).catch(() => {});
+  const saveContact = async () => {
+    const f = contactForm;
+    if (!f) return;
+    const body: any = { name: f.name, clientId: f.clientId || null };
+    const url = f.id ? `/api/wa/contacts/${f.id}/edit` : "/api/wa/contacts";
+    if (!f.id || me?.role === "admin") body.number = f.number;
+    const r = await api(url, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }).catch(() => ({ error: "falha" } as any));
+    if (r?.ok || r?.id) { setContactForm(null); reloadContacts(); }
+    else alert(r?.error || "Não foi possível salvar o contato.");
   };
 
   const openTransfer = () => {
@@ -574,6 +589,7 @@ export default function WhatsAppModule() {
                   </div>
                 </>
               ) : (
+                <>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, background: t.surfaceHi,
                   border: `1px solid ${t.border}`, borderRadius: 11, padding: "9px 12px" }}>
                   <Search size={15} color={t.textFaint} />
@@ -587,6 +603,12 @@ export default function WhatsAppModule() {
                     </button>
                   )}
                 </div>
+                <button onClick={() => setContactForm({ name: "", number: "", clientId: "" })} className="wa-tap"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 12px", borderRadius: 11,
+                    border: `1px dashed ${t.border}`, background: "transparent", color: t.accent, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                  <UserPlus size={15} /> Novo contato
+                </button>
+                </>
               )}
             </div>
 
@@ -657,6 +679,7 @@ export default function WhatsAppModule() {
                       sub={c.clientName ? `${fmtNumber(c.waNumber)} · ${c.clientName}` : fmtNumber(c.waNumber)}
                       linked={!!c.clientName}
                       onMessage={() => startConv({ number: c.waNumber }, c.name || "", c.waNumber)}
+                      onEdit={() => setContactForm({ id: c.id, name: c.name || "", number: c.waNumber || "", clientId: c.clientId || "" })}
                       t={t} />
                   ))}
                   {clientsList.length > 0 && (
@@ -863,12 +886,56 @@ export default function WhatsAppModule() {
           </div>
         </div>
       )}
+
+      {/* Modal criar/editar contato */}
+      {contactForm && (
+        <div onClick={() => setContactForm(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "grid", placeItems: "center", zIndex: 50, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: 400, background: t.surface, border: `1px solid ${t.border}`, borderRadius: 16, padding: 20, boxShadow: "0 12px 40px rgba(0,0,0,.35)" }}>
+            <div style={{ fontSize: 15, fontWeight: 650, marginBottom: 16 }}>{contactForm.id ? "Editar contato" : "Novo contato"}</div>
+
+            <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, display: "block", marginBottom: 6 }}>Nome</label>
+            <input value={contactForm.name} onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })} placeholder="Nome do contato"
+              style={{ width: "100%", background: t.surfaceHi, color: t.text, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none", marginBottom: 14 }} />
+
+            <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, display: "block", marginBottom: 6 }}>Número (com DDD)</label>
+            <input value={contactForm.number} onChange={(e) => setContactForm({ ...contactForm, number: e.target.value })}
+              disabled={!!contactForm.id && me?.role !== "admin"} placeholder="(19) 99999-9999"
+              style={{ width: "100%", background: !!contactForm.id && me?.role !== "admin" ? t.surface : t.surfaceHi, color: !!contactForm.id && me?.role !== "admin" ? t.textFaint : t.text, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none", marginBottom: !!contactForm.id && me?.role !== "admin" ? 4 : 14 }} />
+            {!!contactForm.id && me?.role !== "admin" && (
+              <div style={{ fontSize: 11.5, color: t.textFaint, marginBottom: 14 }}>Só administradores podem alterar o número.</div>
+            )}
+
+            <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, display: "block", marginBottom: 6 }}>Empresa (opcional)</label>
+            <select value={contactForm.clientId} onChange={(e) => setContactForm({ ...contactForm, clientId: e.target.value })}
+              style={{ width: "100%", background: t.surfaceHi, color: t.text, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, marginBottom: 18, cursor: "pointer" }}>
+              <option value="">Nenhuma</option>
+              {clientsList.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
+            </select>
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setContactForm(null)} className="wa-tap"
+                style={{ height: 38, padding: "0 16px", borderRadius: 10, border: `1px solid ${t.border}`, background: "transparent", color: t.textMuted, cursor: "pointer", fontSize: 13.5 }}>
+                Cancelar
+              </button>
+              <button onClick={saveContact} disabled={!contactForm.id && contactForm.number.replace(/\D/g, "").length < 10} className="wa-tap"
+                style={{ height: 38, padding: "0 18px", borderRadius: 10, border: "none", fontSize: 13.5, fontWeight: 600,
+                  cursor: !contactForm.id && contactForm.number.replace(/\D/g, "").length < 10 ? "default" : "pointer",
+                  background: !contactForm.id && contactForm.number.replace(/\D/g, "").length < 10 ? t.surfaceHi : t.accent,
+                  color: !contactForm.id && contactForm.number.replace(/\D/g, "").length < 10 ? t.textFaint : t.accentText }}>
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 /* ── Peças ─────────────────────────────────────────────────────────────────── */
-function ContactRow({ name, sub, linked, onMessage, t }: { name: string; sub: string; linked?: boolean; onMessage: () => void; t: Theme }) {
+function ContactRow({ name, sub, linked, onMessage, onEdit, t }: { name: string; sub: string; linked?: boolean; onMessage: () => void; onEdit?: () => void; t: Theme }) {
   return (
     <div className="wa-row" style={{ display: "flex", gap: 11, alignItems: "center", padding: "10px 11px", borderRadius: 12 }}>
       <div style={{ width: 40, height: 40, borderRadius: "50%", flex: "none", fontWeight: 600, fontSize: 15,
@@ -881,6 +948,12 @@ function ContactRow({ name, sub, linked, onMessage, t }: { name: string; sub: st
           {linked && <span style={{ color: t.accent }}>● </span>}{sub}
         </div>
       </div>
+      {onEdit && (
+        <button onClick={onEdit} className="wa-tap" aria-label="Editar contato"
+          style={{ width: 34, height: 34, flex: "none", borderRadius: 9, border: `1px solid ${t.border}`, background: "transparent", color: t.textMuted, cursor: "pointer", display: "grid", placeItems: "center" }}>
+          <Pencil size={14} />
+        </button>
+      )}
       <button onClick={onMessage} className="wa-tap" aria-label="Enviar mensagem"
         style={{ width: 34, height: 34, flex: "none", borderRadius: 9, border: `1px solid ${t.border}`, background: "transparent", color: t.accent, cursor: "pointer", display: "grid", placeItems: "center" }}>
         <Send size={15} />

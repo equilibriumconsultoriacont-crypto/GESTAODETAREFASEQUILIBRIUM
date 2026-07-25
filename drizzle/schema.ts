@@ -370,6 +370,7 @@ export const waContacts = mysqlTable("wa_contacts", {
   id: int("id").autoincrement().primaryKey(),
   waNumber: varchar("waNumber", { length: 32 }).notNull().unique(),
   jid: varchar("jid", { length: 128 }),
+  lid: varchar("lid", { length: 128 }), // identificador interno do WhatsApp (para casar mensagens que chegam por LID)
   clientId: int("clientId"), // vinculo com o cadastro de clientes (tarefas)
   name: varchar("name", { length: 255 }),
   avatarUrl: mediumtext("avatarUrl"),
