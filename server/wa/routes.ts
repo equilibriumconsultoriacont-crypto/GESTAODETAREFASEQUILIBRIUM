@@ -11,7 +11,7 @@ import {
   waConversationTags,
   users,
 } from "../../drizzle/schema";
-import { sendText } from "./connection";
+import { sendText, sendToJid } from "./connection";
 import { waEvents } from "./events";
 
 async function auth(req: any, res: any, adminOnly = false) {
@@ -82,7 +82,8 @@ export function registerWaRoutes(app: Express) {
     if (!contact) return res.status(404).json({ error: "contato não encontrado" });
 
     try {
-      const sent = await sendText(contact.waNumber, text);
+      const target = contact.jid || (contact.waNumber.includes("@") ? contact.waNumber : contact.waNumber + "@s.whatsapp.net");
+      const sent = await sendToJid(target, text);
       const waId = (sent as any)?.key?.id || null;
       await db.insert(waMessages).values({
         conversationId: id,

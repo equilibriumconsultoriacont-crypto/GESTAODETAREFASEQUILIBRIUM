@@ -32,7 +32,7 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
     if (jid.endsWith("@g.us") || jid.endsWith("@broadcast") || jid === "status@broadcast") continue;
 
     const fromMe = !!msg.key?.fromMe;
-    const number = jid.replace(/@s\.whatsapp\.net$/, "");
+    const number = jid.replace(/@(s\.whatsapp\.net|lid|c\.us)$/, "");
     const { type, text } = extractContent(msg.message);
 
     // Dedupe: o envio pelo painel já grava a mensagem; o Baileys ecoa ela como
@@ -51,12 +51,16 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
       await db.select().from(waContacts).where(eq(waContacts.waNumber, number)).limit(1)
     )[0];
     if (!contact) {
-      await db.insert(waContacts).values({ waNumber: number, name: msg.pushName || null });
+      await db.insert(waContacts).values({ waNumber: number, jid, name: msg.pushName || null });
       contact = (
         await db.select().from(waContacts).where(eq(waContacts.waNumber, number)).limit(1)
       )[0];
-    } else if (msg.pushName && !contact.name) {
-      await db.update(waContacts).set({ name: msg.pushName }).where(eq(waContacts.id, contact.id));
+    } else if ((msg.pushName && !contact.name) || !contact.jid) {
+      await db.update(waContacts).set({
+        ...(msg.pushName && !contact.name ? { name: msg.pushName } : {}),
+        ...(!contact.jid ? { jid } : {}),
+      }).where(eq(waContacts.id, contact.id));
+      if (!contact.jid) contact.jid = jid;
     }
     if (!contact) continue;
 
