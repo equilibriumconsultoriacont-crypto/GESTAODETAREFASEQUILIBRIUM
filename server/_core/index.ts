@@ -558,6 +558,10 @@ async function startServer() {
     res.json({ ok: true });
   });
 
+  // ── WhatsApp: endpoints do painel (conversas, mensagens, envio, tags) ──
+  const { registerWaRoutes } = await import("../wa/routes");
+  registerWaRoutes(app);
+
   // ── Migração automática de schema (roda 1x quando o banco está atrás do código) ──
   await ensureSchema();
 
@@ -568,17 +572,17 @@ async function startServer() {
       .catch((e) => console.error("[WA] módulo:", e?.message));
   }
 
-  // ── Static / Vite ─────────────────────────────────────────────────────────
+  // ── Static / Vite + WebSocket do atendimento ──────────────────────────────
+  const server = createServer(app);
+  const { setupWaWebSocket } = await import("../wa/ws");
+  setupWaWebSocket(server);
+  const port = parseInt(process.env.PORT || "8080");
   if (process.env.NODE_ENV === "development") {
-    const server = createServer(app);
     await setupVite(app, server);
-    const port = parseInt(process.env.PORT || "8080");
-    server.listen(port, () => console.log(`Server running on http://localhost:${port}/`));
   } else {
     serveStatic(app);
-    const port = parseInt(process.env.PORT || "8080");
-    app.listen(port, () => console.log(`Server running on http://localhost:${port}/`));
   }
+  server.listen(port, () => console.log(`Server running on http://localhost:${port}/`));
 }
 
 startServer().catch((err) => {

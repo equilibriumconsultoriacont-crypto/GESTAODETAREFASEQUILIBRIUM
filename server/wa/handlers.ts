@@ -35,6 +35,17 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
     const number = jid.replace(/@s\.whatsapp\.net$/, "");
     const { type, text } = extractContent(msg.message);
 
+    // Dedupe: o envio pelo painel já grava a mensagem; o Baileys ecoa ela como
+    // fromMe. Se o waMessageId já existe, não grava de novo. (Também cobre mensagens
+    // enviadas por outro aparelho, que chegam só pelo eco.)
+    const waId = msg.key?.id || null;
+    if (waId) {
+      const dup = (
+        await db.select({ id: waMessages.id }).from(waMessages).where(eq(waMessages.waMessageId, waId)).limit(1)
+      )[0];
+      if (dup) continue;
+    }
+
     // contato (cria se novo)
     let contact = (
       await db.select().from(waContacts).where(eq(waContacts.waNumber, number)).limit(1)
