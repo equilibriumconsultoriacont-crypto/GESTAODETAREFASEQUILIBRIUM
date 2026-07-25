@@ -121,7 +121,12 @@ export default function WhatsAppModule() {
     loadConvs();
   };
 
-  const connect = () => api("/api/wa/start", { method: "POST" }).then(() => setTimeout(loadConn, 1500)).catch(() => {});
+  const connect = async () => {
+    setConn((c) => ({ ...c, lastError: null }));
+    const r = await api("/api/wa/start", { method: "POST" }).catch(() => ({ error: "Sem conexão com o servidor." }));
+    if (r?.error) { setConn((c) => ({ ...c, lastError: r.error })); return; }
+    setTimeout(loadConn, 1200);
+  };
 
   const shown = convs.filter((c) => {
     if (!q.trim()) return true;

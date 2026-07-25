@@ -550,7 +550,7 @@ async function startServer() {
     }
   });
   app.post("/api/wa/start", async (req, res) => {
-    if (!(await waAuth(req, res, true))) return;
+    if (!(await waAuth(req, res))) return;
     try {
       const { startWhatsApp } = await import("../wa/connection");
       startWhatsApp().catch((e) => console.error("[WA]", e?.message));
@@ -560,7 +560,7 @@ async function startServer() {
     }
   });
   app.post("/api/wa/logout", async (req, res) => {
-    if (!(await waAuth(req, res, true))) return;
+    if (!(await waAuth(req, res))) return;
     const { logoutWhatsApp } = await import("../wa/connection");
     await logoutWhatsApp();
     res.json({ ok: true });

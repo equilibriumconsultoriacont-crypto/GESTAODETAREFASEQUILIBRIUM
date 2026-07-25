@@ -64,6 +64,8 @@ export async function startWhatsApp(): Promise<void> {
         sock = null;
         setStatus("closed");
         const code = (lastDisconnect?.error as Boom)?.output?.statusCode;
+        lastError = "Conexão fechada" + (code ? ` (código ${code})` : "") +
+          (lastDisconnect?.error?.message ? ": " + lastDisconnect.error.message : "");
         if (code === DisconnectReason.loggedOut) {
           console.warn("[WA] logout — limpando sessão, novo QR será necessário");
           await clearMySQLAuthState(SESSION);
