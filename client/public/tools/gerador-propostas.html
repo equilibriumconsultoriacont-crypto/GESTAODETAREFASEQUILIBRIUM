@@ -1030,10 +1030,20 @@ ${cta ? bFech(cta) : ''}
 </footer>
 
 <script>
-var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){
-e.target.classList.add('on');io.unobserve(e.target);}})},{threshold:.12,rootMargin:'0px 0px -40px 0px'});
-document.querySelectorAll('.rv').forEach(function(el,i){el.style.transitionDelay=(i===0?2.15:0)+'s';io.observe(el);});
+(function(){
+function show(el){el.classList.add('on');}
+var items=[].slice.call(document.querySelectorAll('.rv'));
+items.forEach(function(el,i){el.style.transitionDelay=(i===0?2.15:0)+'s';});
+if(!('IntersectionObserver' in window)){items.forEach(show);}
+else{
+var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){show(e.target);io.unobserve(e.target);}})},{threshold:.06,rootMargin:'0px 0px -30px 0px'});
+items.forEach(function(el){io.observe(el);});
+function sweep(){var vh=window.innerHeight||document.documentElement.clientHeight;items.forEach(function(el){if(!el.classList.contains('on')&&el.getBoundingClientRect().top<vh+120){show(el);io.unobserve(el);}});}
+setTimeout(sweep,300);
+setTimeout(function(){items.forEach(function(el){if(!el.classList.contains('on'))show(el);});},4000);
+}
 setTimeout(function(){var s=document.getElementById('splash');if(s)s.remove();},2900);
+})();
 <\/script></body></html>`;
 }
 
