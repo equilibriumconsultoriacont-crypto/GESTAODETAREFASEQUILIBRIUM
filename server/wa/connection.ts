@@ -53,9 +53,14 @@ export async function startWhatsApp(): Promise<void> {
     setStatus("connecting");
     lastError = null;
 
-    sock.ev.on("creds.update", saveCreds);
+    // Salva credenciais no banco a cada rotação de chave. Protegido: se a gravação
+    // falhar (blip no banco), registra e segue — nunca derruba o processo.
+    sock.ev.on("creds.update", () => {
+      Promise.resolve(saveCreds()).catch((e: any) => console.error("[WA] saveCreds:", e?.message));
+    });
 
     sock.ev.on("connection.update", async (u) => {
+     try {
       const { connection, lastDisconnect, qr } = u;
       if (qr) {
         currentQR = await QRCode.toDataURL(qr);
@@ -85,6 +90,9 @@ export async function startWhatsApp(): Promise<void> {
           setTimeout(() => startWhatsApp().catch(() => {}), 3000);
         }
       }
+     } catch (e: any) {
+       console.error("[WA] connection.update:", e?.message);
+     }
     });
 
     sock.ev.on("messages.upsert", (m) => {

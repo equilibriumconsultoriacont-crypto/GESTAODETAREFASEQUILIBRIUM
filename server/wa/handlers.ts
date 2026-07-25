@@ -26,6 +26,7 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
   if (!db) return;
 
   for (const msg of ev.messages) {
+    try {
     if (!msg.message) continue;
     const jid: string = msg.key?.remoteJid || "";
     // ignora grupos, status e transmissões
@@ -122,6 +123,9 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
       import("./push")
         .then(({ sendPushToAll }) => sendPushToAll({ title: nome, body: text || "Nova mensagem", url: "/whatsapp" }))
         .catch(() => {});
+    }
+    } catch (e: any) {
+      console.error("[WA] falha ao processar uma mensagem recebida (segue para a próxima):", e?.message);
     }
   }
 }
