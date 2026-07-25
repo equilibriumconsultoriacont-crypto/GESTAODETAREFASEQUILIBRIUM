@@ -2,7 +2,7 @@
 // Conecta usando a sessão salva no banco; se não houver, gera QR. Reconecta sozinho
 // quando a conexão cai (exceto em logout explícito, que exige novo QR).
 
-import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion } from "baileys";
+import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, Browsers } from "baileys";
 import type { WASocket } from "baileys";
 import { Boom } from "@hapi/boom";
 import QRCode from "qrcode";
@@ -28,6 +28,10 @@ export async function startWhatsApp(): Promise<void> {
   if (starting || status === "open") return;
   starting = true;
   try {
+    if (sock) {
+      try { sock.ev.removeAllListeners("connection.update"); sock.end(undefined); } catch {}
+      sock = null;
+    }
     const { state, saveCreds } = await useMySQLAuthState(SESSION);
     let waVersion: [number, number, number] | undefined;
     try {
@@ -41,8 +45,10 @@ export async function startWhatsApp(): Promise<void> {
       ...(waVersion ? { version: waVersion } : {}),
       auth: state,
       logger: pino({ level: "silent" }) as any,
-      browser: ["Equilíbrio Atendimento", "Chrome", "1.0.0"],
+      browser: Browsers.ubuntu("Chrome"),
       markOnlineOnConnect: false, // não marca "online" no celular do cliente
+      qrTimeout: 60_000,
+      connectTimeoutMs: 60_000,
     });
     setStatus("connecting");
     lastError = null;
