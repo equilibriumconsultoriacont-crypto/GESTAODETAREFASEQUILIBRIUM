@@ -608,6 +608,20 @@ async function ensureSchema() {
     const mysql = await import("mysql2/promise");
     const conn = await mysql.default.createConnection({ uri: process.env.DATABASE_URL! });
     try {
+      // Tabelas do WhatsApp — criadas no boot (idempotente), sem depender do /admin/setup
+      const waTables = [
+        "CREATE TABLE IF NOT EXISTS `wa_contacts` (`id` int AUTO_INCREMENT NOT NULL, `waNumber` varchar(32) NOT NULL, `name` varchar(255), `avatarUrl` mediumtext, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `wa_contacts_id` PRIMARY KEY(`id`), CONSTRAINT `wa_contacts_waNumber_unique` UNIQUE(`waNumber`))",
+        "CREATE TABLE IF NOT EXISTS `wa_conversations` (`id` int AUTO_INCREMENT NOT NULL, `contactId` int NOT NULL, `status` enum('open','pending','closed') NOT NULL DEFAULT 'open', `assignedAgentId` int, `unreadCount` int NOT NULL DEFAULT 0, `lastMessageAt` timestamp NOT NULL DEFAULT (now()), `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_conversations_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `wa_messages` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `senderType` enum('contact','agent','system') NOT NULL, `fromMe` boolean NOT NULL DEFAULT false, `content` text, `messageType` enum('text','image','audio','video','document','sticker','location','template','other') NOT NULL DEFAULT 'text', `mediaUrl` mediumtext, `waMessageId` varchar(128), `status` enum('received','sent','delivered','read','failed') NOT NULL DEFAULT 'sent', `agentId` int, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_messages_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `wa_tags` (`id` int AUTO_INCREMENT NOT NULL, `name` varchar(64) NOT NULL, `color` varchar(20) NOT NULL DEFAULT '#3E9AA6', CONSTRAINT `wa_tags_id` PRIMARY KEY(`id`), CONSTRAINT `wa_tags_name_unique` UNIQUE(`name`))",
+        "CREATE TABLE IF NOT EXISTS `wa_conversation_tags` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `tagId` int NOT NULL, CONSTRAINT `wa_conversation_tags_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `wa_sessions` (`id` int AUTO_INCREMENT NOT NULL, `sessionName` varchar(64) NOT NULL, `keyId` varchar(255) NOT NULL, `keyData` mediumtext, `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `wa_sessions_id` PRIMARY KEY(`id`), CONSTRAINT `wa_sessions_name_key_unique` UNIQUE(`sessionName`,`keyId`))",
+      ];
+      for (const s of waTables) {
+        try { await conn.query(s); }
+        catch (e: any) { console.warn("[Migração WA] ", e?.message?.slice(0, 160)); }
+      }
+
       const [rows]: any = await conn.query(
         "SELECT COUNT(*) as cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'task_templates' AND COLUMN_NAME = 'dueDateAdjust'"
       );
