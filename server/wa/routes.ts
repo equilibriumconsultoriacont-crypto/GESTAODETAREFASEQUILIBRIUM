@@ -135,6 +135,10 @@ export function registerWaRoutes(app: Express) {
         contactId: waContacts.id,
         name: waContacts.name,
         waNumber: waContacts.waNumber,
+        lid: waContacts.lid,
+        clientId: waContacts.clientId,
+        clientName: sql<string | null>`(select name from clients c where c.id = ${waContacts.clientId})`,
+        clientPhone: sql<string | null>`(select phone from clients c where c.id = ${waContacts.clientId})`,
         lastMessage: sql<string>`(select content from wa_messages m where m.conversationId = ${waConversations.id} order by m.id desc limit 1)`,
         lastFromMe: sql<number>`(select fromMe from wa_messages m where m.conversationId = ${waConversations.id} order by m.id desc limit 1)`,
       })

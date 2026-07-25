@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import {
   ArrowLeft, ChevronLeft, Send, QrCode, Search, Sun, Moon, RotateCw, Check, CheckCheck, Clock, MessageSquare,
-  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus,
+  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus, Building2,
 } from "lucide-react";
 
 /* ── Temas ─────────────────────────────────────────────────────────────────── */
@@ -68,6 +68,20 @@ const fmtNumber = (n: string) => {
   if (d.length > 13) return `ID ${d.slice(0, 6)}…`; // LID: não é telefone
   return n;
 };
+
+// Um contato pode chegar identificado pelo LID (identificador interno do WhatsApp), que NÃO é
+// telefone. Quando está vinculado a uma empresa, mostramos o telefone do cadastro (que dá para
+// ligar). Caso contrário, se for um LID, avisamos em vez de mostrar um número falso.
+const isLidNumber = (c: any) => {
+  const d = (c?.waNumber || "").replace(/\D/g, "");
+  return (!!c?.lid && c.waNumber === c.lid) || (d.length >= 12 && !d.startsWith("55"));
+};
+const contactPhone = (c: any) => {
+  if (c?.clientPhone) return fmtNumber(c.clientPhone);
+  if (isLidNumber(c)) return "identificador interno";
+  return fmtNumber(c?.waNumber || "");
+};
+const contactName = (c: any) => c?.name || c?.clientName || contactPhone(c);
 const hue = (s: string) => { let h = 0; for (const c of s || "?") h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const avaBg = (s: string, t: Theme) => t.name === "dark" ? `hsl(${hue(s)} 26% 20%)` : `hsl(${hue(s)} 42% 92%)`;
 const avaFg = (s: string, t: Theme) => t.name === "dark" ? `hsl(${hue(s)} 45% 68%)` : `hsl(${hue(s)} 42% 36%)`;
@@ -298,8 +312,14 @@ export default function WhatsAppModule() {
     const r = await api(url, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     }).catch(() => ({ error: "falha" } as any));
-    if (r?.ok || r?.id) { setContactForm(null); reloadContacts(); }
-    else alert(r?.error || "Não foi possível salvar o contato.");
+    if (r?.ok || r?.id) {
+      // se estava editando o contato da conversa aberta, reflete empresa/telefone na hora
+      if (f.id && active?.contactId === f.id) {
+        const cl = clientsList.find((c: any) => String(c.id) === String(f.clientId));
+        setActive((a: any) => a ? { ...a, name: f.name || a.name, clientId: f.clientId || null, clientName: cl?.name || null, clientPhone: cl?.phone || null } : a);
+      }
+      setContactForm(null); reloadContacts(); loadConvs();
+    } else alert(r?.error || "Não foi possível salvar o contato.");
   };
 
   const openTransfer = () => {
@@ -396,8 +416,14 @@ export default function WhatsAppModule() {
   };
 
 
-  // Badge de não lidas no ícone do app instalado (PWA)
-  const totalUnread = convs.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+  // Badge de não lidas no ícone do app instalado (PWA) — total real de TODAS as conversas
+  const [totalUnread, setTotalUnread] = useState(0);
+  useEffect(() => {
+    const load = () => api("/api/wa/unread").then((d) => setTotalUnread(d?.count || 0)).catch(() => {});
+    load();
+    const iv = setInterval(load, 8000);
+    return () => clearInterval(iv);
+  }, []);
   useEffect(() => {
     try {
       const nav = navigator as any;
@@ -478,10 +504,10 @@ export default function WhatsAppModule() {
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 14.5, fontWeight: 650, letterSpacing: "-.01em", whiteSpace: "nowrap",
               overflow: "hidden", textOverflow: "ellipsis" }}>
-              {isMobile && active ? (active.name || fmtNumber(active.waNumber)) : "Atendimento"}
+              {isMobile && active ? contactName(active) : "Atendimento"}
             </div>
             <div style={{ fontSize: 11.5, color: t.textFaint, display: "flex", alignItems: "center", gap: 5 }}>
-              {isMobile && active ? fmtNumber(active.waNumber) : (
+              {isMobile && active ? contactPhone(active) : (
                 <>
                   <span style={{ width: 7, height: 7, borderRadius: "50%", background: cm.c,
                     animation: conn.status === "open" ? "waPulse 2.4s ease-in-out infinite" : "none" }} />
@@ -621,7 +647,7 @@ export default function WhatsAppModule() {
               )}
               {shown.map((c) => {
                 const on = active?.id === c.id;
-                const display = c.name || fmtNumber(c.waNumber);
+                const display = contactName(c);
                 return (
                   <button key={c.id} onClick={() => openConv(c)} className="wa-tap wa-row"
                     style={{ width: "100%", textAlign: "left", padding: "10px 11px", marginTop: 2, borderRadius: 12,
@@ -719,20 +745,40 @@ export default function WhatsAppModule() {
                     borderBottom: `1px solid ${t.border}`, display: "flex", alignItems: "center", gap: 12,
                     transition: "background .25s, border-color .25s" }}>
                     <div style={{ width: 40, height: 40, borderRadius: "50%", flex: "none", fontWeight: 600, fontSize: 15,
-                      background: avaBg(active.name || active.waNumber, t), color: avaFg(active.name || active.waNumber, t),
+                      background: avaBg(contactName(active), t), color: avaFg(contactName(active), t),
                       display: "grid", placeItems: "center" }}>
-                      {(active.name || active.waNumber).replace(/[^\p{L}\p{N}]/gu, "").slice(0, 1).toUpperCase() || "?"}
+                      {contactName(active).replace(/[^\p{L}\p{N}]/gu, "").slice(0, 1).toUpperCase() || "?"}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14.5, fontWeight: 650 }}>{active.name || fmtNumber(active.waNumber)}</div>
-                      <div style={{ fontSize: 12, color: t.textFaint }}>{fmtNumber(active.waNumber)}</div>
+                      <div style={{ fontSize: 14.5, fontWeight: 650 }}>{contactName(active)}</div>
+                      <div style={{ fontSize: 12, color: t.textFaint }}>{contactPhone(active)}</div>
                     </div>
+                    {active.contactId ? (active.clientName ? (
+                      <button onClick={() => setContactForm({ id: active.contactId, name: active.name || "", number: active.waNumber || "", clientId: active.clientId || "" })} className="wa-tap"
+                        title={`Empresa: ${active.clientName}`}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 9, border: `1px solid ${t.border}`, background: t.accentSoft, color: t.accent, cursor: "pointer", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <Building2 size={13} style={{ flex: "none" }} /> {active.clientName}
+                      </button>
+                    ) : (
+                      <button onClick={() => setContactForm({ id: active.contactId, name: active.name || "", number: active.waNumber || "", clientId: "" })} className="wa-tap"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 9, border: `1px dashed ${t.border}`, background: "transparent", color: t.textMuted, cursor: "pointer", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
+                        <Building2 size={13} /> Vincular empresa
+                      </button>
+                    )) : null}
                     <WorkflowActions conv={active} me={me} t={t} onAction={doAction} onTransfer={openTransfer} />
                   </div>
                 )}
                 {isMobile && (
                   <div style={{ flex: "none", padding: "8px 14px", background: t.surface, borderBottom: `1px solid ${t.border}`,
-                    display: "flex", justifyContent: "flex-end" }}>
+                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    {active.contactId ? (
+                      <button onClick={() => setContactForm({ id: active.contactId, name: active.name || "", number: active.waNumber || "", clientId: active.clientId || "" })} className="wa-tap"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 8, minWidth: 0,
+                          border: `1px ${active.clientName ? "solid" : "dashed"} ${t.border}`, background: active.clientName ? t.accentSoft : "transparent",
+                          color: active.clientName ? t.accent : t.textMuted, cursor: "pointer", fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <Building2 size={12} style={{ flex: "none" }} /> {active.clientName || "Vincular empresa"}
+                      </button>
+                    ) : <span />}
                     <WorkflowActions conv={active} me={me} t={t} onAction={doAction} onTransfer={openTransfer} />
                   </div>
                 )}

@@ -4,7 +4,7 @@
 import type { WASocket } from "baileys";
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import { getDb } from "../db";
-import { waContacts, waConversations, waMessages } from "../../drizzle/schema";
+import { waContacts, waConversations, waMessages, clients } from "../../drizzle/schema";
 import { waEvents } from "./events";
 
 function extractContent(message: any): { type: string; text: string } {
@@ -36,8 +36,15 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
 
     const fromMe = !!msg.key?.fromMe;
     const digits = (j: string) => j.replace(/@(s\.whatsapp\.net|lid|c\.us)$/, "").replace(/:\d+$/, "");
-    const phoneJid = rawJid.endsWith("@s.whatsapp.net") ? rawJid : (altJid.endsWith("@s.whatsapp.net") ? altJid : "");
+    let phoneJid = rawJid.endsWith("@s.whatsapp.net") ? rawJid : (altJid.endsWith("@s.whatsapp.net") ? altJid : "");
     const lidJid = rawJid.endsWith("@lid") ? rawJid : (altJid.endsWith("@lid") ? altJid : "");
+    // Se só temos o LID, tenta descobrir o telefone pelo mapeamento interno do Baileys (best-effort)
+    if (!phoneJid && lidJid) {
+      try {
+        const pn = await (_sock as any)?.signalRepository?.lidMapping?.getPNForLID?.(lidJid);
+        if (typeof pn === "string" && pn.endsWith("@s.whatsapp.net")) phoneJid = pn;
+      } catch { /* mapeamento indisponível — segue com o LID */ }
+    }
     const canonicalJid = phoneJid || rawJid; // preferimos o telefone
     const number = digits(phoneJid || rawJid);
     const lidVal = lidJid ? digits(lidJid) : null;
@@ -78,6 +85,23 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
       }
     }
     if (!contact) continue;
+
+    // Vínculo automático com a empresa: se temos telefone real e o contato ainda não está
+    // vinculado, procura um cliente cadastrado com o mesmo telefone (compara os últimos 8
+    // dígitos, para ignorar diferenças de DDI/DDD/9º dígito) e vincula.
+    if (!contact.clientId && phoneJid && number && number.length >= 8) {
+      try {
+        const cli = (
+          await db.select({ id: clients.id }).from(clients).where(
+            sql`${clients.active} = 1 and ${clients.phone} is not null and ${clients.phone} <> '' and right(regexp_replace(${clients.phone}, '[^0-9]', ''), 8) = right(${number}, 8)`
+          ).limit(1)
+        )[0];
+        if (cli?.id) {
+          await db.update(waContacts).set({ clientId: cli.id }).where(eq(waContacts.id, contact.id));
+          contact.clientId = cli.id;
+        }
+      } catch { /* best-effort */ }
+    }
 
     // conversa em andamento (fila ou em atendimento); se a última foi concluída/desconsiderada, abre nova
     let conv = (
@@ -139,8 +163,13 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
     // Push para o aparelho (funciona com o app fechado) — só para mensagens do cliente
     if (!fromMe) {
       const nome = contact.name || (number.length > 13 ? "Novo contato" : `+${number}`);
+      // total de não lidas → o ícone do app mostra o número certo (não só "1")
+      let badge = 1;
+      try {
+        badge = Number((await db.select({ t: sql<number>`coalesce(sum(unreadCount),0)` }).from(waConversations))[0]?.t || 1) || 1;
+      } catch {}
       import("./push")
-        .then(({ sendPushToAll }) => sendPushToAll({ title: nome, body: text || "Nova mensagem", url: "/whatsapp" }))
+        .then(({ sendPushToAll }) => sendPushToAll({ title: nome, body: text || "Nova mensagem", url: "/whatsapp", badge }))
         .catch(() => {});
     }
     } catch (e: any) {
