@@ -1,7 +1,7 @@
 // Endpoints REST do painel de atendimento.
 
 import type { Express } from "express";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import {
   waContacts,
