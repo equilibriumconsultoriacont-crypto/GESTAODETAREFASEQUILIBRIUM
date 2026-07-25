@@ -94,6 +94,19 @@ export async function autoSendPendingGuias(): Promise<{
           [row.taskId]
         );
 
+        // Aviso pelo WhatsApp (mensagem, não o PDF — reduz risco de bloqueio).
+        // Não bloqueia nem falha o envio por e-mail se o WhatsApp estiver fora.
+        if (row.clientPhone) {
+          try {
+            const { notifyGuiaSent } = await import("./wa/notify");
+            const r = await notifyGuiaSent({
+              clientId: row.clientId, phone: row.clientPhone, name: row.clientName,
+              taskType: row.taskType, competencia: row.competencia,
+            });
+            if (r.ok) console.log(`[AutoSend] ✓ WhatsApp avisado: ${row.clientName}`);
+          } catch (e: any) { console.warn("[AutoSend] WhatsApp aviso:", e?.message); }
+        }
+
         console.log(`[AutoSend] ✓ Arquivo ${row.fileId} (${row.filename}) → ${row.clientEmail}`);
         sent++;
       } catch (err: any) {
