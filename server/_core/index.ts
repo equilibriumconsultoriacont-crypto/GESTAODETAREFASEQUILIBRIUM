@@ -542,14 +542,22 @@ async function startServer() {
   };
   app.get("/api/wa/status", async (req, res) => {
     if (!(await waAuth(req, res))) return;
-    const { getWAStatus } = await import("../wa/connection");
-    res.json(getWAStatus());
+    try {
+      const { getWAStatus } = await import("../wa/connection");
+      res.json(getWAStatus());
+    } catch (e: any) {
+      res.json({ status: "closed", qr: null, lastError: "Módulo WhatsApp não carregou: " + (e?.message || "erro") });
+    }
   });
   app.post("/api/wa/start", async (req, res) => {
     if (!(await waAuth(req, res, true))) return;
-    const { startWhatsApp } = await import("../wa/connection");
-    startWhatsApp().catch(() => {});
-    res.json({ ok: true });
+    try {
+      const { startWhatsApp } = await import("../wa/connection");
+      startWhatsApp().catch((e) => console.error("[WA]", e?.message));
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ error: "Módulo WhatsApp não carregou: " + (e?.message || "erro") });
+    }
   });
   app.post("/api/wa/logout", async (req, res) => {
     if (!(await waAuth(req, res, true))) return;

@@ -17,6 +17,7 @@ let sock: WASocket | null = null;
 let currentQR: string | null = null;
 let status: "closed" | "connecting" | "qr" | "open" = "closed";
 let starting = false;
+let lastError: string | null = null;
 
 function setStatus(s: typeof status) {
   status = s;
@@ -28,16 +29,23 @@ export async function startWhatsApp(): Promise<void> {
   starting = true;
   try {
     const { state, saveCreds } = await useMySQLAuthState(SESSION);
-    const { version } = await fetchLatestBaileysVersion();
+    let waVersion: [number, number, number] | undefined;
+    try {
+      const r = await fetchLatestBaileysVersion();
+      waVersion = r.version as any;
+    } catch {
+      // se falhar, o Baileys usa a versão padrão embutida
+    }
 
     sock = makeWASocket({
-      version,
+      ...(waVersion ? { version: waVersion } : {}),
       auth: state,
       logger: pino({ level: "silent" }) as any,
       browser: ["Equilíbrio Atendimento", "Chrome", "1.0.0"],
       markOnlineOnConnect: false, // não marca "online" no celular do cliente
     });
     setStatus("connecting");
+    lastError = null;
 
     sock.ev.on("creds.update", saveCreds);
 
@@ -71,16 +79,17 @@ export async function startWhatsApp(): Promise<void> {
       handleIncomingMessages(sock!, m).catch((e) => console.error("[WA] upsert", e?.message));
     });
   } catch (e: any) {
-    console.error("[WA] falha ao iniciar:", e?.message);
+    lastError = e?.message || String(e);
+    console.error("[WA] falha ao iniciar:", lastError);
     setStatus("closed");
-    setTimeout(() => startWhatsApp().catch(() => {}), 5000);
+    setTimeout(() => startWhatsApp().catch(() => {}), 8000);
   } finally {
     starting = false;
   }
 }
 
 export function getWAStatus() {
-  return { status, qr: status === "qr" ? currentQR : null };
+  return { status, qr: status === "qr" ? currentQR : null, lastError };
 }
 
 export function getSock() {

@@ -32,7 +32,7 @@ function fmtNumber(n: string) {
 }
 
 export default function WhatsAppModule() {
-  const [conn, setConn] = useState<{ status: string; qr: string | null }>({ status: "closed", qr: null });
+  const [conn, setConn] = useState<{ status: string; qr: string | null; lastError?: string | null }>({ status: "closed", qr: null });
   const [convs, setConvs] = useState<Conv[]>([]);
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
@@ -157,7 +157,7 @@ export default function WhatsAppModule() {
       </header>
 
       {conn.status !== "open" && (
-        <div style={{ background: "#111", borderBottom: `1px solid ${C.line}`, padding: "16px 20px", display: "flex", alignItems: "center", gap: 20, flex: "none" }}>
+        <div style={{ background: "#111", borderBottom: `1px solid ${C.line}`, padding: "16px 20px", display: "flex", alignItems: "center", gap: 20, flex: "none", flexWrap: "wrap" }}>
           {conn.status === "qr" && conn.qr ? (
             <>
               <img src={conn.qr} alt="QR" style={{ width: 148, height: 148, borderRadius: 10, background: "#fff", padding: 6 }} />
@@ -180,6 +180,11 @@ export default function WhatsAppModule() {
                 </button>
               )}
             </>
+          )}
+          {conn.lastError && (
+            <div style={{ width: "100%", marginTop: 4, fontSize: 12, color: "#fca5a5", background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.25)", borderRadius: 8, padding: "8px 11px" }}>
+              <b>Erro:</b> {conn.lastError}
+            </div>
           )}
         </div>
       )}
