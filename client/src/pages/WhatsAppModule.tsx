@@ -71,6 +71,14 @@ const avaBg = (s: string, t: Theme) => t.name === "dark" ? `hsl(${hue(s)} 26% 20
 const avaFg = (s: string, t: Theme) => t.name === "dark" ? `hsl(${hue(s)} 45% 68%)` : `hsl(${hue(s)} 42% 36%)`;
 const agentLabel = (m: Msg) =>
   m.agentName || (m.agentRole === "admin" ? "Administrador" : m.agentRole ? "Atendente" : "Atendimento");
+function urlB64ToUint8(base64: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
 
 /* ── Componente ────────────────────────────────────────────────────────────── */
 export default function WhatsAppModule() {
@@ -91,9 +99,28 @@ export default function WhatsAppModule() {
     return () => window.removeEventListener("resize", on);
   }, []);
 
-  // Notificações: pede permissão uma vez (ajuda o badge no app instalado também)
+  // Notificações push + service worker: recebe aviso com o app fechado e badge no ícone
   useEffect(() => {
-    try { if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {}); } catch {}
+    (async () => {
+      try {
+        if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+        const reg = await navigator.serviceWorker.register("/sw.js");
+        if (Notification.permission === "default") {
+          const perm = await Notification.requestPermission().catch(() => "denied");
+          if (perm !== "granted") return;
+        }
+        if (Notification.permission !== "granted") return;
+        const r = await api("/api/wa/push/key").catch(() => ({ key: "" }));
+        if (!r?.key) return;
+        const existing = await reg.pushManager.getSubscription();
+        const sub = existing || await reg.pushManager.subscribe({
+          userVisibleOnly: true, applicationServerKey: urlB64ToUint8(r.key),
+        });
+        await api("/api/wa/push/subscribe", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subscription: sub }),
+        }).catch(() => {});
+      } catch {}
+    })();
   }, []);
 
   const [conn, setConn] = useState<{ status: string; qr: string | null; lastError?: string | null }>({ status: "closed", qr: null });

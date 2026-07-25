@@ -259,6 +259,8 @@ async function startServer() {
         "CREATE TABLE IF NOT EXISTS `wa_tags` (`id` int AUTO_INCREMENT NOT NULL, `name` varchar(64) NOT NULL, `color` varchar(20) NOT NULL DEFAULT '#3E9AA6', CONSTRAINT `wa_tags_id` PRIMARY KEY(`id`), CONSTRAINT `wa_tags_name_unique` UNIQUE(`name`))",
         "CREATE TABLE IF NOT EXISTS `wa_conversation_tags` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `tagId` int NOT NULL, CONSTRAINT `wa_conversation_tags_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `wa_sessions` (`id` int AUTO_INCREMENT NOT NULL, `sessionName` varchar(64) NOT NULL, `keyId` varchar(255) NOT NULL, `keyData` mediumtext, `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `wa_sessions_id` PRIMARY KEY(`id`), CONSTRAINT `wa_sessions_name_key_unique` UNIQUE(`sessionName`,`keyId`))",
+        "CREATE TABLE IF NOT EXISTS `wa_config` (`k` varchar(64) NOT NULL, `v` text, CONSTRAINT `wa_config_k` PRIMARY KEY(`k`))",
+        "CREATE TABLE IF NOT EXISTS `wa_push_subs` (`id` int AUTO_INCREMENT NOT NULL, `endpoint` varchar(512) NOT NULL, `p256dh` varchar(255), `auth` varchar(255), `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_push_subs_id` PRIMARY KEY(`id`), CONSTRAINT `wa_push_subs_endpoint_unique` UNIQUE(`endpoint`))",
         "CREATE INDEX `wa_messages_conv_idx` ON `wa_messages` (`conversationId`, `createdAt`)",
         "CREATE INDEX `wa_conversations_status_idx` ON `wa_conversations` (`status`, `lastMessageAt`)",
       ];
@@ -565,6 +567,19 @@ async function startServer() {
     await logoutWhatsApp();
     res.json({ ok: true });
   });
+  app.get("/api/wa/push/key", async (req, res) => {
+    if (!(await waAuth(req, res))) return;
+    try { const { getPublicKey } = await import("../wa/push"); res.json({ key: await getPublicKey() }); }
+    catch (e: any) { res.json({ key: "", error: e?.message }); }
+  });
+  app.post("/api/wa/push/subscribe", async (req, res) => {
+    if (!(await waAuth(req, res))) return;
+    try {
+      const { saveSubscription } = await import("../wa/push");
+      await saveSubscription(req.body?.subscription || req.body);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e?.message }); }
+  });
 
   // ── WhatsApp: endpoints do painel (conversas, mensagens, envio, tags) ──
   const { registerWaRoutes } = await import("../wa/routes");
@@ -616,6 +631,8 @@ async function ensureSchema() {
         "CREATE TABLE IF NOT EXISTS `wa_tags` (`id` int AUTO_INCREMENT NOT NULL, `name` varchar(64) NOT NULL, `color` varchar(20) NOT NULL DEFAULT '#3E9AA6', CONSTRAINT `wa_tags_id` PRIMARY KEY(`id`), CONSTRAINT `wa_tags_name_unique` UNIQUE(`name`))",
         "CREATE TABLE IF NOT EXISTS `wa_conversation_tags` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `tagId` int NOT NULL, CONSTRAINT `wa_conversation_tags_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `wa_sessions` (`id` int AUTO_INCREMENT NOT NULL, `sessionName` varchar(64) NOT NULL, `keyId` varchar(255) NOT NULL, `keyData` mediumtext, `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `wa_sessions_id` PRIMARY KEY(`id`), CONSTRAINT `wa_sessions_name_key_unique` UNIQUE(`sessionName`,`keyId`))",
+        "CREATE TABLE IF NOT EXISTS `wa_config` (`k` varchar(64) NOT NULL, `v` text, CONSTRAINT `wa_config_k` PRIMARY KEY(`k`))",
+        "CREATE TABLE IF NOT EXISTS `wa_push_subs` (`id` int AUTO_INCREMENT NOT NULL, `endpoint` varchar(512) NOT NULL, `p256dh` varchar(255), `auth` varchar(255), `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_push_subs_id` PRIMARY KEY(`id`), CONSTRAINT `wa_push_subs_endpoint_unique` UNIQUE(`endpoint`))",
       ];
       for (const s of waTables) {
         try { await conn.query(s); }

@@ -115,5 +115,13 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
       text,
       type,
     });
+
+    // Push para o aparelho (funciona com o app fechado) — só para mensagens do cliente
+    if (!fromMe) {
+      const nome = contact.name || (number.length > 13 ? "Novo contato" : `+${number}`);
+      import("./push")
+        .then(({ sendPushToAll }) => sendPushToAll({ title: nome, body: text || "Nova mensagem", url: "/whatsapp" }))
+        .catch(() => {});
+    }
   }
 }

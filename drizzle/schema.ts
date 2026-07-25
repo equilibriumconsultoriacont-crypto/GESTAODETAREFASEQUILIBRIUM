@@ -425,3 +425,16 @@ export const waSessions = mysqlTable("wa_sessions", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const waConfig = mysqlTable("wa_config", {
+  k: varchar("k", { length: 64 }).notNull().primaryKey(),
+  v: text("v"),
+});
+
+export const waPushSubs = mysqlTable("wa_push_subs", {
+  id: int("id").autoincrement().primaryKey(),
+  endpoint: varchar("endpoint", { length: 512 }).notNull().unique(),
+  p256dh: varchar("p256dh", { length: 255 }),
+  auth: varchar("auth", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
