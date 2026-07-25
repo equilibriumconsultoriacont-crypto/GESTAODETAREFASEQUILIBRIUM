@@ -41,6 +41,19 @@ async function auth(req: any, res: any, adminOnly = false) {
 }
 
 export function registerWaRoutes(app: Express) {
+  // Porteiro de segurança: garante que toda rota /api/wa responda em até 20s. Se um
+  // endpoint travar (estourar erro sem responder), isto devolve um 500 legível em vez de
+  // deixar a requisição pendurada. (A proteção global de unhandledRejection evita o crash;
+  // isto evita o travamento.) Não afeta o WebSocket, que é tratado à parte.
+  app.use("/api/wa", (req, res, next) => {
+    const timer = setTimeout(() => {
+      if (!res.headersSent) res.status(500).json({ error: "tempo esgotado no servidor" });
+    }, 20000);
+    res.on("finish", () => clearTimeout(timer));
+    res.on("close", () => clearTimeout(timer));
+    next();
+  });
+
   // Quem sou eu (id, nome, papel) — o painel usa para saber as ações e a visibilidade
   app.get("/api/wa/me", async (req, res) => {
     const user = await auth(req, res);
@@ -59,6 +72,7 @@ export function registerWaRoutes(app: Express) {
     if (!user) return;
     const db = await getDb();
     if (!db) return res.json([]);
+    try {
     const isAdmin = user.role === "admin";
     const filter = (req.query.filter as string) || "queue";
 
@@ -102,6 +116,10 @@ export function registerWaRoutes(app: Express) {
       .orderBy(desc(waConversations.lastMessageAt))
       .limit(300);
     res.json(rows);
+    } catch (e: any) {
+      console.error("[WA] conversations:", e?.message);
+      if (!res.headersSent) res.status(500).json({ error: e?.message || "falha ao listar conversas" });
+    }
   });
 
   // Total de não lidas (para o badge do card no Hub)
