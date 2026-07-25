@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { CheckSquare, FileText, LogOut, MessageCircle, ExternalLink } from "lucide-react";
@@ -36,6 +37,18 @@ const MODULES = [
 export default function Hub() {
   const { user, logout } = useAuth();
   const { data: myModules = [] } = trpc.modules.mine.useQuery();
+
+  const [waUnread, setWaUnread] = useState(0);
+  useEffect(() => {
+    const load = () =>
+      fetch("/api/wa/unread", { credentials: "include" })
+        .then((r) => r.json())
+        .then((d) => setWaUnread(d?.count || 0))
+        .catch(() => {});
+    load();
+    const iv = setInterval(load, 8000);
+    return () => clearInterval(iv);
+  }, []);
 
   const firstName = (user?.name ?? "").split(" ")[0] || "";
   const hour = new Date().getHours();
@@ -110,8 +123,13 @@ export default function Hub() {
                   <div style={{ position: "absolute", top: -30, right: -30, width: 100, height: 100, borderRadius: "50%", background: mod.color, opacity: 0.08, filter: "blur(20px)" }} />
 
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, position: "relative" }}>
-                    <div style={{ width: 48, height: 48, borderRadius: 12, background: `${mod.color}22`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ width: 48, height: 48, borderRadius: 12, background: `${mod.color}22`, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
                       <Icon size={24} style={{ color: mod.color }} />
+                      {mod.id === "whatsapp" && waUnread > 0 && (
+                        <span style={{ position: "absolute", top: -7, right: -7, minWidth: 21, height: 21, padding: "0 5px", borderRadius: 11, background: "#ef4444", color: "#fff", fontSize: 11.5, fontWeight: 700, display: "grid", placeItems: "center", border: "2px solid #111" }}>
+                          {waUnread > 99 ? "99+" : waUnread}
+                        </span>
+                      )}
                     </div>
                     {mod.available ? (
                       <ExternalLink size={16} style={{ color: "#52525b" }} />

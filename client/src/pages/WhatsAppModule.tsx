@@ -69,8 +69,7 @@ const fmtNumber = (n: string) => {
 const hue = (s: string) => { let h = 0; for (const c of s || "?") h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const avaBg = (s: string, t: Theme) => t.name === "dark" ? `hsl(${hue(s)} 26% 20%)` : `hsl(${hue(s)} 42% 92%)`;
 const avaFg = (s: string, t: Theme) => t.name === "dark" ? `hsl(${hue(s)} 45% 68%)` : `hsl(${hue(s)} 42% 36%)`;
-const agentLabel = (m: Msg) =>
-  m.agentName || (m.agentRole === "admin" ? "Administrador" : m.agentRole ? "Atendente" : "Atendimento");
+const agentLabel = (m: Msg) => m.agentName || "Atendente";
 function urlB64ToUint8(base64: string): Uint8Array {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
   const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");

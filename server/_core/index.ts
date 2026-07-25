@@ -588,12 +588,24 @@ async function startServer() {
   // ── Migração automática de schema (roda 1x quando o banco está atrás do código) ──
   await ensureSchema();
 
-  // ── WhatsApp: reconecta usando a sessão salva no Aiven (se habilitado) ──
-  if (process.env.WA_ENABLED === "true") {
-    import("../wa/connection")
-      .then(({ startWhatsApp }) => startWhatsApp().catch((e) => console.error("[WA]", e?.message)))
-      .catch((e) => console.error("[WA] módulo:", e?.message));
-  }
+  // ── WhatsApp: reconecta sozinho no boot se já houver sessão salva no Aiven ──
+  // (antes só ligava com WA_ENABLED=true, por isso aparecia "Desconectado" toda vez)
+  (async () => {
+    try {
+      const { getDb } = await import("../db");
+      const dbc = await getDb();
+      let hasSession = false;
+      if (dbc) {
+        const { waSessions } = await import("../../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        hasSession = !!(await dbc.select().from(waSessions).where(eq(waSessions.keyId, "creds")).limit(1))[0];
+      }
+      if (hasSession || process.env.WA_ENABLED === "true") {
+        const { startWhatsApp } = await import("../wa/connection");
+        startWhatsApp().catch((e) => console.error("[WA]", e?.message));
+      }
+    } catch (e: any) { console.error("[WA] auto-start:", e?.message); }
+  })();
 
   // ── Static / Vite + WebSocket do atendimento ──────────────────────────────
   const server = createServer(app);

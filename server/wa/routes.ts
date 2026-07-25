@@ -51,6 +51,15 @@ export function registerWaRoutes(app: Express) {
     res.json(rows);
   });
 
+  // Total de não lidas (para o badge do card no Hub)
+  app.get("/api/wa/unread", async (req, res) => {
+    if (!(await auth(req, res))) return;
+    const db = await getDb();
+    if (!db) return res.json({ count: 0 });
+    const r = await db.select({ total: sql<number>`coalesce(sum(unreadCount),0)` }).from(waConversations);
+    res.json({ count: Number(r[0]?.total || 0) });
+  });
+
   // Histórico de uma conversa
   app.get("/api/wa/conversations/:id/messages", async (req, res) => {
     if (!(await auth(req, res))) return;
@@ -70,7 +79,7 @@ export function registerWaRoutes(app: Express) {
         status: waMessages.status,
         agentId: waMessages.agentId,
         createdAt: waMessages.createdAt,
-        agentName: sql<string | null>`(select name from users where id = ${waMessages.agentId})`,
+        agentName: sql<string | null>`(select coalesce(nullif(name, ''), substring_index(email, '@', 1)) from users where id = ${waMessages.agentId})`,
         agentRole: sql<string | null>`(select role from users where id = ${waMessages.agentId})`,
       })
       .from(waMessages)
@@ -97,8 +106,8 @@ export function registerWaRoutes(app: Express) {
 
     try {
       // Nome do atendente vai no topo da mensagem que o cliente recebe (estilo Onvio)
-      const agent = (await db.select({ name: users.name, role: users.role }).from(users).where(eq(users.id, user.id)).limit(1))[0];
-      const label = agent?.name || (agent?.role === "admin" ? "Administrador" : "Atendente");
+      const agent = (await db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, user.id)).limit(1))[0];
+      const label = agent?.name || agent?.email?.split("@")[0] || "Atendente";
       const outgoing = `*${label}*\n${text}`;
       const target = contact.jid || (contact.waNumber.includes("@") ? contact.waNumber : contact.waNumber + "@s.whatsapp.net");
       const sent = await sendToJid(target, outgoing);
