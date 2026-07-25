@@ -238,6 +238,35 @@ export function registerWaRoutes(app: Express) {
     res.json({ ok: true });
   });
 
+  // Transferir para outro atendente com um comentário interno (não vai para o cliente)
+  app.post("/api/wa/conversations/:id/transfer", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    const db = await getDb();
+    if (!db) return res.status(500).json({ error: "sem banco" });
+    const id = parseInt(req.params.id);
+    const toId = parseInt(req.body?.agentId);
+    const note = (req.body?.note || "").toString().trim();
+    if (!toId) return res.status(400).json({ error: "selecione o atendente" });
+    const nameOf = async (uid: number) =>
+      (await db.select({ n: sql<string>`coalesce(nullif(name,''), substring_index(email,'@',1))` }).from(users).where(eq(users.id, uid)).limit(1))[0]?.n || "atendente";
+    const fromName = await nameOf(user.id);
+    const toName = await nameOf(toId);
+    await db.update(waConversations).set({ assignedAgentId: toId, status: "active", concludedAt: null }).where(eq(waConversations.id, id));
+    await db.insert(waMessages).values({
+      conversationId: id,
+      senderType: "system",
+      fromMe: false,
+      content: `🔁 ${fromName} → ${toName}${note ? `\n${note}` : ""}`,
+      messageType: "other",
+      status: "received",
+      agentId: user.id,
+    });
+    waEvents.emit("wa", { kind: "message", conversationId: id, contactId: 0, number: "", fromMe: false, text: "", type: "system" });
+    waEvents.emit("wa", { kind: "conversation", conversationId: id, action: "transferred" });
+    res.json({ ok: true });
+  });
+
   // Etiquetas
   app.get("/api/wa/tags", async (req, res) => {
     if (!(await auth(req, res))) return;

@@ -134,6 +134,10 @@ export default function WhatsAppModule() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [agents, setAgents] = useState<{ id: number; name: string; email: string }[]>([]);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferTo, setTransferTo] = useState("");
+  const [transferNote, setTransferNote] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<Conv | null>(null);
   activeRef.current = active;
@@ -255,6 +259,21 @@ export default function WhatsAppModule() {
       assignedAgentName: action === "assign" ? (me?.name ?? null) : action === "reopen" ? null : active.assignedAgentName,
     });
     loadConvs();
+  };
+
+  const openTransfer = () => {
+    if (!agents.length) api("/api/wa/agents").then((r) => Array.isArray(r) && setAgents(r)).catch(() => {});
+    setTransferTo(""); setTransferNote(""); setTransferOpen(true);
+  };
+  const doTransfer = async () => {
+    if (!active || !transferTo) return;
+    await api(`/api/wa/conversations/${active.id}/transfer`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentId: parseInt(transferTo), note: transferNote.trim() }),
+    }).catch(() => {});
+    setTransferOpen(false);
+    setActive({ ...active, status: "active", assignedAgentId: parseInt(transferTo) });
+    loadConvs(); loadMsgs(active.id);
   };
 
   const connect = async () => {
@@ -521,13 +540,13 @@ export default function WhatsAppModule() {
                       <div style={{ fontSize: 14.5, fontWeight: 650 }}>{active.name || fmtNumber(active.waNumber)}</div>
                       <div style={{ fontSize: 12, color: t.textFaint }}>{fmtNumber(active.waNumber)}</div>
                     </div>
-                    <WorkflowActions conv={active} me={me} t={t} onAction={doAction} />
+                    <WorkflowActions conv={active} me={me} t={t} onAction={doAction} onTransfer={openTransfer} />
                   </div>
                 )}
                 {isMobile && (
                   <div style={{ flex: "none", padding: "8px 14px", background: t.surface, borderBottom: `1px solid ${t.border}`,
                     display: "flex", justifyContent: "flex-end" }}>
-                    <WorkflowActions conv={active} me={me} t={t} onAction={doAction} />
+                    <WorkflowActions conv={active} me={me} t={t} onAction={doAction} onTransfer={openTransfer} />
                   </div>
                 )}
 
@@ -535,6 +554,15 @@ export default function WhatsAppModule() {
                 <div ref={scrollRef} className="wa-scroll"
                   style={{ flex: 1, overflowY: "auto", padding: "18px 16px", display: "flex", flexDirection: "column", gap: 6 }}>
                   {msgs.map((m, i) => {
+                    if (m.senderType === "system") {
+                      return (
+                        <div key={m.id} style={{ alignSelf: "center", maxWidth: "85%", margin: "8px 0" }}>
+                          <div style={{ background: t.surfaceHi, border: `1px solid ${t.border}`, borderRadius: 10, padding: "6px 12px", fontSize: 12, color: t.textMuted, textAlign: "center", whiteSpace: "pre-wrap", lineHeight: 1.45 }}>
+                            {m.content}
+                          </div>
+                        </div>
+                      );
+                    }
                     const me = !!m.fromMe;
                     const prev = msgs[i - 1];
                     const grouped = prev && !!prev.fromMe === me;
@@ -595,6 +623,41 @@ export default function WhatsAppModule() {
           </main>
         )}
       </div>
+
+      {/* Modal de transferência */}
+      {transferOpen && (
+        <div onClick={() => setTransferOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "grid", placeItems: "center", zIndex: 50, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: 400, background: t.surface, border: `1px solid ${t.border}`, borderRadius: 16, padding: 20, boxShadow: "0 12px 40px rgba(0,0,0,.35)" }}>
+            <div style={{ fontSize: 15, fontWeight: 650, marginBottom: 4 }}>Transferir atendimento</div>
+            <div style={{ fontSize: 12.5, color: t.textFaint, marginBottom: 16 }}>O comentário é interno — o cliente não vê.</div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, display: "block", marginBottom: 6 }}>Para o atendente</label>
+            <select value={transferTo} onChange={(e) => setTransferTo(e.target.value)}
+              style={{ width: "100%", background: t.surfaceHi, color: t.text, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, marginBottom: 14, cursor: "pointer" }}>
+              <option value="">Selecione…</option>
+              {agents.filter((a) => a.id !== me?.id).map((a) => (
+                <option key={a.id} value={a.id}>{a.name || a.email}</option>
+              ))}
+            </select>
+            <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, display: "block", marginBottom: 6 }}>Motivo (interno)</label>
+            <textarea value={transferNote} onChange={(e) => setTransferNote(e.target.value)} rows={3}
+              placeholder="Ex.: cliente quer saber sobre folha de pagamento"
+              style={{ width: "100%", resize: "none", background: t.surfaceHi, color: t.text, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none", marginBottom: 18 }} />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setTransferOpen(false)} className="wa-tap"
+                style={{ height: 38, padding: "0 16px", borderRadius: 10, border: `1px solid ${t.border}`, background: "transparent", color: t.textMuted, cursor: "pointer", fontSize: 13.5 }}>
+                Cancelar
+              </button>
+              <button onClick={doTransfer} disabled={!transferTo} className="wa-tap"
+                style={{ height: 38, padding: "0 18px", borderRadius: 10, border: "none", cursor: transferTo ? "pointer" : "default", fontSize: 13.5, fontWeight: 600,
+                  background: transferTo ? t.accent : t.surfaceHi, color: transferTo ? t.accentText : t.textFaint }}>
+                Transferir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -604,9 +667,10 @@ function iconBtn(t: Theme): React.CSSProperties {
   return { width: 38, height: 38, borderRadius: 10, display: "grid", placeItems: "center", cursor: "pointer",
     background: t.surfaceHi, border: `1px solid ${t.border}`, color: t.textMuted };
 }
-function WorkflowActions({ conv, me, t, onAction }: {
+function WorkflowActions({ conv, me, t, onAction, onTransfer }: {
   conv: Conv; me: { id: number; role: string } | null; t: Theme;
   onAction: (a: "assign" | "conclude" | "dismiss" | "reopen") => void;
+  onTransfer: () => void;
 }) {
   const isMine = conv.assignedAgentId === me?.id;
   const isAdmin = me?.role === "admin";
@@ -630,6 +694,11 @@ function WorkflowActions({ conv, me, t, onAction }: {
             <span style={{ fontSize: 12, color: t.textFaint, marginRight: 2 }}>{conv.assignedAgentName}</span>
           )}
           {btn("Concluir", "conclude", "primary")}
+          <button onClick={onTransfer} className="wa-tap"
+            style={{ height: 34, padding: "0 13px", borderRadius: 9, cursor: "pointer", fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap",
+              border: `1px solid ${t.border}`, background: "transparent", color: t.textMuted }}>
+            Transferir
+          </button>
           {btn("Devolver", "reopen", "ghost")}
         </div>
       );
