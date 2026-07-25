@@ -449,6 +449,7 @@ export function registerWaRoutes(app: Express) {
     if (!user) return;
     const db = await getDb();
     if (!db) return res.status(500).json({ error: "sem banco" });
+    try {
     let name: string | null = req.body?.name || null;
     const clientId = req.body?.clientId ? parseInt(req.body.clientId) : null;
     let number = "";
@@ -475,6 +476,10 @@ export function registerWaRoutes(app: Express) {
       conv = (await db.select().from(waConversations).where(eq(waConversations.contactId, contact.id)).orderBy(desc(waConversations.id)).limit(1))[0];
     }
     res.json({ conversationId: conv?.id });
+    } catch (e: any) {
+      console.error("[WA] start-conversation:", e?.message);
+      if (!res.headersSent) res.status(500).json({ error: e?.message || "falha ao iniciar a conversa" });
+    }
   });
 
   // Vincular um contato a um cliente cadastrado

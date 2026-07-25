@@ -12,6 +12,15 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
+// Proteção global: um erro não tratado em UMA requisição não pode derrubar o serviço inteiro.
+// (No Node 15+ uma promise rejeitada sem catch encerra o processo por padrão — isso impede.)
+process.on("unhandledRejection", (reason: any) => {
+  console.error("[unhandledRejection] requisição falhou, mas o serviço segue de pé:", reason?.message || reason);
+});
+process.on("uncaughtException", (err: any) => {
+  console.error("[uncaughtException] erro capturado, serviço segue de pé:", err?.message || err);
+});
+
 async function startServer() {
   const app = express();
 
