@@ -749,10 +749,15 @@ export default function WhatsAppModule() {
                       display: "grid", placeItems: "center" }}>
                       {contactName(active).replace(/[^\p{L}\p{N}]/gu, "").slice(0, 1).toUpperCase() || "?"}
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14.5, fontWeight: 650 }}>{contactName(active)}</div>
+                    <button onClick={() => active.contactId && setContactForm({ id: active.contactId, name: active.name || "", number: active.waNumber || "", clientId: active.clientId || "" })}
+                      className="wa-tap" title={active.contactId ? "Editar nome do contato" : undefined}
+                      style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", padding: 0, cursor: active.contactId ? "pointer" : "default" }}>
+                      <div style={{ fontSize: 14.5, fontWeight: 650, display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{contactName(active)}</span>
+                        {active.contactId && <Pencil size={12} style={{ color: t.textFaint, flex: "none", opacity: 0.7 }} />}
+                      </div>
                       <div style={{ fontSize: 12, color: t.textFaint }}>{contactPhone(active)}</div>
-                    </div>
+                    </button>
                     {active.contactId ? (active.clientName ? (
                       <button onClick={() => setContactForm({ id: active.contactId, name: active.name || "", number: active.waNumber || "", clientId: active.clientId || "" })} className="wa-tap"
                         title={`Empresa: ${active.clientName}`}
@@ -771,14 +776,23 @@ export default function WhatsAppModule() {
                 {isMobile && (
                   <div style={{ flex: "none", padding: "8px 14px", background: t.surface, borderBottom: `1px solid ${t.border}`,
                     display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    {active.contactId ? (
-                      <button onClick={() => setContactForm({ id: active.contactId, name: active.name || "", number: active.waNumber || "", clientId: active.clientId || "" })} className="wa-tap"
-                        style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 8, minWidth: 0,
-                          border: `1px ${active.clientName ? "solid" : "dashed"} ${t.border}`, background: active.clientName ? t.accentSoft : "transparent",
-                          color: active.clientName ? t.accent : t.textMuted, cursor: "pointer", fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        <Building2 size={12} style={{ flex: "none" }} /> {active.clientName || "Vincular empresa"}
-                      </button>
-                    ) : <span />}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                      {active.contactId && (
+                        <button onClick={() => setContactForm({ id: active.contactId, name: active.name || "", number: active.waNumber || "", clientId: active.clientId || "" })} className="wa-tap"
+                          aria-label="Editar nome" title="Editar nome"
+                          style={{ width: 30, height: 30, flex: "none", borderRadius: 8, border: `1px solid ${t.border}`, background: "transparent", color: t.textMuted, cursor: "pointer", display: "grid", placeItems: "center" }}>
+                          <Pencil size={13} />
+                        </button>
+                      )}
+                      {active.contactId ? (
+                        <button onClick={() => setContactForm({ id: active.contactId, name: active.name || "", number: active.waNumber || "", clientId: active.clientId || "" })} className="wa-tap"
+                          style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 8, minWidth: 0,
+                            border: `1px ${active.clientName ? "solid" : "dashed"} ${t.border}`, background: active.clientName ? t.accentSoft : "transparent",
+                            color: active.clientName ? t.accent : t.textMuted, cursor: "pointer", fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <Building2 size={12} style={{ flex: "none" }} /> {active.clientName || "Vincular empresa"}
+                        </button>
+                      ) : <span />}
+                    </div>
                     <WorkflowActions conv={active} me={me} t={t} onAction={doAction} onTransfer={openTransfer} />
                   </div>
                 )}

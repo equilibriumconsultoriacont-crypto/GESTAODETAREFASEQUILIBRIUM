@@ -69,8 +69,11 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
     let contact = (
       await db.select().from(waContacts).where(or(...matchConds)).limit(1)
     )[0];
+    // O pushName só serve para nomear o contato quando a mensagem é DELE. Numa mensagem
+    // nossa (fromMe), o pushName é o NOSSO nome — nunca usamos para batizar o contato.
+    const incomingName = !fromMe && msg.pushName ? msg.pushName : null;
     if (!contact) {
-      await db.insert(waContacts).values({ waNumber: number, lid: lidVal, jid: canonicalJid, name: msg.pushName || null });
+      await db.insert(waContacts).values({ waNumber: number, lid: lidVal, jid: canonicalJid, name: incomingName });
       contact = (await db.select().from(waContacts).where(or(...matchConds)).limit(1))[0];
     } else {
       // completa dados que faltam (LID, jid de telefone, nome) sem trocar o waNumber
@@ -78,7 +81,7 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
       if (lidVal && !contact.lid) patch.lid = lidVal;
       if (phoneJid && contact.jid !== canonicalJid) patch.jid = canonicalJid;
       else if (!contact.jid) patch.jid = canonicalJid;
-      if (msg.pushName && !contact.name) patch.name = msg.pushName;
+      if (incomingName && !contact.name) patch.name = incomingName;
       if (Object.keys(patch).length) {
         await db.update(waContacts).set(patch).where(eq(waContacts.id, contact.id));
         Object.assign(contact, patch);
