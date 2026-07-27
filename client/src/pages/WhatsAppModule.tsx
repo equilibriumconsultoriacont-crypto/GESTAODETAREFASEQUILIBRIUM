@@ -280,6 +280,11 @@ export default function WhatsAppModule() {
     loadConvs();
   };
 
+  // Empresas para o seletor do formulário de contato (que abre de qualquer aba) — carrega no início
+  useEffect(() => {
+    api("/api/wa/clients").then((r) => Array.isArray(r) && setClientsList(r)).catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (view !== "contacts") return;
     api("/api/wa/contacts").then((r) => Array.isArray(r) && setContacts(r)).catch(() => {});
@@ -708,10 +713,10 @@ export default function WhatsAppModule() {
                       onEdit={() => setContactForm({ id: c.id, name: c.name || "", number: c.waNumber || "", clientId: c.clientId || "" })}
                       t={t} />
                   ))}
-                  {clientsList.length > 0 && (
+                  {clientsList.some((c) => (c.phone || "").replace(/\D/g, "").length >= 10) && (
                     <div style={{ fontSize: 11, fontWeight: 600, color: t.textFaint, textTransform: "uppercase", letterSpacing: ".04em", padding: "14px 8px 4px" }}>Clientes cadastrados</div>
                   )}
-                  {clientsList.map((c) => (
+                  {clientsList.filter((c) => (c.phone || "").replace(/\D/g, "").length >= 10).map((c) => (
                     <ContactRow key={"cl" + c.id}
                       name={c.name}
                       sub={fmtNumber(c.phone)}

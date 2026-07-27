@@ -496,9 +496,9 @@ export function registerWaRoutes(app: Express) {
     const rows = await db
       .select({ id: clients.id, name: clients.name, phone: clients.phone })
       .from(clients)
-      .where(sql`${clients.phone} is not null and ${clients.phone} != '' and ${clients.active} = 1`)
+      .where(sql`${clients.active} = 1`)
       .orderBy(clients.name)
-      .limit(1000);
+      .limit(2000);
     res.json(rows);
   });
 
