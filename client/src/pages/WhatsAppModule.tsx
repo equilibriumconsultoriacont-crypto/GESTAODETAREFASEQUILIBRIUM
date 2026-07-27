@@ -115,6 +115,8 @@ export default function WhatsAppModule() {
   }, []);
 
   useEffect(() => { api("/api/wa/me").then(setMe).catch(() => {}); }, []);
+  // Admin abre no Painel; funcionário abre direto no Atendimento
+  useEffect(() => { if (me?.role === "admin") setSection("dashboard"); }, [me?.role]);
 
   // Notificações push + service worker: recebe aviso com o app fechado e badge no ícone
   useEffect(() => {
@@ -156,7 +158,7 @@ export default function WhatsAppModule() {
   const [view, setView] = useState<"chats" | "contacts">("chats");
   const [contacts, setContacts] = useState<any[]>([]);
   const [clientsList, setClientsList] = useState<any[]>([]);
-  const [showReports, setShowReports] = useState(false);
+  const [section, setSection] = useState<"dashboard" | "atendimento">("atendimento");
   const [newNumber, setNewNumber] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<Conv | null>(null);
@@ -530,13 +532,6 @@ export default function WhatsAppModule() {
               <RotateCw size={15} />
             </button>
           )}
-          {me?.role === "admin" && (
-            <button onClick={() => setShowReports((v) => !v)} className="wa-tap"
-              style={{ ...iconBtn(t), ...(showReports ? { background: t.accent, color: t.accentText, borderColor: t.accent } : {}) }}
-              aria-label="Relatórios" title="Relatórios">
-              <BarChart3 size={16} />
-            </button>
-          )}
           <button onClick={toggleTheme} className="wa-tap" style={iconBtn(t)}
             aria-label="Alternar tema" title={theme === "dark" ? "Tema claro" : "Tema escuro"}>
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
@@ -587,12 +582,30 @@ export default function WhatsAppModule() {
         </div>
       )}
 
-      {showReports && me?.role === "admin" && (
-        <ReportsDashboard t={t} onClose={() => setShowReports(false)} />
-      )}
-
       {/* ── Corpo ── */}
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+        {me?.role === "admin" && (
+          <nav style={{ flex: "none", width: isMobile ? 58 : 78, background: t.surface, borderRight: `1px solid ${t.border}`,
+            display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0", gap: 6,
+            transition: "background .25s, border-color .25s" }}>
+            {([["dashboard", "Painel", BarChart3], ["atendimento", "Atendimento", MessageSquare]] as [string, string, any][]).map(([key, label, Icon]) => {
+              const on = section === key;
+              return (
+                <button key={key} onClick={() => setSection(key as any)} className="wa-tap" title={label}
+                  style={{ width: isMobile ? 46 : 62, padding: "9px 0", borderRadius: 12, border: "none", cursor: "pointer",
+                    background: on ? t.accent : "transparent", color: on ? t.accentText : t.textMuted,
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 4, fontSize: 9.5, fontWeight: 600, lineHeight: 1.1 }}>
+                  <Icon size={20} />
+                  {!isMobile && <span>{label}</span>}
+                </button>
+              );
+            })}
+          </nav>
+        )}
+        {section === "dashboard" && me?.role === "admin" ? (
+          <ReportsDashboard t={t} />
+        ) : (
+        <>
         {/* Lista */}
         {showList && (
           <aside style={{ width: isMobile ? "100%" : 340, flex: "none", background: t.surface,
@@ -942,6 +955,8 @@ export default function WhatsAppModule() {
             )}
           </main>
         )}
+        </>
+        )}
       </div>
 
       {/* Modal de transferência */}
@@ -1038,7 +1053,7 @@ function secToHuman(s: number): string {
 }
 
 // Dashboard de relatórios do atendimento (só administrador)
-function ReportsDashboard({ t, onClose }: { t: Theme; onClose: () => void }) {
+function ReportsDashboard({ t }: { t: Theme }) {
   const [period, setPeriod] = useState("7d");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -1066,11 +1081,8 @@ function ReportsDashboard({ t, onClose }: { t: Theme; onClose: () => void }) {
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 60, background: t.bg, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div style={{ flex: 1, minWidth: 0, background: t.bg, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div style={{ flex: "none", padding: "13px 18px", background: t.surface, borderBottom: `1px solid ${t.border}`, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <button onClick={onClose} className="wa-tap" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", color: t.text, cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
-          <ArrowLeft size={17} /> Voltar
-        </button>
         <div style={{ fontSize: 15, fontWeight: 700, flex: 1, minWidth: 120 }}>Relatórios de atendimento</div>
         <div style={{ display: "flex", gap: 4, background: t.surfaceHi, borderRadius: 10, padding: 3 }}>
           {periods.map(([k, lbl]) => (
