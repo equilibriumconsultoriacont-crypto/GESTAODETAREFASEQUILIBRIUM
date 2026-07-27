@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import {
   ArrowLeft, ChevronLeft, Send, QrCode, Search, Sun, Moon, RotateCw, Check, CheckCheck, Clock, MessageSquare,
-  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus, Building2,
+  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus, Building2, ChevronDown,
 } from "lucide-react";
 
 /* ── Temas ─────────────────────────────────────────────────────────────────── */
@@ -988,11 +988,10 @@ export default function WhatsAppModule() {
             )}
 
             <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, display: "block", marginBottom: 6 }}>Empresa (opcional)</label>
-            <select value={contactForm.clientId} onChange={(e) => setContactForm({ ...contactForm, clientId: e.target.value })}
-              style={{ width: "100%", background: t.surfaceHi, color: t.text, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, marginBottom: 18, cursor: "pointer" }}>
-              <option value="">Nenhuma</option>
-              {clientsList.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
-            </select>
+            <div style={{ marginBottom: 18 }}>
+              <CompanyPicker clients={clientsList} value={contactForm.clientId}
+                onChange={(id) => setContactForm({ ...contactForm, clientId: id })} t={t} />
+            </div>
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setContactForm(null)} className="wa-tap"
@@ -1015,6 +1014,56 @@ export default function WhatsAppModule() {
 }
 
 /* ── Peças ─────────────────────────────────────────────────────────────────── */
+// Seletor de empresa com busca — mostra a empresa escolhida; ao abrir, tem uma barra de
+// busca e a lista filtrada por nome. Substitui o <select> nativo (ruim com muitas empresas).
+function CompanyPicker({ clients, value, onChange, t }: { clients: any[]; value: string; onChange: (id: string) => void; t: Theme }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const selected = clients.find((c) => String(c.id) === String(value));
+  const term = q.trim().toLowerCase();
+  const filtered = term ? clients.filter((c) => (c.name || "").toLowerCase().includes(term)) : clients;
+  const optStyle = (active: boolean): React.CSSProperties => ({
+    width: "100%", textAlign: "left", padding: "9px 12px", border: "none", cursor: "pointer", fontSize: 13,
+    background: active ? t.accentSoft : "transparent", color: active ? t.accent : t.text,
+    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8,
+  });
+  return (
+    <div style={{ position: "relative" }}>
+      <button type="button" onClick={() => { setOpen((o) => !o); setQ(""); }} className="wa-tap"
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+          background: t.surfaceHi, color: selected ? t.text : t.textFaint, border: `1px solid ${t.border}`,
+          borderRadius: 10, padding: "10px 12px", fontSize: 13.5, cursor: "pointer", textAlign: "left" }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selected ? selected.name : "Nenhuma"}</span>
+        <ChevronDown size={16} style={{ flex: "none", color: t.textFaint, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 1 }} />
+          <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 2, background: t.surface,
+            border: `1px solid ${t.border}`, borderRadius: 10, boxShadow: "0 10px 30px rgba(0,0,0,.3)", overflow: "hidden" }}>
+            <div style={{ padding: 8, borderBottom: `1px solid ${t.border}` }}>
+              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar empresa…"
+                style={{ width: "100%", background: t.surfaceHi, color: t.text, border: `1px solid ${t.border}`, borderRadius: 8, padding: "8px 10px", fontSize: 13, outline: "none" }} />
+            </div>
+            <div style={{ maxHeight: 200, overflowY: "auto" }}>
+              <button type="button" className="wa-tap" onClick={() => { onChange(""); setOpen(false); }} style={optStyle(!value)}>Nenhuma</button>
+              {filtered.map((c) => (
+                <button key={c.id} type="button" className="wa-tap" onClick={() => { onChange(String(c.id)); setOpen(false); }} style={optStyle(String(c.id) === String(value))}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                  {c.phone ? <span style={{ color: t.textFaint, fontSize: 11, flex: "none" }}>{fmtNumber(c.phone)}</span> : null}
+                </button>
+              ))}
+              {filtered.length === 0 && (
+                <div style={{ padding: "10px 12px", color: t.textFaint, fontSize: 12.5 }}>Nenhuma empresa encontrada</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ContactRow({ name, sub, linked, onMessage, onEdit, t }: { name: string; sub: string; linked?: boolean; onMessage: () => void; onEdit?: () => void; t: Theme }) {
   return (
     <div className="wa-row" style={{ display: "flex", gap: 11, alignItems: "center", padding: "10px 11px", borderRadius: 12 }}>
