@@ -388,6 +388,8 @@ export const waConversations = mysqlTable("wa_conversations", {
   unreadCount: int("unreadCount").default(0).notNull(),
   lastMessageAt: timestamp("lastMessageAt").defaultNow().notNull(),
   concludedAt: timestamp("concludedAt"),
+  queuedAt: timestamp("queuedAt"),
+  assignedAt: timestamp("assignedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type WaConversation = typeof waConversations.$inferSelect;

@@ -116,7 +116,7 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
         .limit(1)
     )[0];
     if (!conv) {
-      await db.insert(waConversations).values({ contactId: contact.id, status: "queue" });
+      await db.insert(waConversations).values({ contactId: contact.id, status: "queue", queuedAt: new Date() });
       conv = (
         await db
           .select()

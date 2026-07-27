@@ -177,6 +177,66 @@ export function registerWaRoutes(app: Express) {
     res.send(Buffer.from(match[2], "base64"));
   });
 
+  // Relatórios / métricas do atendimento (SÓ administrador)
+  app.get("/api/wa/reports", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    if (user.role !== "admin") return res.status(403).json({ error: "apenas administradores" });
+    const db = await getDb();
+    if (!db) return res.json({});
+    try {
+      const period = (req.query.period as string) || "7d";
+      const nowMs = Date.now();
+      let since: Date;
+      if (period === "today") {
+        const sp = new Date(nowMs - 3 * 3600 * 1000); sp.setUTCHours(0, 0, 0, 0);
+        since = new Date(sp.getTime() + 3 * 3600 * 1000); // meia-noite de hoje (fuso SP) em UTC
+      } else if (period === "30d") since = new Date(nowMs - 30 * 24 * 3600 * 1000);
+      else since = new Date(nowMs - 7 * 24 * 3600 * 1000);
+
+      // Situação AGORA (independente do período)
+      const agora = (await db.select({
+        fila: sql<number>`coalesce(sum(case when ${waConversations.status}='queue' then 1 else 0 end),0)`,
+        ativo: sql<number>`coalesce(sum(case when ${waConversations.status}='active' then 1 else 0 end),0)`,
+        esperaMaisAntigo: sql<number>`coalesce(max(case when ${waConversations.status}='queue' then timestampdiff(second, coalesce(${waConversations.queuedAt}, ${waConversations.createdAt}), now()) end),0)`,
+      }).from(waConversations))[0];
+
+      // No PERÍODO
+      const periodo = (await db.select({
+        novas: sql<number>`coalesce(sum(case when ${waConversations.createdAt} >= ${since} then 1 else 0 end),0)`,
+        concluidas: sql<number>`coalesce(sum(case when ${waConversations.status}='concluded' and ${waConversations.concludedAt} >= ${since} then 1 else 0 end),0)`,
+        esperaMedia: sql<number>`coalesce(round(avg(case when ${waConversations.assignedAt} is not null and ${waConversations.queuedAt} is not null and ${waConversations.assignedAt} >= ${since} then timestampdiff(second, ${waConversations.queuedAt}, ${waConversations.assignedAt}) end)),0)`,
+        duracaoMedia: sql<number>`coalesce(round(avg(case when ${waConversations.status}='concluded' and ${waConversations.concludedAt} is not null and ${waConversations.assignedAt} is not null and ${waConversations.concludedAt} >= ${since} then timestampdiff(second, ${waConversations.assignedAt}, ${waConversations.concludedAt}) end)),0)`,
+      }).from(waConversations))[0];
+
+      // Mensagens no período
+      const mensagens = (await db.select({
+        recebidas: sql<number>`coalesce(sum(case when ${waMessages.senderType}='contact' then 1 else 0 end),0)`,
+        enviadas: sql<number>`coalesce(sum(case when ${waMessages.senderType}='agent' then 1 else 0 end),0)`,
+      }).from(waMessages).where(sql`${waMessages.createdAt} >= ${since}`))[0];
+
+      // Por atendente (no período)
+      const atendentes = await db.select({
+        id: waConversations.assignedAgentId,
+        nome: sql<string>`(select coalesce(nullif(name,''), substring_index(email,'@',1)) from users where id = ${waConversations.assignedAgentId})`,
+        concluidas: sql<number>`coalesce(sum(case when ${waConversations.status}='concluded' and ${waConversations.concludedAt} >= ${since} then 1 else 0 end),0)`,
+        ativas: sql<number>`coalesce(sum(case when ${waConversations.status}='active' then 1 else 0 end),0)`,
+        duracaoMedia: sql<number>`coalesce(round(avg(case when ${waConversations.status}='concluded' and ${waConversations.concludedAt} is not null and ${waConversations.assignedAt} is not null and ${waConversations.concludedAt} >= ${since} then timestampdiff(second, ${waConversations.assignedAt}, ${waConversations.concludedAt}) end)),0)`,
+      }).from(waConversations).where(sql`${waConversations.assignedAgentId} is not null`).groupBy(waConversations.assignedAgentId);
+
+      // Volume por dia (últimos 14 dias) para o gráfico
+      const diario = await db.select({
+        dia: sql<string>`date_format(${waConversations.createdAt}, '%d/%m')`,
+        total: sql<number>`count(*)`,
+      }).from(waConversations).where(sql`${waConversations.createdAt} >= ${new Date(nowMs - 14 * 24 * 3600 * 1000)}`).groupBy(sql`date(${waConversations.createdAt})`).orderBy(sql`date(${waConversations.createdAt})`);
+
+      res.json({ period, agora, periodo, mensagens, atendentes: atendentes.filter((a) => a.id), diario });
+    } catch (e: any) {
+      console.error("[WA] reports:", e?.message);
+      if (!res.headersSent) res.status(500).json({ error: e?.message || "falha ao gerar relatório" });
+    }
+  });
+
   // Histórico de uma conversa
   app.get("/api/wa/conversations/:id/messages", async (req, res) => {
     if (!(await auth(req, res))) return;
@@ -244,7 +304,7 @@ export function registerWaRoutes(app: Express) {
       const claim = conv.status === "queue" || !conv.assignedAgentId;
       await db
         .update(waConversations)
-        .set({ lastMessageAt: new Date(), status: "active", ...(claim ? { assignedAgentId: user.id } : {}) })
+        .set({ lastMessageAt: new Date(), status: "active", ...(claim ? { assignedAgentId: user.id, assignedAt: new Date() } : {}) })
         .where(eq(waConversations.id, id));
       if (claim) await sysMsg(db, id, `🟢 Atendimento iniciado por ${await nameOf(db, user.id)} ${nowBR()}`, user.id);
       waEvents.emit("wa", {
@@ -284,7 +344,7 @@ export function registerWaRoutes(app: Express) {
         waMessageId: waId, status: "sent", agentId: user.id,
       });
       const claim = conv.status === "queue" || !conv.assignedAgentId;
-      await db.update(waConversations).set({ lastMessageAt: new Date(), status: "active", ...(claim ? { assignedAgentId: user.id } : {}) }).where(eq(waConversations.id, id));
+      await db.update(waConversations).set({ lastMessageAt: new Date(), status: "active", ...(claim ? { assignedAgentId: user.id, assignedAt: new Date() } : {}) }).where(eq(waConversations.id, id));
       waEvents.emit("wa", { kind: "message", conversationId: id, contactId: contact.id, number: contact.waNumber, fromMe: true, text: caption || fileName || "", type: type || "document" });
       res.json({ ok: true });
     } catch (e: any) { res.status(502).json({ error: e?.message || "falha ao enviar mídia" }); }
@@ -349,7 +409,7 @@ export function registerWaRoutes(app: Express) {
     if (!db) return res.json({ ok: true });
     const id = parseInt(req.params.id);
     const agentId = user.role === "admin" && req.body?.agentId ? parseInt(req.body.agentId) : user.id;
-    await db.update(waConversations).set({ assignedAgentId: agentId, status: "active", concludedAt: null }).where(eq(waConversations.id, id));
+    await db.update(waConversations).set({ assignedAgentId: agentId, status: "active", concludedAt: null, assignedAt: new Date() }).where(eq(waConversations.id, id));
     const who = await nameOf(db, agentId);
     if (agentId === user.id) await sysMsg(db, id, `🟢 Atendimento iniciado por ${who} ${nowBR()}`, user.id);
     else await sysMsg(db, id, `🟢 Atendimento atribuído por ${await nameOf(db, user.id)} para ${who} ${nowBR()}`, user.id);
@@ -389,7 +449,7 @@ export function registerWaRoutes(app: Express) {
     const db = await getDb();
     if (!db) return res.json({ ok: true });
     const id = parseInt(req.params.id);
-    await db.update(waConversations).set({ status: "queue", assignedAgentId: null, concludedAt: null }).where(eq(waConversations.id, id));
+    await db.update(waConversations).set({ status: "queue", assignedAgentId: null, concludedAt: null, queuedAt: new Date() }).where(eq(waConversations.id, id));
     await sysMsg(db, id, `↩️ Devolvido à fila por ${await nameOf(db, user.id)} ${nowBR()}`, user.id);
     waEvents.emit("wa", { kind: "conversation", conversationId: id, action: "reopened" });
     res.json({ ok: true });
@@ -407,7 +467,7 @@ export function registerWaRoutes(app: Express) {
     if (!toId) return res.status(400).json({ error: "selecione o atendente" });
     const fromName = await nameOf(db, user.id);
     const toName = await nameOf(db, toId);
-    await db.update(waConversations).set({ assignedAgentId: toId, status: "active", concludedAt: null }).where(eq(waConversations.id, id));
+    await db.update(waConversations).set({ assignedAgentId: toId, status: "active", concludedAt: null, assignedAt: new Date() }).where(eq(waConversations.id, id));
     await sysMsg(db, id, `🔁 Transferido por ${fromName} para ${toName} ${nowBR()}${note ? `\n💬 ${note}` : ""}`, user.id);
     waEvents.emit("wa", { kind: "conversation", conversationId: id, action: "transferred" });
     res.json({ ok: true });

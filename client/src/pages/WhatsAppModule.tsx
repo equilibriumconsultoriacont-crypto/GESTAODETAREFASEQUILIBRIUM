@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import {
   ArrowLeft, ChevronLeft, Send, QrCode, Search, Sun, Moon, RotateCw, Check, CheckCheck, Clock, MessageSquare,
-  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus, Building2, ChevronDown,
+  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus, Building2, ChevronDown, BarChart3,
 } from "lucide-react";
 
 /* ── Temas ─────────────────────────────────────────────────────────────────── */
@@ -156,6 +156,7 @@ export default function WhatsAppModule() {
   const [view, setView] = useState<"chats" | "contacts">("chats");
   const [contacts, setContacts] = useState<any[]>([]);
   const [clientsList, setClientsList] = useState<any[]>([]);
+  const [showReports, setShowReports] = useState(false);
   const [newNumber, setNewNumber] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<Conv | null>(null);
@@ -529,6 +530,13 @@ export default function WhatsAppModule() {
               <RotateCw size={15} />
             </button>
           )}
+          {me?.role === "admin" && (
+            <button onClick={() => setShowReports((v) => !v)} className="wa-tap"
+              style={{ ...iconBtn(t), ...(showReports ? { background: t.accent, color: t.accentText, borderColor: t.accent } : {}) }}
+              aria-label="Relatórios" title="Relatórios">
+              <BarChart3 size={16} />
+            </button>
+          )}
           <button onClick={toggleTheme} className="wa-tap" style={iconBtn(t)}
             aria-label="Alternar tema" title={theme === "dark" ? "Tema claro" : "Tema escuro"}>
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
@@ -577,6 +585,10 @@ export default function WhatsAppModule() {
             </div>
           )}
         </div>
+      )}
+
+      {showReports && me?.role === "admin" && (
+        <ReportsDashboard t={t} onClose={() => setShowReports(false)} />
       )}
 
       {/* ── Corpo ── */}
@@ -1014,6 +1026,134 @@ export default function WhatsAppModule() {
 }
 
 /* ── Peças ─────────────────────────────────────────────────────────────────── */
+// Formata segundos em algo legível (min/h)
+function secToHuman(s: number): string {
+  s = Math.round(Number(s) || 0);
+  if (s <= 0) return "—";
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60), sec = s % 60;
+  if (m < 60) return sec ? `${m}min ${sec}s` : `${m}min`;
+  const h = Math.floor(m / 60), min = m % 60;
+  return min ? `${h}h ${min}min` : `${h}h`;
+}
+
+// Dashboard de relatórios do atendimento (só administrador)
+function ReportsDashboard({ t, onClose }: { t: Theme; onClose: () => void }) {
+  const [period, setPeriod] = useState("7d");
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    setLoading(true);
+    api(`/api/wa/reports?period=${period}`)
+      .then((d) => { setData(d && !d.error ? d : {}); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [period]);
+
+  const agora = data?.agora || {};
+  const per = data?.periodo || {};
+  const msg = data?.mensagens || {};
+  const atendentes: any[] = data?.atendentes || [];
+  const diario: any[] = data?.diario || [];
+  const maxDay = Math.max(1, ...diario.map((d) => Number(d.total) || 0));
+  const periods: [string, string][] = [["today", "Hoje"], ["7d", "7 dias"], ["30d", "30 dias"]];
+
+  const Card = ({ label, value, sub }: { label: string; value: any; sub?: string }) => (
+    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 14, padding: "15px 17px", minWidth: 0 }}>
+      <div style={{ fontSize: 11.5, color: t.textMuted, fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 25, fontWeight: 700, marginTop: 5, color: t.text, lineHeight: 1.1 }}>{value}</div>
+      {sub ? <div style={{ fontSize: 11, color: t.textFaint, marginTop: 3 }}>{sub}</div> : null}
+    </div>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, background: t.bg, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ flex: "none", padding: "13px 18px", background: t.surface, borderBottom: `1px solid ${t.border}`, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <button onClick={onClose} className="wa-tap" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", color: t.text, cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
+          <ArrowLeft size={17} /> Voltar
+        </button>
+        <div style={{ fontSize: 15, fontWeight: 700, flex: 1, minWidth: 120 }}>Relatórios de atendimento</div>
+        <div style={{ display: "flex", gap: 4, background: t.surfaceHi, borderRadius: 10, padding: 3 }}>
+          {periods.map(([k, lbl]) => (
+            <button key={k} onClick={() => setPeriod(k)} className="wa-tap"
+              style={{ padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 600,
+                background: period === k ? t.accent : "transparent", color: period === k ? t.accentText : t.textMuted }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="wa-scroll" style={{ flex: 1, overflowY: "auto", padding: 18 }}>
+        {loading ? (
+          <div style={{ color: t.textFaint, textAlign: "center", padding: 40 }}>Carregando…</div>
+        ) : (
+          <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+              <Card label="Na fila agora" value={agora.fila ?? 0} sub={Number(agora.esperaMaisAntigo) > 0 ? `mais antigo: ${secToHuman(agora.esperaMaisAntigo)}` : "fila vazia"} />
+              <Card label="Em atendimento" value={agora.ativo ?? 0} />
+              <Card label="Concluídos no período" value={per.concluidas ?? 0} />
+              <Card label="Tempo médio de espera" value={secToHuman(per.esperaMedia)} sub="da fila até atender" />
+              <Card label="Tempo médio de atendimento" value={secToHuman(per.duracaoMedia)} sub="de atender até concluir" />
+              <Card label="Novas conversas" value={per.novas ?? 0} sub="no período" />
+              <Card label="Mensagens (rec./env.)" value={`${msg.recebidas ?? 0} / ${msg.enviadas ?? 0}`} sub="recebidas / enviadas" />
+            </div>
+
+            <div style={{ marginTop: 20, background: t.surface, border: `1px solid ${t.border}`, borderRadius: 14, padding: 18 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14 }}>Conversas por dia (últimos 14 dias)</div>
+              {diario.length === 0 ? (
+                <div style={{ color: t.textFaint, fontSize: 12.5 }}>Sem dados ainda.</div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 150 }}>
+                  {diario.map((d, i) => {
+                    const v = Number(d.total) || 0;
+                    return (
+                      <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minWidth: 0 }}>
+                        <div style={{ fontSize: 10, color: t.textFaint }}>{v || ""}</div>
+                        <div title={`${d.dia}: ${v}`} style={{ width: "100%", maxWidth: 34, height: `${Math.max(4, (v / maxDay) * 112)}px`, background: t.accent, borderRadius: "5px 5px 0 0", transition: "height .3s" }} />
+                        <div style={{ fontSize: 9.5, color: t.textFaint, whiteSpace: "nowrap" }}>{d.dia}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 20, background: t.surface, border: `1px solid ${t.border}`, borderRadius: 14, padding: 18 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Por atendente</div>
+              {atendentes.length === 0 ? (
+                <div style={{ color: t.textFaint, fontSize: 12.5, marginTop: 10 }}>Nenhum atendimento no período.</div>
+              ) : (
+                <div style={{ overflowX: "auto", marginTop: 10 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ color: t.textMuted }}>
+                        <th style={{ padding: "8px 6px", fontWeight: 600, textAlign: "left" }}>Atendente</th>
+                        <th style={{ padding: "8px 6px", fontWeight: 600, textAlign: "center" }}>Em atendimento</th>
+                        <th style={{ padding: "8px 6px", fontWeight: 600, textAlign: "center" }}>Concluídos</th>
+                        <th style={{ padding: "8px 6px", fontWeight: 600, textAlign: "center" }}>Tempo médio</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {atendentes.map((a, i) => (
+                        <tr key={i} style={{ borderTop: `1px solid ${t.border}` }}>
+                          <td style={{ padding: "9px 6px", fontWeight: 600 }}>{a.nome || "—"}</td>
+                          <td style={{ padding: "9px 6px", textAlign: "center" }}>{a.ativas ?? 0}</td>
+                          <td style={{ padding: "9px 6px", textAlign: "center" }}>{a.concluidas ?? 0}</td>
+                          <td style={{ padding: "9px 6px", textAlign: "center" }}>{secToHuman(a.duracaoMedia)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Seletor de empresa com busca — mostra a empresa escolhida; ao abrir, tem uma barra de
 // busca e a lista filtrada por nome. Substitui o <select> nativo (ruim com muitas empresas).
 function CompanyPicker({ clients, value, onChange, t }: { clients: any[]; value: string; onChange: (id: string) => void; t: Theme }) {
