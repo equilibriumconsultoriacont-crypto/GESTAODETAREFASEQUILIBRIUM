@@ -1,4 +1,4 @@
-# Equilíbrio - Gestão de Tarefas Contábeis
+# Equilibrium - Gestão de Tarefas Contábeis
 
 ## Schema e Banco de Dados
 - [x] Tabela `clients` (id, name, cnpj, email, status, createdAt)
@@ -18,7 +18,7 @@
 - [x] Lógica de alerta: tarefas vencendo em 3 dias ou já vencidas
 
 ## Frontend
-- [x] Identidade visual dark teal (CSS variables Equilíbrio)
+- [x] Identidade visual dark teal (CSS variables Equilibrium)
 - [x] AppLayout com sidebar responsiva
 - [x] Página Dashboard: cards de resumo (pendentes, vencidas, concluídas), lista de tarefas próximas
 - [x] Página Clientes: listagem, cadastro, edição, desativação

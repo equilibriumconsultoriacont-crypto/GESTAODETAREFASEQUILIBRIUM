@@ -1,6 +1,6 @@
 # Plataforma Equilíbrium
 
-Sistema interno da **Equilíbrio Consultoria Contábil** (Rio Claro/SP) que substitui o "Acessórias".
+Sistema interno da **Equilibrium Consultoria Contábil** (Rio Claro/SP) que substitui o "Acessórias".
 Módulos: **Tarefas** (gestão de obrigações contábeis), **Portal do Cliente**, **Propostas**.
 
 ## Idioma e estilo de trabalho
