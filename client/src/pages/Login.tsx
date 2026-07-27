@@ -80,8 +80,8 @@ export default function Login() {
             @keyframes eqFadeUp { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
             @keyframes eqSpin { to { transform: rotate(360deg); } }
           `}</style>
-          <img src="/logo.png" alt="Equilíbrio" style={{ width: 104, height: 104, objectFit: "contain", animation: "eqLogoIn 0.8s cubic-bezier(0.16,1,0.3,1) both" }} />
-          <h1 style={{ color: "#e5e5e5", fontSize: 26, fontWeight: 700, letterSpacing: "0.5px", margin: "20px 0 4px", animation: "eqFadeUp 0.7s ease 0.55s both" }}>Equilíbrio</h1>
+          <img src="/logo.png" alt="Equilibrium" style={{ width: 104, height: 104, objectFit: "contain", animation: "eqLogoIn 0.8s cubic-bezier(0.16,1,0.3,1) both" }} />
+          <h1 style={{ color: "#e5e5e5", fontSize: 26, fontWeight: 700, letterSpacing: "0.5px", margin: "20px 0 4px", animation: "eqFadeUp 0.7s ease 0.55s both" }}>Equilibrium</h1>
           <p style={{ color: "#9fd4dc", fontSize: 12, letterSpacing: "2.5px", textTransform: "uppercase", margin: 0, animation: "eqFadeUp 0.7s ease 0.75s both" }}>Consultoria Contábil</p>
           <div style={{ marginTop: 28, width: 28, height: 28, borderRadius: "50%", border: "2.5px solid rgba(159,212,220,0.15)", borderTopColor: "#24646c", animation: "eqFadeUp 0.7s ease 0.95s both, eqSpin 0.8s linear infinite" }} />
         </div>
@@ -91,8 +91,8 @@ export default function Login() {
 
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <img src="/logo.png" alt="Equilíbrio" style={{ width: 72, height: 72, objectFit: "contain", margin: "0 auto 16px", display: "block" }} />
-          <h1 style={{ color: "#e5e5e5", fontSize: 24, fontWeight: "bold", margin: "0 0 4px" }}>Equilíbrio</h1>
+          <img src="/logo.png" alt="Equilibrium" style={{ width: 72, height: 72, objectFit: "contain", margin: "0 auto 16px", display: "block" }} />
+          <h1 style={{ color: "#e5e5e5", fontSize: 24, fontWeight: "bold", margin: "0 0 4px" }}>Equilibrium</h1>
           <p style={{ color: "#a1a1aa", fontSize: 14, margin: 0 }}>Gestão de Tarefas Contábeis</p>
         </div>
 

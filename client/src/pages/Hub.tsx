@@ -70,9 +70,9 @@ export default function Hub() {
       <header style={{ borderBottom: "1px solid #1e4f5c", background: "#0d1f22" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <img src="/logo.png" alt="Equilíbrio" style={{ width: 36, height: 36, objectFit: "contain" }} />
+            <img src="/logo.png" alt="Equilibrium" style={{ width: 36, height: 36, objectFit: "contain" }} />
             <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: "#f4f4f5" }}>Equilíbrio</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#f4f4f5" }}>Equilibrium</div>
               <div style={{ fontSize: 12, color: "#71717a" }}>Plataforma Contábil</div>
             </div>
           </div>

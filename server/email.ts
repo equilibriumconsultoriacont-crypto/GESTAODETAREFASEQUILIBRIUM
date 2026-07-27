@@ -120,7 +120,7 @@ export function buildGuiaEmailHtml(params: {
   const next = new Date(Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate() + 1));
   const dEnd = `${next.getUTCFullYear()}${pad(next.getUTCMonth() + 1)}${pad(next.getUTCDate())}`;
   const gcalText = encodeURIComponent(`Vencimento ${params.taskTitle} (${params.competencia})`);
-  const gcalDetails = encodeURIComponent(`Guia ${params.taskType} referente à competência ${params.competencia}. Enviada pela Equilíbrio Consultoria Contábil.`);
+  const gcalDetails = encodeURIComponent(`Guia ${params.taskType} referente à competência ${params.competencia}. Enviada pela Equilibrium Consultoria Contábil.`);
   const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${gcalText}&dates=${dStart}/${dEnd}&details=${gcalDetails}`;
   return `
 <!DOCTYPE html>

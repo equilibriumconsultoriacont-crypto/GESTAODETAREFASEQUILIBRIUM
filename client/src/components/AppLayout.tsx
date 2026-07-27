@@ -93,9 +93,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center justify-between px-5 py-5" style={{ borderBottom: "1px solid #1e4f5c" }}>
           <Link href="/">
             <div className="flex items-center gap-3 cursor-pointer" title="Voltar à plataforma">
-              <img src="/logo.png" alt="Equilíbrio" className="w-9 h-9 object-contain" />
+              <img src="/logo.png" alt="Equilibrium" className="w-9 h-9 object-contain" />
               <div>
-                <p className="font-semibold text-sm leading-tight" style={{ color: "#e5e5e5" }}>Equilíbrio</p>
+                <p className="font-semibold text-sm leading-tight" style={{ color: "#e5e5e5" }}>Equilibrium</p>
                 <p className="text-xs" style={{ color: "#9fd4dc" }}>Gestão de Tarefas</p>
               </div>
             </div>
@@ -188,8 +188,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <button onClick={() => setMobileOpen(true)} style={{ color: "#a1a1aa" }}>
             <Menu size={20} />
           </button>
-          <img src="/logo.png" alt="Equilíbrio" className="w-7 h-7 object-contain" />
-          <span className="font-semibold text-sm flex-1" style={{ color: "#e5e5e5" }}>Equilíbrio</span>
+          <img src="/logo.png" alt="Equilibrium" className="w-7 h-7 object-contain" />
+          <span className="font-semibold text-sm flex-1" style={{ color: "#e5e5e5" }}>Equilibrium</span>
           <button onClick={() => logout()} className="flex items-center gap-1 text-xs" style={{ color: "#f87171" }} title="Sair">
             <LogOut size={16} />
           </button>

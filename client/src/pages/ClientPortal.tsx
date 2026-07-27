@@ -541,7 +541,7 @@ function CompanySelector({ companies, onSelect, email, onLogout }: { companies: 
     <div className="min-h-screen flex flex-col" style={{ background: "#0a0a0a", maxWidth: 480, margin: "0 auto" }}>
       <div className="flex items-center justify-between px-4 py-4" style={{ borderBottom: "1px solid #1a1a1a" }}>
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="Equilíbrio" className="w-8 h-8 object-contain" />
+          <img src="/logo.png" alt="Equilibrium" className="w-8 h-8 object-contain" />
           <div>
             <p className="text-sm font-semibold" style={{ color: "#e5e5e5" }}>Escolha a empresa</p>
             <p className="text-xs" style={{ color: "#52525b" }}>{email}</p>
@@ -647,7 +647,7 @@ export default function ClientPortal({ previewClientId }: { previewClientId?: nu
                 <ChevronLeft size={18} />
               </button>
             ) : (
-              <img src="/logo.png" alt="Equilíbrio" className="w-8 h-8 object-contain" />
+              <img src="/logo.png" alt="Equilibrium" className="w-8 h-8 object-contain" />
             )}
             <div>
               <p className="text-sm font-semibold" style={{ color: "#e5e5e5" }}>

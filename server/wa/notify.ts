@@ -26,7 +26,7 @@ export async function notifyGuiaSent(opts: {
   const msg =
     `Olá${firstName ? `, ${firstName}` : ""}! 👋\n\n` +
     `Sua guia de *${opts.taskType}* (competência ${opts.competencia}) foi enviada para o seu e-mail. ✅\n\n` +
-    `Qualquer dúvida, é só chamar por aqui.\n_Equilíbrio Consultoria Contábil_`;
+    `Qualquer dúvida, é só chamar por aqui.\n_Equilibrium Consultoria Contábil_`;
 
   try {
     const sent = await sendToJid(jidFromNumber(number), msg);

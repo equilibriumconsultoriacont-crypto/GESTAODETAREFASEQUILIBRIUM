@@ -1093,7 +1093,7 @@ function buildWelcomeEmailHtml(name: string, password: string, baseUrl: string):
   <div style="font-family: Arial, Helvetica, sans-serif; background:#f4f4f5; padding:24px;">
     <div style="max-width:520px; margin:0 auto; background:#ffffff; border-radius:14px; overflow:hidden; border:1px solid #e4e4e7;">
       <div style="background:#14464f; padding:24px; text-align:center;">
-        <h1 style="color:#ffffff; font-size:20px; margin:0;">Equilíbrio Consultoria Contábil</h1>
+        <h1 style="color:#ffffff; font-size:20px; margin:0;">Equilibrium Consultoria Contábil</h1>
         <p style="color:#9fd4dc; font-size:13px; margin:6px 0 0;">Portal do Cliente</p>
       </div>
       <div style="padding:28px 24px; color:#27272a;">
@@ -1138,7 +1138,7 @@ async function provisionClientAccess(email: string, clientId: number, name?: str
     const base = process.env.APP_URL || "https://gestaodetarefasequilibrium.onrender.com";
     await sendEmail({
       to: email,
-      subject: "Seu acesso ao Portal do Cliente — Equilíbrio Consultoria",
+      subject: "Seu acesso ao Portal do Cliente — Equilibrium Consultoria",
       html: buildWelcomeEmailHtml(name || "", tempPassword, base),
     });
   } catch (e: any) {
@@ -1447,7 +1447,7 @@ const clientAccessRouter = router({
         const base = process.env.APP_URL || "https://gestaodetarefasequilibrium.onrender.com";
         await sendEmail({
           to: email,
-          subject: "Seu acesso ao Portal do Cliente — Equilíbrio Consultoria",
+          subject: "Seu acesso ao Portal do Cliente — Equilibrium Consultoria",
           html: buildWelcomeEmailHtml(client?.name || "", tempPassword, base),
         });
       } catch (e: any) {
@@ -1475,8 +1475,8 @@ const clientAccessRouter = router({
         const { sendEmail } = await import("./email");
         await sendEmail({
           to: input.to,
-          subject: "Teste de e-mail — Equilíbrio",
-          html: "<div style=\"font-family:Arial,sans-serif;padding:20px\"><h2 style=\"color:#14464f\">Funcionou! ✅</h2><p>Este é um e-mail de teste do sistema Equilíbrio. Se você recebeu, o envio de e-mails está funcionando normalmente.</p></div>",
+          subject: "Teste de e-mail — Equilibrium",
+          html: "<div style=\"font-family:Arial,sans-serif;padding:20px\"><h2 style=\"color:#14464f\">Funcionou! ✅</h2><p>Este é um e-mail de teste do sistema Equilibrium. Se você recebeu, o envio de e-mails está funcionando normalmente.</p></div>",
         });
         return { success: true, method, from, hasResend, hasSmtp, error: null };
       } catch (e: any) {
