@@ -115,8 +115,6 @@ export default function WhatsAppModule() {
   }, []);
 
   useEffect(() => { api("/api/wa/me").then(setMe).catch(() => {}); }, []);
-  // Admin abre no Painel; funcionário abre direto no Atendimento
-  useEffect(() => { if (me?.role === "admin") setSection("dashboard"); }, [me?.role]);
 
   // Notificações push + service worker: recebe aviso com o app fechado e badge no ícone
   useEffect(() => {
@@ -159,6 +157,8 @@ export default function WhatsAppModule() {
   const [contacts, setContacts] = useState<any[]>([]);
   const [clientsList, setClientsList] = useState<any[]>([]);
   const [section, setSection] = useState<"dashboard" | "atendimento">("atendimento");
+  // Admin abre no Painel; funcionário abre direto no Atendimento
+  useEffect(() => { if (me?.role === "admin") setSection("dashboard"); }, [me?.role]);
   const [newNumber, setNewNumber] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<Conv | null>(null);
