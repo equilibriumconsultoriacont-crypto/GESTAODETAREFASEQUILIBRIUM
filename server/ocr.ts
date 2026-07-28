@@ -104,6 +104,31 @@ const DOCUMENT_TEMPLATES: DocTemplate[] = [
     baseConfidence: 92,
   },
 
+  // ── Parcelamento (PGFN / Receita / Simples) ─────────────────────────────────
+  // Precisa vir ANTES do DAS: um parcelamento do Simples também cita "Simples Nacional",
+  // mas é um documento diferente (prestação de parcelamento), não a guia DAS mensal.
+  {
+    name: "Parcelamento (PGFN/Receita)",
+    documentType: "PARCELAMENTO",
+    identifiers: [
+      /Parcelamento/i,
+      /PGFN/i,
+      /Procuradoria[\s\-]?Geral\s+da\s+Fazenda/i,
+      /presta[çc][aã]o\s+.*parcelamento/i,
+      /parcela\s+n[ºo°]/i,
+      /DAS[\s\-]?PARC/i,
+    ],
+    extractors: {
+      cnpj: /(\d{2}[\.\s]?\d{3}[\.\s]?\d{3}[\/\s]?\d{4}[\-\s]?\d{2})/,
+      cpf: /(\d{3}[\.\s]?\d{3}[\.\s]?\d{3}[\-\s]?\d{2})(?!\d)/,
+      competencia: /(0[1-9]|1[0-2])[\/\-](20\d{2})/,
+      dataVencimento: /(?:Pagar\s+(?:este\s+documento\s+)?at[eé]|Data\s+de\s+Vencimento|Vencimento:|Vencimento)[^\d]*(\d{2}\/\d{2}\/20\d{2})/i,
+      valor: /(?:Valor\s+Total\s+do\s+Documento|Valor\s+Total|Valor:)[^0-9]*([\d]{1,3}(?:\.\d{3})*[,]\d{2})/i,
+      codigoBarras: /(\d{47,48})/,
+    },
+    baseConfidence: 88,
+  },
+
   // ── DAS Simples Nacional ────────────────────────────────────────────────────
   {
     name: "DAS Simples Nacional",
@@ -360,7 +385,7 @@ export async function recognizeDocument(
       impostoDeclarado,
       recalculado,
       confidence,
-      extractedText: text.slice(0, 500),
+      extractedText: text.slice(0, 4000),
     };
   }
 

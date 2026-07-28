@@ -748,20 +748,61 @@ const smartUploadRouter = router({
       // 5. Localizar a tarefa do cliente para a competência e tipo de documento
       const clientTasks = await listTasks({ clientId: matchedClient.id });
 
-      // Mapeamento de tipo de documento para tipo de tarefa
+      // Palavras-chave ficam no template (tarefa → recurring → template). Monta o mapa
+      // recurringTaskId → palavras-chave, para casar a tarefa pelo que o usuário cadastrou.
+      const kwByRecurring = new Map<number, string>();
+      try {
+        const [recs, tpls] = await Promise.all([
+          listRecurringTasks(matchedClient.id),
+          listTaskTemplates(false),
+        ]);
+        const tplKw = new Map<number, string>((tpls as any[]).map((tp) => [tp.id, (tp.ocrKeywords || "").toString()]));
+        for (const r of recs as any[]) {
+          const kw = tplKw.get(r.taskTemplateId);
+          if (kw) kwByRecurring.set(r.id, kw);
+        }
+      } catch (e: any) {
+        console.warn("[SmartUpload] palavras-chave indisponíveis:", e?.message);
+      }
+
+      // Texto para casar: nome do arquivo + texto extraído do PDF
+      const searchText = `${input.filename || ""} ${recognition.extractedText || ""}`.toLowerCase();
+
+      // PRIORIDADE 1: casa pela PALAVRA-CHAVE cadastrada na tarefa (é o que o usuário configurou).
+      let matchedTask: any = undefined;
+      const scored = clientTasks
+        .map((t: any) => {
+          const kws = (kwByRecurring.get(t.recurringTaskId) || "")
+            .split(",").map((k) => k.trim().toLowerCase()).filter((k) => k.length >= 3);
+          const hits = kws.filter((k) => searchText.includes(k)).length;
+          const compMatch = recognition.competencia && t.competencia === recognition.competencia;
+          const open = t.status === "PENDENTE" || t.status === "EM_ANDAMENTO";
+          return { task: t, hits, score: hits * 10 + (compMatch ? 5 : 0) + (open ? 1 : 0) };
+        })
+        .filter((x) => x.hits > 0)
+        .sort((a, b) => b.score - a.score);
+      if (scored.length) {
+        matchedTask = scored[0].task;
+        console.log(`[SmartUpload] casou por palavra-chave: tarefa ${matchedTask.id} (${matchedTask.title})`);
+      }
+
+      // Mapeamento de tipo de documento para tipo de tarefa (fallback quando não casou por palavra-chave)
       const docTypeToTaskType: Record<string, string> = {
-        DAS: "DAS", DAS_MEI: "DAS", NFS: "NFS", DCTF: "DCTF", SPED: "SPED", OUTROS: "OUTROS",
+        DAS: "DAS", DAS_MEI: "DAS", NFS: "NFS", DCTF: "DCTF", SPED: "SPED",
+        PARCELAMENTO: "OUTROS", PGDAS: "PGDAS", OUTROS: "OUTROS",
       };
       const targetTaskType = docTypeToTaskType[recognition.documentType] || "OUTROS";
       const isMei = recognition.documentType === "DAS_MEI";
 
       // Busca 1: tarefa do tipo certo + competência certa
-      let matchedTask = clientTasks.find(
-        (t) =>
-          t.competencia === recognition.competencia &&
-          t.taskType === targetTaskType &&
-          (!isMei || t.title.toUpperCase().includes("MEI"))
-      );
+      if (!matchedTask) {
+        matchedTask = clientTasks.find(
+          (t) =>
+            t.competencia === recognition.competencia &&
+            t.taskType === targetTaskType &&
+            (!isMei || t.title.toUpperCase().includes("MEI"))
+        );
+      }
 
       // Busca 2: mesma competência, qualquer tipo parecido
       if (!matchedTask && recognition.competencia) {
