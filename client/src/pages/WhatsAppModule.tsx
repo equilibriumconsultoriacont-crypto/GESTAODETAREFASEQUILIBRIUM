@@ -23,7 +23,7 @@ const THEMES: Record<"dark" | "light", Theme> = {
     bg: "#081311", surface: "#0d1917", surfaceHi: "#122220", surfaceActive: "#123029",
     border: "#1d302d", borderHi: "#294640",
     text: "#e6edeb", textMuted: "#8ba09b", textFaint: "#566a66",
-    accent: "#33a2b8", accentText: "#03211f", accentSoft: "rgba(51,162,184,.13)",
+    accent: "#2f8fbd", accentText: "#ffffff", accentSoft: "rgba(47,143,189,.16)",
     bubbleMe: "#104043", bubbleThem: "#17221f",
     danger: "#f87171", dangerSoft: "rgba(248,113,113,.10)", dangerBorder: "rgba(248,113,113,.25)",
     ok: "#33c98f", warn: "#e0a458", off: "#ef4444",
@@ -465,7 +465,7 @@ export default function WhatsAppModule() {
   const showBanner = conn.status !== "open" && !(isMobile && active);
 
   return (
-    <div style={{ height: "100dvh", display: "flex", flexDirection: "column", background: t.bg, color: t.text,
+    <div style={{ height: "100dvh", width: "100%", maxWidth: "100vw", overflow: "hidden", display: "flex", flexDirection: "column", background: t.bg, color: t.text,
       fontFamily: "Inter, system-ui, -apple-system, sans-serif", transition: "background .25s, color .25s" }}>
       <style>{`
         * { box-sizing: border-box; }
@@ -608,7 +608,7 @@ export default function WhatsAppModule() {
         <>
         {/* Lista */}
         {showList && (
-          <aside style={{ width: isMobile ? "100%" : 340, flex: "none", background: t.surface,
+          <aside style={{ flex: isMobile ? "1 1 0%" : "none", width: isMobile ? "auto" : 340, minWidth: 0, background: t.surface,
             borderRight: isMobile ? "none" : `1px solid ${t.border}`, display: "flex", flexDirection: "column",
             transition: "background .25s, border-color .25s" }}>
             <div style={{ padding: "12px 12px 10px", display: "flex", flexDirection: "column", gap: 10 }}>
