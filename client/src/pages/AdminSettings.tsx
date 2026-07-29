@@ -232,7 +232,6 @@ const PLATFORM_MODULES = [
       { value: "admin", label: "Administrador" },
     ],
     hasDataScope: false,
-    disabled: true, // em preparação
   },
 ];
 

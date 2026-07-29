@@ -40,7 +40,10 @@ export default function Dashboard() {
   const competencia = `${mm}/${yyyy}`;
   const monthLabel = MONTHS.find((m) => m.v === mm)?.l ?? mm;
 
-  const { data, isLoading } = trpc.tasks.managerialDashboard.useQuery({ competencia });
+  const { data, isLoading } = trpc.tasks.managerialDashboard.useQuery(
+    { competencia },
+    { refetchOnWindowFocus: true, refetchInterval: 45_000, refetchOnMount: "always" }
+  );
   const firstName = (user?.name ?? "").split(" ")[0] || "";
 
   return (
