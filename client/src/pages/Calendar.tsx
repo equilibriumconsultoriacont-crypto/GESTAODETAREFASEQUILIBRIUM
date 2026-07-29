@@ -20,7 +20,7 @@ function toLocalInput(d: Date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function CalendarPage() {
+export function CalendarView() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth());
   const [year, setYear] = useState(now.getFullYear());
@@ -95,7 +95,7 @@ export default function CalendarPage() {
   const selectedDayEvents = selectedDay ? (eventsByDay.get(selectedDay) ?? []) : [];
 
   return (
-    <AppLayout>
+    <>
       <div className="space-y-5">
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -245,6 +245,15 @@ export default function CalendarPage() {
         invitableUsers={invitableUsers}
         onSaved={() => { setDialogOpen(false); refetch(); utils.calendar.events.invalidate(); }}
       />
+    </>
+  );
+}
+
+// Página do calendário no módulo de Tarefas (com o layout padrão)
+export default function CalendarPage() {
+  return (
+    <AppLayout>
+      <CalendarView />
     </AppLayout>
   );
 }

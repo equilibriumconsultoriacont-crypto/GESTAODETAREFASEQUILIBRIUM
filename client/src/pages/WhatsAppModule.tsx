@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { CalendarView } from "./Calendar";
 import { Link } from "wouter";
 import {
   ArrowLeft, ChevronLeft, Send, QrCode, Search, Sun, Moon, RotateCw, Check, CheckCheck, Clock, MessageSquare,
-  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus, Building2, ChevronDown, BarChart3, Reply, X as XIcon,
+  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus, Building2, ChevronDown, BarChart3, Reply, X as XIcon, CalendarDays,
 } from "lucide-react";
 
 /* ── Temas ─────────────────────────────────────────────────────────────────── */
@@ -157,7 +158,7 @@ export default function WhatsAppModule() {
   const [view, setView] = useState<"chats" | "contacts">("chats");
   const [contacts, setContacts] = useState<any[]>([]);
   const [clientsList, setClientsList] = useState<any[]>([]);
-  const [section, setSection] = useState<"dashboard" | "atendimento">("atendimento");
+  const [section, setSection] = useState<"dashboard" | "atendimento" | "agenda">("atendimento");
   // Admin abre no Painel; funcionário abre direto no Atendimento
   useEffect(() => { if (me?.role === "admin") setSection("dashboard"); }, [me?.role]);
   const [newNumber, setNewNumber] = useState("");
@@ -590,26 +591,32 @@ export default function WhatsAppModule() {
 
       {/* ── Corpo ── */}
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        {me?.role === "admin" && (
-          <nav style={{ flex: "none", width: isMobile ? 58 : 78, background: t.surface, borderRight: `1px solid ${t.border}`,
-            display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0", gap: 6,
-            transition: "background .25s, border-color .25s" }}>
-            {([["dashboard", "Painel", BarChart3], ["atendimento", "Atendimento", MessageSquare]] as [string, string, any][]).map(([key, label, Icon]) => {
-              const on = section === key;
-              return (
-                <button key={key} onClick={() => setSection(key as any)} className="wa-tap" title={label}
-                  style={{ width: isMobile ? 46 : 62, padding: "9px 0", borderRadius: 12, border: "none", cursor: "pointer",
-                    background: on ? t.accent : "transparent", color: on ? t.accentText : t.textMuted,
-                    display: "flex", flexDirection: "column", alignItems: "center", gap: 4, fontSize: 9.5, fontWeight: 600, lineHeight: 1.1 }}>
-                  <Icon size={20} />
-                  {!isMobile && <span>{label}</span>}
-                </button>
-              );
-            })}
-          </nav>
-        )}
+        <nav style={{ flex: "none", width: isMobile ? 58 : 78, background: t.surface, borderRight: `1px solid ${t.border}`,
+          display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0", gap: 6,
+          transition: "background .25s, border-color .25s" }}>
+          {(([
+            ...(me?.role === "admin" ? [["dashboard", "Painel", BarChart3]] : []),
+            ["atendimento", "Atendimento", MessageSquare],
+            ["agenda", "Agenda", CalendarDays],
+          ]) as [string, string, any][]).map(([key, label, Icon]) => {
+            const on = section === key;
+            return (
+              <button key={key} onClick={() => setSection(key as any)} className="wa-tap" title={label}
+                style={{ width: isMobile ? 46 : 62, padding: "9px 0", borderRadius: 12, border: "none", cursor: "pointer",
+                  background: on ? t.accent : "transparent", color: on ? t.accentText : t.textMuted,
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 4, fontSize: 9.5, fontWeight: 600, lineHeight: 1.1 }}>
+                <Icon size={20} />
+                {!isMobile && <span>{label}</span>}
+              </button>
+            );
+          })}
+        </nav>
         {section === "dashboard" && me?.role === "admin" ? (
           <ReportsDashboard t={t} />
+        ) : section === "agenda" ? (
+          <div className="wa-scroll" style={{ flex: 1, overflowY: "auto", background: t.bg, padding: isMobile ? "12px" : "18px 22px" }}>
+            <CalendarView />
+          </div>
         ) : (
         <>
         {/* Lista */}
