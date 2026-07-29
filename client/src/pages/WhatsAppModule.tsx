@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import {
   ArrowLeft, ChevronLeft, Send, QrCode, Search, Sun, Moon, RotateCw, Check, CheckCheck, Clock, MessageSquare,
-  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus, Building2, ChevronDown, BarChart3,
+  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus, Building2, ChevronDown, BarChart3, Reply, X as XIcon,
 } from "lucide-react";
 
 /* ── Temas ─────────────────────────────────────────────────────────────────── */
@@ -52,6 +52,7 @@ type Msg = {
   id: number; senderType: string; fromMe: number | boolean; content: string | null;
   messageType: string; status: string; createdAt: string;
   agentName?: string | null; agentRole?: string | null;
+  waMessageId?: string | null; replyTo?: string | null;
 };
 
 const api = (path: string, opts?: RequestInit) =>
@@ -253,13 +254,17 @@ export default function WhatsAppModule() {
     setText("");
     // Otimista: mostra a mensagem na hora (o envio real leva 1-2s pelo WhatsApp)
     const tempId = -Date.now();
+    const rep = replyingTo;
+    setReplyingTo(null);
     const temp: Msg = {
       id: tempId, senderType: "agent", fromMe: 1, content: body, messageType: "text",
       status: "sending", createdAt: new Date().toISOString(), agentName: "Você",
+      replyTo: rep?.content || null,
     };
     setMsgs((m) => [...m, temp]);
     const r = await api(`/api/wa/conversations/${active.id}/send`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: body }),
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: body, ...(rep?.waMessageId ? { quotedId: rep.waMessageId, quotedText: rep.content || "" } : {}) }),
     }).catch(() => ({ error: "Sem conexão" }));
     setSending(false);
     if (r?.ok) { loadMsgs(active.id); loadConvs(); }
@@ -310,6 +315,7 @@ export default function WhatsAppModule() {
   };
 
   const [contactForm, setContactForm] = useState<any>(null);
+  const [replyingTo, setReplyingTo] = useState<Msg | null>(null);
   const reloadContacts = () => api("/api/wa/contacts").then((r) => Array.isArray(r) && setContacts(r)).catch(() => {});
   const saveContact = async () => {
     const f = contactForm;
@@ -854,17 +860,25 @@ export default function WhatsAppModule() {
                             {label}
                           </div>
                         )}
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, maxWidth: "100%" }}>
-                          {me && m.messageType === "text" && !!m.content && m.content !== "🚫 Mensagem apagada" && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, maxWidth: "100%", flexDirection: me ? "row" : "row-reverse" }}>
+                          {m.content !== "🚫 Mensagem apagada" && (
                             <div className="wa-msg-actions" style={{ display: "flex", gap: 2, flex: "none" }}>
-                              <button onClick={() => editMsg(m)} className="wa-tap" aria-label="Editar" title="Editar"
+                              <button onClick={() => setReplyingTo(m)} className="wa-tap" aria-label="Responder" title="Responder"
                                 style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: t.surfaceHi, color: t.textMuted, cursor: "pointer", display: "grid", placeItems: "center" }}>
-                                <Pencil size={13} />
+                                <Reply size={13} />
                               </button>
-                              <button onClick={() => deleteMsg(m)} className="wa-tap" aria-label="Apagar" title="Apagar"
-                                style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: t.surfaceHi, color: t.danger, cursor: "pointer", display: "grid", placeItems: "center" }}>
-                                <Trash2 size={13} />
-                              </button>
+                              {me && m.messageType === "text" && !!m.content && (
+                                <>
+                                  <button onClick={() => editMsg(m)} className="wa-tap" aria-label="Editar" title="Editar"
+                                    style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: t.surfaceHi, color: t.textMuted, cursor: "pointer", display: "grid", placeItems: "center" }}>
+                                    <Pencil size={13} />
+                                  </button>
+                                  <button onClick={() => deleteMsg(m)} className="wa-tap" aria-label="Apagar" title="Apagar"
+                                    style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: t.surfaceHi, color: t.danger, cursor: "pointer", display: "grid", placeItems: "center" }}>
+                                    <Trash2 size={13} />
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
                           <div style={{ background: me ? t.bubbleMe : t.bubbleThem, color: t.text,
@@ -872,6 +886,12 @@ export default function WhatsAppModule() {
                           borderRadius: 16, borderBottomRightRadius: me ? 5 : 16, borderBottomLeftRadius: me ? 16 : 5,
                           padding: "8px 12px 6px", fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word",
                           opacity: m.status === "sending" ? 0.72 : 1 }}>
+                          {m.replyTo && (
+                            <div style={{ borderLeft: `3px solid ${me ? "rgba(255,255,255,.55)" : t.accent}`, paddingLeft: 8, marginBottom: 5,
+                              fontSize: 12.5, opacity: 0.78, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                              {m.replyTo.length > 120 ? m.replyTo.slice(0, 120) + "…" : m.replyTo}
+                            </div>
+                          )}
                           {nonText && !m.fromMe && ["image", "video", "audio", "document", "sticker"].includes(m.messageType) ? (
                             <a href={`/api/wa/media/${m.id}`} target="_blank" rel="noreferrer"
                               style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontWeight: 600, fontSize: 13,
@@ -904,8 +924,25 @@ export default function WhatsAppModule() {
                   })}
                 </div>
 
+                {/* barra de citação ao responder */}
+                {replyingTo && (
+                  <div style={{ flex: "none", padding: "8px 14px", background: t.surfaceHi, borderTop: `1px solid ${t.border}`,
+                    display: "flex", alignItems: "center", gap: 10 }}>
+                    <Reply size={16} style={{ color: t.accent, flex: "none" }} />
+                    <div style={{ borderLeft: `3px solid ${t.accent}`, paddingLeft: 8, flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: t.accent }}>Respondendo</div>
+                      <div style={{ fontSize: 12.5, color: t.textMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {replyingTo.content || "(mídia)"}
+                      </div>
+                    </div>
+                    <button onClick={() => setReplyingTo(null)} className="wa-tap" aria-label="Cancelar resposta"
+                      style={{ width: 30, height: 30, flex: "none", borderRadius: 8, border: "none", background: "transparent", color: t.textMuted, cursor: "pointer", display: "grid", placeItems: "center" }}>
+                      <XIcon size={16} />
+                    </button>
+                  </div>
+                )}
                 {/* composer */}
-                <div style={{ flex: "none", padding: 12, background: t.surface, borderTop: `1px solid ${t.border}`,
+                <div style={{ flex: "none", padding: 12, background: t.surface, borderTop: replyingTo ? "none" : `1px solid ${t.border}`,
                   display: "flex", gap: 8, alignItems: "flex-end", transition: "background .25s, border-color .25s" }}>
                   <input type="file" ref={fileInputRef} onChange={onPickFile} style={{ display: "none" }}
                     accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip" />

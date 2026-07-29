@@ -128,9 +128,9 @@ export async function sendText(number: string, text: string) {
 
 // Envia para o jid EXATO recebido (telefone @s.whatsapp.net ou LID @lid). Preferir isto
 // ao reconstruir a partir do numero: contatos por LID nao teem telefone valido.
-export async function sendToJid(jid: string, text: string) {
+export async function sendToJid(jid: string, text: string, quoted?: any) {
   if (!sock || status !== "open") throw new Error("WhatsApp não está conectado.");
-  return sock.sendMessage(jid, { text });
+  return sock.sendMessage(jid, { text }, quoted ? { quoted } : undefined);
 }
 
 export async function sendMedia(jid: string, opts: { type: string; data: Buffer; mimetype?: string; fileName?: string; caption?: string; ptt?: boolean }) {

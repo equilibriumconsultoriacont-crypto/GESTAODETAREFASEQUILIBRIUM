@@ -252,6 +252,7 @@ export function registerWaRoutes(app: Express) {
         content: waMessages.content,
         messageType: waMessages.messageType,
         mediaUrl: waMessages.mediaUrl,
+        replyTo: waMessages.replyTo,
         waMessageId: waMessages.waMessageId,
         status: waMessages.status,
         agentId: waMessages.agentId,
@@ -287,7 +288,15 @@ export function registerWaRoutes(app: Express) {
       const label = agent?.name || agent?.email?.split("@")[0] || "Atendente";
       const outgoing = `*${label}*\n${text}`;
       const target = contact.jid || (contact.waNumber.includes("@") ? contact.waNumber : contact.waNumber + "@s.whatsapp.net");
-      const sent = await sendToJid(target, outgoing);
+      // Responder citando uma mensagem (opcional): monta o objeto que o WhatsApp usa na citação
+      let quotedMsg: any = undefined;
+      const quotedId = (req.body?.quotedId || "").toString().trim();
+      const quotedText = (req.body?.quotedText || "").toString().slice(0, 500);
+      if (quotedId) {
+        const q = (await db.select({ fromMe: waMessages.fromMe }).from(waMessages).where(eq(waMessages.waMessageId, quotedId)).limit(1))[0];
+        quotedMsg = { key: { remoteJid: target, id: quotedId, fromMe: !!q?.fromMe }, message: { conversation: quotedText || " " } };
+      }
+      const sent = await sendToJid(target, outgoing, quotedMsg);
       const waId = (sent as any)?.key?.id || null;
       await db.insert(waMessages).values({
         conversationId: id,
@@ -298,6 +307,7 @@ export function registerWaRoutes(app: Express) {
         waMessageId: waId,
         status: "sent",
         agentId: user.id,
+        replyTo: quotedId ? (quotedText || null) : null,
       });
       // Responder puxa a conversa para o atendente: vira "em atendimento" e, se não
       // tinha dono, passa a ser de quem respondeu.

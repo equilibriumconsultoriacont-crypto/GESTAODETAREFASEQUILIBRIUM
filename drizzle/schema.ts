@@ -402,6 +402,7 @@ export const waMessages = mysqlTable("wa_messages", {
   content: text("content"),
   messageType: mysqlEnum("messageType", ["text", "image", "audio", "video", "document", "sticker", "location", "template", "other"]).default("text").notNull(),
   mediaUrl: mediumtext("mediaUrl"),
+  replyTo: text("replyTo"), // trecho da mensagem citada
   waMessageId: varchar("waMessageId", { length: 128 }),
   status: mysqlEnum("status", ["received", "sent", "delivered", "read", "failed"]).default("sent").notNull(),
   agentId: int("agentId"), // users.id quando senderType = agent
