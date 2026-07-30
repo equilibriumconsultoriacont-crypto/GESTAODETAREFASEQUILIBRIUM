@@ -3,7 +3,6 @@ import {
   BookOpen,
   Package,
   Building2,
-  CalendarClock,
   CalendarDays,
   CheckSquare,
   ChevronDown,
@@ -30,7 +29,6 @@ const menuGroups = [
     label: "Operação",
     items: [
       { href: "/tarefas", label: "Tarefas", icon: CheckSquare },
-      { href: "/calendario", label: "Calendário", icon: CalendarClock },
       { href: "/upload-inteligente", label: "Upload Guias", icon: CloudUpload },
       { href: "/pendentes-envio", label: "Pendentes Envio", icon: SendHorizonal },
       { href: "/painel-mensal", label: "Painel Mensal", icon: CalendarDays, adminOnly: true },
