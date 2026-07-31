@@ -177,6 +177,51 @@ export function registerWaRoutes(app: Express) {
     res.send(Buffer.from(match[2], "base64"));
   });
 
+  // Cria uma TAREFA AVULSA (não recorrente, não repete no próximo mês) a partir de um pedido
+  // do cliente pelo WhatsApp — ex.: cliente pede uma declaração de faturamento.
+  app.post("/api/wa/conversations/:id/create-task", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    const db = await getDb();
+    if (!db) return res.status(500).json({ error: "sem banco" });
+    const id = parseInt(req.params.id);
+    const title = (req.body?.title || "").toString().trim();
+    const taskType = (req.body?.taskType || "OUTROS").toString();
+    const competencia = (req.body?.competencia || "").toString().trim();
+    const dueDateStr = (req.body?.dueDate || "").toString().trim();
+    const description = (req.body?.description || "").toString().trim();
+    if (!title) return res.status(400).json({ error: "informe um título para a tarefa" });
+    if (!/^\d{2}\/\d{4}$/.test(competencia)) return res.status(400).json({ error: "competência inválida (use MM/AAAA)" });
+    const dueDate = dueDateStr ? new Date(dueDateStr) : null;
+    if (!dueDate || isNaN(dueDate.getTime())) return res.status(400).json({ error: "vencimento inválido" });
+
+    try {
+      const conv = (await db.select().from(waConversations).where(eq(waConversations.id, id)).limit(1))[0];
+      if (!conv) return res.status(404).json({ error: "conversa não encontrada" });
+      const contact = (await db.select().from(waContacts).where(eq(waContacts.id, conv.contactId)).limit(1))[0];
+      if (!contact?.clientId) {
+        return res.status(400).json({ error: "vincule este contato a uma empresa antes de criar a tarefa" });
+      }
+      const { createTask } = await import("../db");
+      const taskId = await createTask({
+        clientId: contact.clientId,
+        recurringTaskId: null, // avulsa: não é gerada de novo nos próximos meses
+        title,
+        description: description || null,
+        taskType: taskType as any,
+        competencia,
+        dueDate,
+        status: "PENDENTE" as any,
+        sendToClient: true,
+      } as any);
+      const who = (await db.select({ n: sql<string>`coalesce(nullif(name,''), substring_index(email,'@',1))` }).from(users).where(eq(users.id, user.id)).limit(1))[0]?.n || "atendente";
+      await sysMsg(db, id, `📋 Tarefa criada por ${who}: "${title}" (venc. ${dueDate.toLocaleDateString("pt-BR")}) ${nowBR()}`, user.id);
+      res.json({ ok: true, taskId });
+    } catch (e: any) {
+      console.error("[WA] create-task:", e?.message);
+      if (!res.headersSent) res.status(500).json({ error: e?.message || "falha ao criar tarefa" });
+    }
+  });
   // Relatórios / métricas do atendimento (SÓ administrador)
   app.get("/api/wa/reports", async (req, res) => {
     const user = await auth(req, res);
