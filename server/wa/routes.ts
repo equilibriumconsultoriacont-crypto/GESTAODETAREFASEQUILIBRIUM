@@ -171,7 +171,9 @@ export function registerWaRoutes(app: Express) {
     if (!db) return res.status(500).end();
     const msgId = parseInt(req.params.msgId);
     const m = (await db.select({ mediaUrl: waMessages.mediaUrl }).from(waMessages).where(eq(waMessages.id, msgId)).limit(1))[0];
-    const match = /^data:([^;]+);base64,(.*)$/s.exec(m?.mediaUrl || "");
+    // Regex tolerante a mime com parâmetros (ex.: "audio/ogg; codecs=opus" das notas de voz).
+    // O separador real ";base64," só aparece uma vez (base64 não tem ';'), então o não-guloso é seguro.
+    const match = /^data:(.+?);base64,(.*)$/s.exec(m?.mediaUrl || "");
     if (!match) return res.status(404).json({ error: "mídia ainda não disponível" });
     res.setHeader("Content-Type", match[1]);
     res.setHeader("Cache-Control", "private, max-age=86400");
@@ -363,14 +365,16 @@ export function registerWaRoutes(app: Express) {
         status: waMessages.status,
         agentId: waMessages.agentId,
         createdAt: waMessages.createdAt,
-        agentName: sql<string | null>`(select coalesce(nullif(name, ''), substring_index(email, '@', 1)) from users where id = ${waMessages.agentId})`,
-        agentRole: sql<string | null>`(select role from users where id = ${waMessages.agentId})`,
+        // JOIN único em users (antes eram 2 subconsultas POR mensagem = centenas de queries)
+        agentName: sql<string | null>`coalesce(nullif(${users.name}, ''), substring_index(${users.email}, '@', 1))`,
+        agentRole: users.role,
       })
       .from(waMessages)
       .innerJoin(waConversations, eq(waMessages.conversationId, waConversations.id))
+      .leftJoin(users, eq(users.id, waMessages.agentId))
       .where(eq(waConversations.contactId, conv.contactId))
       .orderBy(desc(waMessages.id))
-      .limit(300);
+      .limit(150);
     res.json(rows.reverse());
   });
 

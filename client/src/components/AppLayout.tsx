@@ -43,6 +43,7 @@ const menuGroups = [
       { href: "/catalogo", label: "Tarefas Base", icon: BookOpen, adminOnly: true },
       { href: "/catalogos", label: "Catálogos", icon: Package, adminOnly: true },
       { href: "/recorrentes", label: "Recorrentes", icon: RefreshCw, adminOnly: true },
+      { href: "/acessos-clientes", label: "Portal Clientes", icon: KeyRound, adminOnly: true },
       { href: "/configuracoes", label: "Departamentos", icon: Building2, adminOnly: true },
     ],
   },

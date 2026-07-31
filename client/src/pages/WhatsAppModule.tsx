@@ -426,20 +426,33 @@ export default function WhatsAppModule() {
 
   const sendMediaFile = async (file: File | Blob, type: string, fileName?: string, caption?: string) => {
     if (!active) return;
+    stickToBottomRef.current = true;
+    // Feedback imediato: mostra "enviando…" na hora (o upload + envio pelo WhatsApp leva alguns segundos)
+    const tempId = -Date.now();
+    const rotulo = type === "image" ? "imagem" : type === "audio" ? "áudio" : type === "video" ? "vídeo" : "arquivo";
+    const temp: Msg = {
+      id: tempId, senderType: "agent", fromMe: 1, content: `⏳ Enviando ${rotulo}${caption ? `: ${caption}` : ""}…`,
+      messageType: "text", status: "sending", createdAt: new Date().toISOString(), agentName: "Você",
+    };
+    setMsgs((m) => [...m, temp]);
+    setActive((a) => a && (a.status === "queue" || !a.assignedAgentId)
+      ? { ...a, status: "active", assignedAgentId: me?.id ?? a.assignedAgentId, assignedAgentName: me?.name ?? a.assignedAgentName }
+      : a);
     try {
       const dataBase64 = await fileToBase64(file);
       const r = await api(`/api/wa/conversations/${active.id}/send-media`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, dataBase64, mimetype: (file as any).type || undefined, fileName, caption }),
       }).catch(() => ({ error: "falha" } as any));
-      if (r?.ok) {
-        setActive((a) => a && (a.status === "queue" || !a.assignedAgentId)
-          ? { ...a, status: "active", assignedAgentId: me?.id ?? a.assignedAgentId, assignedAgentName: me?.name ?? a.assignedAgentName }
-          : a);
-        loadMsgs(active.id); loadConvs();
+      if (r?.ok) { loadMsgs(active.id); loadConvs(); }
+      else {
+        setMsgs((m) => m.map((x) => (x.id === tempId ? { ...x, status: "failed", content: `❌ Falha ao enviar ${rotulo}` } : x)));
+        alert(r?.error || "Não foi possível enviar o arquivo.");
       }
-      else alert(r?.error || "Não foi possível enviar o arquivo.");
-    } catch { alert("Não foi possível ler o arquivo."); }
+    } catch {
+      setMsgs((m) => m.map((x) => (x.id === tempId ? { ...x, status: "failed", content: `❌ Falha ao enviar ${rotulo}` } : x)));
+      alert("Não foi possível ler o arquivo.");
+    }
   };
 
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1078,9 +1091,11 @@ export default function WhatsAppModule() {
                   )}
                   {text.trim() && !recording ? (
                     <>
-                      <button onClick={() => setScheduleForm({ text: text.trim(), date: "", time: "" })} disabled={conn.status !== "open"} className="wa-tap" aria-label="Agendar envio" title="Agendar para depois"
-                        style={{ width: 44, height: 44, flex: "none", borderRadius: "50%", border: `1px solid ${t.border}`, display: "grid", placeItems: "center",
-                          background: "transparent", color: conn.status === "open" ? t.textMuted : t.textFaint,
+                      <button onClick={() => setScheduleForm({ text: text.trim(), date: "", time: "" })} disabled={conn.status !== "open"} className="wa-tap" aria-label="Agendar envio" title="Agendar para enviar depois"
+                        style={{ width: 44, height: 44, flex: "none", borderRadius: "50%", display: "grid", placeItems: "center",
+                          border: `1px solid ${conn.status === "open" ? t.accent : t.border}`,
+                          background: conn.status === "open" ? t.accentSoft : "transparent",
+                          color: conn.status === "open" ? t.accent : t.textFaint,
                           cursor: conn.status === "open" ? "pointer" : "default" }}>
                         <Clock size={17} />
                       </button>
