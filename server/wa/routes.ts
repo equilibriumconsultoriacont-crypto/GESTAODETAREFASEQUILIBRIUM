@@ -479,7 +479,7 @@ export function registerWaRoutes(app: Express) {
     const { jid, conv, contact } = await convJid(db, id);
     if (!jid || !conv || !contact) return res.status(404).json({ error: "conversa não encontrada" });
     try {
-      let buffer = Buffer.from(String(dataBase64).split(",").pop() || "", "base64");
+      let buffer: Buffer = Buffer.from(String(dataBase64).split(",").pop() || "", "base64");
       let outMime = mimetype as string | undefined;
       // Chrome grava áudio em webm, que o WhatsApp NÃO aceita. Converte para ogg/opus antes de
       // enviar (o codec já costuma ser opus, então é só reempacotar — rápido e sem perda).
