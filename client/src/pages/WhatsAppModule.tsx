@@ -275,6 +275,11 @@ export default function WhatsAppModule() {
       replyTo: rep?.content || null,
     };
     setMsgs((m) => [...m, temp]);
+    // Enviar já assume o atendimento no backend se a conversa estava na fila/sem responsável.
+    // Reflete isso na hora para o botão "Atender" sumir e o usuário não iniciar de novo por engano.
+    setActive((a) => a && (a.status === "queue" || !a.assignedAgentId)
+      ? { ...a, status: "active", assignedAgentId: me?.id ?? a.assignedAgentId, assignedAgentName: me?.name ?? a.assignedAgentName }
+      : a);
     const r = await api(`/api/wa/conversations/${active.id}/send`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: body, ...(rep?.waMessageId ? { quotedId: rep.waMessageId, quotedText: rep.content || "" } : {}) }),
@@ -427,7 +432,12 @@ export default function WhatsAppModule() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, dataBase64, mimetype: (file as any).type || undefined, fileName, caption }),
       }).catch(() => ({ error: "falha" } as any));
-      if (r?.ok) { loadMsgs(active.id); loadConvs(); }
+      if (r?.ok) {
+        setActive((a) => a && (a.status === "queue" || !a.assignedAgentId)
+          ? { ...a, status: "active", assignedAgentId: me?.id ?? a.assignedAgentId, assignedAgentName: me?.name ?? a.assignedAgentName }
+          : a);
+        loadMsgs(active.id); loadConvs();
+      }
       else alert(r?.error || "Não foi possível enviar o arquivo.");
     } catch { alert("Não foi possível ler o arquivo."); }
   };
@@ -870,13 +880,6 @@ export default function WhatsAppModule() {
                   <div style={{ flex: "none", padding: "8px 14px", background: t.surface, borderBottom: `1px solid ${t.border}`,
                     display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                      {active.contactId && (
-                        <button onClick={() => setContactForm({ id: active.contactId, name: active.name || "", number: active.waNumber || "", clientId: active.clientId || "" })} className="wa-tap"
-                          aria-label="Editar nome" title="Editar nome"
-                          style={{ width: 30, height: 30, flex: "none", borderRadius: 8, border: `1px solid ${t.border}`, background: "transparent", color: t.textMuted, cursor: "pointer", display: "grid", placeItems: "center" }}>
-                          <Pencil size={13} />
-                        </button>
-                      )}
                       {active.contactId ? (
                         <button onClick={() => setContactForm({ id: active.contactId, name: active.name || "", number: active.waNumber || "", clientId: active.clientId || "" })} className="wa-tap"
                           style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 8, minWidth: 0,
@@ -961,20 +964,31 @@ export default function WhatsAppModule() {
                               {m.replyTo.length > 120 ? m.replyTo.slice(0, 120) + "…" : m.replyTo}
                             </div>
                           )}
-                          {nonText && !m.fromMe && ["image", "video", "audio", "document", "sticker"].includes(m.messageType) ? (
+                          {nonText && ["image", "sticker"].includes(m.messageType) ? (
+                            <a href={`/api/wa/media/${m.id}`} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: 2 }}>
+                              <img src={`/api/wa/media/${m.id}`} alt="imagem" loading="lazy"
+                                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                                style={{ maxWidth: "100%", maxHeight: 300, borderRadius: 10, display: "block", cursor: "pointer" }} />
+                            </a>
+                          ) : nonText && m.messageType === "audio" ? (
+                            <audio controls preload="none" src={`/api/wa/media/${m.id}`} style={{ maxWidth: "100%", width: 248, height: 40 }} />
+                          ) : nonText && m.messageType === "video" ? (
+                            <video controls preload="none" src={`/api/wa/media/${m.id}`}
+                              style={{ maxWidth: "100%", maxHeight: 300, borderRadius: 10, display: "block" }} />
+                          ) : nonText ? (
                             <a href={`/api/wa/media/${m.id}`} target="_blank" rel="noreferrer"
                               style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontWeight: 600, fontSize: 13,
                                 color: me ? t.accentText : t.accent, background: me ? "rgba(255,255,255,.15)" : t.accentSoft,
                                 padding: "6px 10px", borderRadius: 9 }}>
-                              {m.messageType === "image" ? <ImageIcon size={15} /> : m.messageType === "document" ? <FileText size={15} /> : <Paperclip size={15} />}
-                              {m.messageType === "image" ? "Abrir imagem" : m.messageType === "document" ? "Abrir documento" : m.messageType === "audio" ? "Abrir áudio" : m.messageType === "video" ? "Abrir vídeo" : "Abrir arquivo"}
+                              <FileText size={15} /> Abrir documento
                             </a>
-                          ) : nonText ? (
-                            <span style={{ color: t.textFaint, fontStyle: "italic" }}>[{m.messageType}] </span>
                           ) : null}
                           {(() => {
-                            const isMedia = nonText && !m.fromMe && ["image", "video", "audio", "document", "sticker"].includes(m.messageType);
-                            const caption = m.content && !/^\[(image|video|audio|document|sticker|imagem|vídeo|áudio|documento)\]$/i.test(m.content.trim()) ? m.content : "";
+                            const isMedia = nonText && ["image", "video", "audio", "document", "sticker"].includes(m.messageType);
+                            const raw = (m.content || "").trim();
+                            const isPlaceholder = /^\[(image|video|audio|document|sticker|imagem|vídeo|áudio|documento)\]$/i.test(raw);
+                            const isBareFile = /^[\w\-.]+\.(ogg|opus|mp3|m4a|jpg|jpeg|png|webp|gif|mp4|mov|pdf|docx?|xlsx?)$/i.test(raw);
+                            const caption = raw && !isPlaceholder && !isBareFile ? m.content : "";
                             if (isMedia) return caption ? <div style={{ marginTop: 5 }}>{caption}</div> : null;
                             return m.content || (nonText ? "" : "—");
                           })()}

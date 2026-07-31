@@ -455,10 +455,14 @@ export function registerWaRoutes(app: Express) {
       const { sendMedia } = await import("./connection");
       const sent = await sendMedia(jid, { type: type || "document", data: buffer, mimetype, fileName, caption });
       const waId = (sent as any)?.key?.id || null;
+      // Guarda o arquivo enviado (data URL) para poder reproduzir/visualizar depois no painel
+      const mediaDataUrl = typeof dataBase64 === "string" && dataBase64.startsWith("data:")
+        ? dataBase64
+        : (mimetype ? `data:${mimetype};base64,${String(dataBase64).split(",").pop() || ""}` : null);
       await db.insert(waMessages).values({
         conversationId: id, senderType: "agent", fromMe: true,
         content: caption || fileName || null, messageType: (type || "document") as any,
-        waMessageId: waId, status: "sent", agentId: user.id,
+        waMessageId: waId, status: "sent", agentId: user.id, mediaUrl: mediaDataUrl,
       });
       const claim = conv.status === "queue" || !conv.assignedAgentId;
       await db.update(waConversations).set({ lastMessageAt: new Date(), status: "active", ...(claim ? { assignedAgentId: user.id, assignedAt: new Date() } : {}) }).where(eq(waConversations.id, id));
