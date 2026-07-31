@@ -16,6 +16,30 @@ import {
 import { sendText, sendToJid } from "./connection";
 import { waEvents } from "./events";
 
+// Converte áudio (webm do navegador, mp4 do iOS, etc.) para ogg/opus, o formato que o WhatsApp
+// aceita em nota de voz. Tenta reempacotar (rápido, sem perda, quando já é opus) e cai para
+// reencodar com libopus se necessário. Usa o binário do ffmpeg-static (não depende do sistema).
+async function convertAudioToOgg(input: Buffer): Promise<Buffer> {
+  const ffmpegPath = ((await import("ffmpeg-static")).default as unknown as string) || "ffmpeg";
+  const { spawn } = await import("child_process");
+  const run = (args: string[]) =>
+    new Promise<Buffer>((resolve, reject) => {
+      const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "pipe", "ignore"] });
+      const chunks: Buffer[] = [];
+      proc.stdout.on("data", (d: Buffer) => chunks.push(d));
+      proc.on("error", reject);
+      proc.on("close", (code) => (code === 0 && chunks.length ? resolve(Buffer.concat(chunks)) : reject(new Error("ffmpeg saiu com código " + code))));
+      proc.stdin.on("error", () => {});
+      proc.stdin.write(input);
+      proc.stdin.end();
+    });
+  try {
+    return await run(["-i", "pipe:0", "-c:a", "copy", "-f", "ogg", "pipe:1"]);
+  } catch {
+    return await run(["-i", "pipe:0", "-c:a", "libopus", "-b:a", "64k", "-f", "ogg", "pipe:1"]);
+  }
+}
+
 function normalizeBR(phone: string): string {
   let d = (phone || "").replace(/\D/g, "");
   if (d.length >= 12 && d.startsWith("55")) return d;
@@ -455,14 +479,28 @@ export function registerWaRoutes(app: Express) {
     const { jid, conv, contact } = await convJid(db, id);
     if (!jid || !conv || !contact) return res.status(404).json({ error: "conversa não encontrada" });
     try {
-      const buffer = Buffer.from(String(dataBase64).split(",").pop() || "", "base64");
+      let buffer = Buffer.from(String(dataBase64).split(",").pop() || "", "base64");
+      let outMime = mimetype as string | undefined;
+      // Chrome grava áudio em webm, que o WhatsApp NÃO aceita. Converte para ogg/opus antes de
+      // enviar (o codec já costuma ser opus, então é só reempacotar — rápido e sem perda).
+      if ((type || "") === "audio") {
+        try {
+          buffer = await convertAudioToOgg(buffer);
+          outMime = "audio/ogg; codecs=opus";
+        } catch (e: any) {
+          console.warn("[WA] conversão de áudio falhou, enviando original:", e?.message);
+        }
+      }
       const { sendMedia } = await import("./connection");
-      const sent = await sendMedia(jid, { type: type || "document", data: buffer, mimetype, fileName, caption });
+      const sent = await sendMedia(jid, { type: type || "document", data: buffer, mimetype: outMime, fileName, caption });
       const waId = (sent as any)?.key?.id || null;
-      // Guarda o arquivo enviado (data URL) para poder reproduzir/visualizar depois no painel
-      const mediaDataUrl = typeof dataBase64 === "string" && dataBase64.startsWith("data:")
-        ? dataBase64
-        : (mimetype ? `data:${mimetype};base64,${String(dataBase64).split(",").pop() || ""}` : null);
+      // Guarda o arquivo enviado (data URL) para reproduzir/visualizar depois no painel.
+      // Para áudio, guarda o OGG convertido (que o navegador toca), não o webm original.
+      const mediaDataUrl = (type || "") === "audio"
+        ? `data:audio/ogg; codecs=opus;base64,${buffer.toString("base64")}`
+        : (typeof dataBase64 === "string" && dataBase64.startsWith("data:")
+            ? dataBase64
+            : (mimetype ? `data:${mimetype};base64,${String(dataBase64).split(",").pop() || ""}` : null));
       await db.insert(waMessages).values({
         conversationId: id, senderType: "agent", fromMe: true,
         content: caption || fileName || null, messageType: (type || "document") as any,
