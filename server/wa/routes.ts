@@ -34,9 +34,14 @@ async function convertAudioToOgg(input: Buffer): Promise<Buffer> {
       proc.stdin.end();
     });
   try {
-    return await run(["-i", "pipe:0", "-c:a", "copy", "-f", "ogg", "pipe:1"]);
+    // Re-codifica forçando os timestamps pelo índice do sample (asetpts=N/SR/TB), ignorando o
+    // cabeçalho do webm do MediaRecorder — que grava tempos quebrados e fazia a duração explodir
+    // (segundos viravam minutos). Isso reconstrói a duração real. (Comprovado: um webm com
+    // offset de 700s saía como "11 min" no copy e volta para os segundos reais aqui.)
+    return await run(["-i", "pipe:0", "-vn", "-af", "asetpts=N/SR/TB", "-c:a", "libopus", "-b:a", "64k", "-f", "ogg", "pipe:1"]);
   } catch {
-    return await run(["-i", "pipe:0", "-c:a", "libopus", "-b:a", "64k", "-f", "ogg", "pipe:1"]);
+    // Último recurso: reempacota sem re-encodar (mais rápido, mas pode manter a duração errada)
+    return await run(["-i", "pipe:0", "-c:a", "copy", "-f", "ogg", "pipe:1"]);
   }
 }
 
