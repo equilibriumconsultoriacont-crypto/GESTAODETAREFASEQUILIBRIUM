@@ -358,7 +358,6 @@ export function registerWaRoutes(app: Express) {
         fromMe: waMessages.fromMe,
         content: waMessages.content,
         messageType: waMessages.messageType,
-        mediaUrl: waMessages.mediaUrl,
         replyTo: waMessages.replyTo,
         waMessageId: waMessages.waMessageId,
         status: waMessages.status,
