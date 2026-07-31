@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
-import { CheckSquare, FileText, LogOut, MessageCircle, ExternalLink } from "lucide-react";
+import { CheckSquare, FileText, LogOut, MessageCircle, ExternalLink, Users } from "lucide-react";
 
 // Definição dos módulos da plataforma
 const MODULES = [
@@ -32,6 +32,16 @@ const MODULES = [
     path: "/whatsapp",
     available: true,
   },
+  {
+    id: "usuarios",
+    name: "Gerenciamento de Usuários",
+    description: "Funcionários, clientes, departamentos e acessos — tudo em um só lugar.",
+    icon: Users,
+    color: "#2f8f9e",
+    path: "/usuarios",
+    available: true,
+    adminOnly: true,
+  },
 ];
 
 export default function Hub() {
@@ -56,7 +66,7 @@ export default function Hub() {
 
   // Módulos que o usuário tem acesso
   const allowedIds = new Set(myModules.map((m: any) => m.module));
-  const visibleModules = MODULES.filter((m) => allowedIds.has(m.id));
+  const visibleModules = MODULES.filter((m) => allowedIds.has(m.id) || ((m as any).adminOnly && (user as any)?.role === "admin"));
 
   const openModule = (mod: typeof MODULES[0]) => {
     if (!mod.available) return;

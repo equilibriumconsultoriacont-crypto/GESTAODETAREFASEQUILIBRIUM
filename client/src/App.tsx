@@ -23,6 +23,7 @@ import { useAuth } from "./_core/hooks/useAuth";
 import TaskCatalogsPage from "./pages/TaskCatalogs";
 import PendingSendsPage from "./pages/PendingSends";
 import AdminSettingsPage from "./pages/AdminSettings";
+import UserManagementPage from "./pages/UserManagement";
 import CalendarPage from "./pages/Calendar";
 import Hub from "./pages/Hub";
 import Proposals from "./pages/Proposals";
@@ -90,6 +91,7 @@ function Router() {
       <Route path="/acessos-clientes" component={ClientLoginsPage} />
       <Route path="/pendentes-envio" component={PendingSendsPage} />
       <Route path="/configuracoes" component={AdminSettingsPage} />
+      <Route path="/usuarios" component={UserManagementPage} />
 
       {/* Módulo Propostas */}
       <Route path="/propostas" component={Proposals} />
