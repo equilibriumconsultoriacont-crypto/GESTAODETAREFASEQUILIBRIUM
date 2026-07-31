@@ -235,11 +235,20 @@ export default function WhatsAppModule() {
     return () => clearInterval(iv);
   }, [active, loadMsgs]);
 
+  // Só "gruda" no final se o usuário já estava perto do final (não atrapalha quem rolou para
+  // cima para ler mensagens antigas — antes, cada atualização por polling puxava para baixo).
+  const stickToBottomRef = useRef(true);
+  const onMsgsScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  };
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (scrollRef.current && stickToBottomRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [msgs, active]);
 
   const openConv = (c: Conv) => {
+    stickToBottomRef.current = true;
     setActive(c);
     loadMsgs(c.id);
     if (c.unreadCount > 0) {
@@ -249,6 +258,7 @@ export default function WhatsAppModule() {
   };
 
   const send = async () => {
+    stickToBottomRef.current = true;
     const body = text.trim();
     if (!body || !active || sending) return;
     setSending(true);
@@ -614,7 +624,10 @@ export default function WhatsAppModule() {
         {section === "dashboard" && me?.role === "admin" ? (
           <ReportsDashboard t={t} />
         ) : section === "agenda" ? (
-          <div className="wa-scroll" style={{ flex: 1, overflowY: "auto", background: t.bg, padding: isMobile ? "12px" : "18px 22px" }}>
+          // O calendário foi feito com texto claro fixo (herdado do módulo de Tarefas, que é
+          // sempre escuro), então força fundo escuro aqui — no tema claro do Atendimento o
+          // texto claro ficaria invisível sobre fundo claro.
+          <div className="wa-scroll" style={{ flex: 1, overflowY: "auto", background: "#0a0a0a", padding: isMobile ? "12px" : "18px 22px" }}>
             <CalendarView />
           </div>
         ) : (
@@ -841,7 +854,7 @@ export default function WhatsAppModule() {
                 )}
 
                 {/* mensagens */}
-                <div ref={scrollRef} className="wa-scroll"
+                <div ref={scrollRef} className="wa-scroll" onScroll={onMsgsScroll}
                   style={{ flex: 1, overflowY: "auto", padding: "18px 16px", display: "flex", flexDirection: "column", gap: 6 }}>
                   {msgs.map((m, i) => {
                     if (m.senderType === "system") {
@@ -969,7 +982,12 @@ export default function WhatsAppModule() {
                     </div>
                   ) : (
                     <textarea value={text} onChange={(e) => setText(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+                      onKeyDown={(e) => {
+                        // No celular não há "Shift" fácil no teclado virtual: Enter sempre quebra
+                        // linha lá, e o envio é só pelo botão. No computador, Enter envia e
+                        // Shift+Enter quebra linha (convenção padrão).
+                        if (!isMobile && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+                      }}
                       placeholder={conn.status === "open" ? "Mensagem" : "Conecte o WhatsApp para enviar"}
                       disabled={conn.status !== "open"} rows={1}
                       style={{ flex: 1, resize: "none", background: t.surfaceHi, border: `1px solid ${t.border}`,

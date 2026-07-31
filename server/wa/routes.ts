@@ -243,6 +243,12 @@ export function registerWaRoutes(app: Express) {
     const db = await getDb();
     if (!db) return res.json([]);
     const id = parseInt(req.params.id);
+    // Mostra o HISTÓRICO COMPLETO do contato (todas as conversas dele), não só a conversa
+    // atual — assim, quando uma conversa é concluída e o cliente escreve de novo (abrindo
+    // uma nova conversa para fins de fila/metricas), o atendente continua vendo as mensagens
+    // anteriores em vez de parecer que é a primeira mensagem.
+    const conv = (await db.select({ contactId: waConversations.contactId }).from(waConversations).where(eq(waConversations.id, id)).limit(1))[0];
+    if (!conv) return res.json([]);
     const rows = await db
       .select({
         id: waMessages.id,
@@ -261,9 +267,10 @@ export function registerWaRoutes(app: Express) {
         agentRole: sql<string | null>`(select role from users where id = ${waMessages.agentId})`,
       })
       .from(waMessages)
-      .where(eq(waMessages.conversationId, id))
+      .innerJoin(waConversations, eq(waMessages.conversationId, waConversations.id))
+      .where(eq(waConversations.contactId, conv.contactId))
       .orderBy(desc(waMessages.id))
-      .limit(200);
+      .limit(300);
     res.json(rows.reverse());
   });
 
