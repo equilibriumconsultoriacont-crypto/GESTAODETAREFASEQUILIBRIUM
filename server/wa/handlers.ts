@@ -7,6 +7,21 @@ import { getDb } from "../db";
 import { waContacts, waConversations, waMessages, clients } from "../../drizzle/schema";
 import { waEvents } from "./events";
 
+// Horário de expediente: seg-sex, 7:30-17:00, fuso de São Paulo. Usado só para o AVISO
+// automático de fora do horário — nunca bloqueia envio/recebimento de nada.
+function isBusinessHours(d: Date = new Date()): boolean {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Sao_Paulo", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(d);
+    const map: any = {};
+    for (const p of parts) map[p.type] = p.value;
+    const isWeekday = !["Sat", "Sun"].includes(map.weekday);
+    const minutesNow = parseInt(map.hour, 10) * 60 + parseInt(map.minute, 10);
+    return isWeekday && minutesNow >= 7 * 60 + 30 && minutesNow < 17 * 60;
+  } catch { return true; } // se falhar ao calcular, não manda aviso incorreto
+}
+
 function extractContent(message: any): { type: string; text: string } {
   const m = message || {};
   if (m.conversation) return { type: "text", text: m.conversation };
@@ -142,6 +157,30 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
     // baixa mídia recebida (imagem/vídeo/áudio/documento) em 2º plano e guarda como data URL
     if (!fromMe && msg.key?.id && ["image", "video", "audio", "document", "sticker"].includes(type)) {
       downloadAndStoreMedia(_sock, msg, msg.key.id, conv.id).catch(() => {});
+    }
+
+    // Aviso automático de fora do expediente (seg-sex, 7:30-17:00) — NÃO bloqueia nada, só
+    // avisa o cliente. No máximo 1 vez a cada 3h por conversa, para não repetir a cada mensagem.
+    if (!fromMe) {
+      try {
+        if (!isBusinessHours()) {
+          const cooldownMs = 3 * 3600 * 1000;
+          const lastAuto = conv.lastAutoReplyAt ? new Date(conv.lastAutoReplyAt as any).getTime() : 0;
+          if (Date.now() - lastAuto > cooldownMs) {
+            const awayText =
+              "Olá! No momento estamos fora do nosso horário de atendimento (segunda a sexta, das 7:30 às 17:00). " +
+              "Já recebemos sua mensagem e vamos responder assim que possível dentro desse horário. 🙏";
+            const sentAway = await _sock.sendMessage(canonicalJid, { text: awayText }).catch(() => null);
+            if (sentAway) {
+              await db.insert(waMessages).values({
+                conversationId: conv.id, senderType: "agent", fromMe: true, content: awayText,
+                messageType: "text", waMessageId: (sentAway as any)?.key?.id || null, status: "sent",
+              });
+              await db.update(waConversations).set({ lastAutoReplyAt: new Date() }).where(eq(waConversations.id, conv.id));
+            }
+          }
+        }
+      } catch { /* best-effort: se falhar, não impede o resto do fluxo */ }
     }
 
     // atualiza a conversa

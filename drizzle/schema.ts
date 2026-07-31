@@ -390,6 +390,7 @@ export const waConversations = mysqlTable("wa_conversations", {
   concludedAt: timestamp("concludedAt"),
   queuedAt: timestamp("queuedAt"),
   assignedAt: timestamp("assignedAt"),
+  lastAutoReplyAt: timestamp("lastAutoReplyAt"), // último aviso automático de "fora do expediente"
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type WaConversation = typeof waConversations.$inferSelect;
@@ -442,6 +443,18 @@ export const waPushSubs = mysqlTable("wa_push_subs", {
   endpoint: varchar("endpoint", { length: 512 }).notNull().unique(),
   p256dh: varchar("p256dh", { length: 255 }),
   auth: varchar("auth", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+// Mensagens digitadas agora para serem enviadas em uma data/hora futura
+export const waScheduledMessages = mysqlTable("wa_scheduled_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: int("conversationId").notNull(),
+  agentId: int("agentId").notNull(),
+  content: text("content").notNull(),
+  sendAt: timestamp("sendAt").notNull(),
+  status: mysqlEnum("status", ["pending", "sent", "failed", "cancelled"]).default("pending").notNull(),
+  errorMsg: text("errorMsg"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

@@ -252,6 +252,7 @@ export default function WhatsAppModule() {
     stickToBottomRef.current = true;
     setActive(c);
     loadMsgs(c.id);
+    loadScheduled(c.id);
     if (c.unreadCount > 0) {
       api(`/api/wa/conversations/${c.id}/read`, { method: "POST" }).catch(() => {});
       setConvs((cs) => cs.map((x) => (x.id === c.id ? { ...x, unreadCount: 0 } : x)));
@@ -329,6 +330,8 @@ export default function WhatsAppModule() {
   const [contactForm, setContactForm] = useState<any>(null);
   const [replyingTo, setReplyingTo] = useState<Msg | null>(null);
   const [taskForm, setTaskForm] = useState<any>(null);
+  const [scheduleForm, setScheduleForm] = useState<any>(null);
+  const [scheduled, setScheduled] = useState<any[]>([]);
   const reloadContacts = () => api("/api/wa/contacts").then((r) => Array.isArray(r) && setContacts(r)).catch(() => {});
   const saveContact = async () => {
     const f = contactForm;
@@ -358,6 +361,27 @@ export default function WhatsAppModule() {
     }).catch(() => ({ error: "falha" } as any));
     if (r?.ok) { setTaskForm(null); loadMsgs(active.id); }
     else alert(r?.error || "Não foi possível criar a tarefa.");
+  };
+
+  const loadScheduled = (convId: number) =>
+    api(`/api/wa/conversations/${convId}/scheduled`).then((r) => Array.isArray(r) && setScheduled(r)).catch(() => {});
+
+  const submitSchedule = async () => {
+    const f = scheduleForm;
+    if (!f || !active || !f.date || !f.time) return;
+    const sendAt = new Date(`${f.date}T${f.time}:00`);
+    const r = await api(`/api/wa/conversations/${active.id}/schedule`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: f.text, sendAt: sendAt.toISOString() }),
+    }).catch(() => ({ error: "falha" } as any));
+    if (r?.ok) { setScheduleForm(null); setText(""); loadMsgs(active.id); loadScheduled(active.id); }
+    else alert(r?.error || "Não foi possível agendar.");
+  };
+
+  const cancelScheduled = async (id: number) => {
+    const r = await api(`/api/wa/scheduled/${id}/cancel`, { method: "POST" }).catch(() => ({ error: "falha" } as any));
+    if (r?.ok && active) { loadScheduled(active.id); loadMsgs(active.id); }
+    else alert(r?.error || "Não foi possível cancelar.");
   };
 
   const openTransfer = () => {
@@ -969,6 +993,25 @@ export default function WhatsAppModule() {
                   })}
                 </div>
 
+                {/* mensagens agendadas pendentes */}
+                {scheduled.length > 0 && (
+                  <div style={{ flex: "none", padding: "8px 14px", background: t.surfaceHi, borderTop: `1px solid ${t.border}`, display: "flex", flexDirection: "column", gap: 6 }}>
+                    {scheduled.map((s) => (
+                      <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <Clock size={13} style={{ color: t.accent, flex: "none" }} />
+                        <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: t.textMuted }}>
+                          <span style={{ fontWeight: 600, color: t.text }}>{new Date(s.sendAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                          {" — "}
+                          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.content}</span>
+                        </div>
+                        <button onClick={() => cancelScheduled(s.id)} className="wa-tap" aria-label="Cancelar"
+                          style={{ width: 24, height: 24, flex: "none", borderRadius: 6, border: "none", background: "transparent", color: t.danger, cursor: "pointer", display: "grid", placeItems: "center" }}>
+                          <XIcon size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {/* barra de citação ao responder */}
                 {replyingTo && (
                   <div style={{ flex: "none", padding: "8px 14px", background: t.surfaceHi, borderTop: `1px solid ${t.border}`,
@@ -1020,13 +1063,21 @@ export default function WhatsAppModule() {
                         maxHeight: 120, lineHeight: 1.4 }} />
                   )}
                   {text.trim() && !recording ? (
-                    <button onClick={send} disabled={sending || conn.status !== "open"} className="wa-tap" aria-label="Enviar"
-                      style={{ width: 44, height: 44, flex: "none", borderRadius: "50%", border: "none", display: "grid", placeItems: "center",
-                        background: conn.status === "open" ? t.accent : t.surfaceHi,
-                        color: conn.status === "open" ? t.accentText : t.textFaint,
-                        cursor: conn.status === "open" ? "pointer" : "default" }}>
-                      <Send size={18} />
-                    </button>
+                    <>
+                      <button onClick={() => setScheduleForm({ text: text.trim(), date: "", time: "" })} disabled={conn.status !== "open"} className="wa-tap" aria-label="Agendar envio" title="Agendar para depois"
+                        style={{ width: 44, height: 44, flex: "none", borderRadius: "50%", border: `1px solid ${t.border}`, display: "grid", placeItems: "center",
+                          background: "transparent", color: conn.status === "open" ? t.textMuted : t.textFaint,
+                          cursor: conn.status === "open" ? "pointer" : "default" }}>
+                        <Clock size={17} />
+                      </button>
+                      <button onClick={send} disabled={sending || conn.status !== "open"} className="wa-tap" aria-label="Enviar"
+                        style={{ width: 44, height: 44, flex: "none", borderRadius: "50%", border: "none", display: "grid", placeItems: "center",
+                          background: conn.status === "open" ? t.accent : t.surfaceHi,
+                          color: conn.status === "open" ? t.accentText : t.textFaint,
+                          cursor: conn.status === "open" ? "pointer" : "default" }}>
+                        <Send size={18} />
+                      </button>
+                    </>
                   ) : (
                     <button onClick={toggleRecord} disabled={conn.status !== "open"} className="wa-tap"
                       aria-label={recording ? "Parar e enviar" : "Gravar áudio"}
@@ -1183,6 +1234,55 @@ export default function WhatsAppModule() {
                   background: !active?.clientId || !taskForm.title.trim() ? t.surfaceHi : t.accent,
                   color: !active?.clientId || !taskForm.title.trim() ? t.textFaint : t.accentText }}>
                 Criar tarefa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal agendar mensagem */}
+      {scheduleForm && (
+        <div onClick={() => setScheduleForm(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "grid", placeItems: "center", zIndex: 50, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: 400, background: t.surface, border: `1px solid ${t.border}`, borderRadius: 16, padding: 20, boxShadow: "0 12px 40px rgba(0,0,0,.35)" }}>
+            <div style={{ fontSize: 15, fontWeight: 650, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+              <Clock size={17} style={{ color: t.accent }} /> Agendar mensagem
+            </div>
+            <div style={{ fontSize: 12.5, color: t.textFaint, marginBottom: 16 }}>
+              Fica salva e é enviada automaticamente na data e hora escolhidas.
+            </div>
+
+            <div style={{ background: t.surfaceHi, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: t.textMuted, marginBottom: 14, maxHeight: 90, overflowY: "auto", whiteSpace: "pre-wrap" }}>
+              {scheduleForm.text}
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, display: "block", marginBottom: 6 }}>Data</label>
+                <input type="date" value={scheduleForm.date} min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, date: e.target.value })}
+                  style={{ width: "100%", background: t.surfaceHi, color: t.text, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none", colorScheme: t.name === "dark" ? "dark" : "light" }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, display: "block", marginBottom: 6 }}>Hora</label>
+                <input type="time" value={scheduleForm.time}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, time: e.target.value })}
+                  style={{ width: "100%", background: t.surfaceHi, color: t.text, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none", colorScheme: t.name === "dark" ? "dark" : "light" }} />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setScheduleForm(null)} className="wa-tap"
+                style={{ height: 38, padding: "0 16px", borderRadius: 10, border: `1px solid ${t.border}`, background: "transparent", color: t.textMuted, cursor: "pointer", fontSize: 13.5 }}>
+                Cancelar
+              </button>
+              <button onClick={submitSchedule} disabled={!scheduleForm.date || !scheduleForm.time} className="wa-tap"
+                style={{ height: 38, padding: "0 18px", borderRadius: 10, border: "none", fontSize: 13.5, fontWeight: 600,
+                  cursor: !scheduleForm.date || !scheduleForm.time ? "default" : "pointer",
+                  background: !scheduleForm.date || !scheduleForm.time ? t.surfaceHi : t.accent,
+                  color: !scheduleForm.date || !scheduleForm.time ? t.textFaint : t.accentText }}>
+                Agendar
               </button>
             </div>
           </div>

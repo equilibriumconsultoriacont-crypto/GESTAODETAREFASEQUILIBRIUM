@@ -11,6 +11,7 @@ import {
   waConversationTags,
   users,
   clients,
+  waScheduledMessages,
 } from "../../drizzle/schema";
 import { sendText, sendToJid } from "./connection";
 import { waEvents } from "./events";
@@ -222,6 +223,61 @@ export function registerWaRoutes(app: Express) {
       if (!res.headersSent) res.status(500).json({ error: e?.message || "falha ao criar tarefa" });
     }
   });
+  // Agenda uma mensagem para ser enviada depois (ex.: escrever agora, mandar amanhã de manhã)
+  app.post("/api/wa/conversations/:id/schedule", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    const db = await getDb();
+    if (!db) return res.status(500).json({ error: "sem banco" });
+    const id = parseInt(req.params.id);
+    const content = (req.body?.text || "").toString().trim();
+    const sendAtStr = (req.body?.sendAt || "").toString().trim();
+    if (!content) return res.status(400).json({ error: "mensagem vazia" });
+    const sendAt = sendAtStr ? new Date(sendAtStr) : null;
+    if (!sendAt || isNaN(sendAt.getTime())) return res.status(400).json({ error: "data/hora inválida" });
+    if (sendAt.getTime() <= Date.now()) return res.status(400).json({ error: "escolha uma data/hora no futuro" });
+    try {
+      const conv = (await db.select({ id: waConversations.id }).from(waConversations).where(eq(waConversations.id, id)).limit(1))[0];
+      if (!conv) return res.status(404).json({ error: "conversa não encontrada" });
+      const result = await db.insert(waScheduledMessages).values({ conversationId: id, agentId: user.id, content, sendAt, status: "pending" });
+      const who = (await db.select({ n: sql<string>`coalesce(nullif(name,''), substring_index(email,'@',1))` }).from(users).where(eq(users.id, user.id)).limit(1))[0]?.n || "atendente";
+      await sysMsg(db, id, `🕒 Mensagem agendada por ${who} para ${sendAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`, user.id);
+      res.json({ ok: true, id: (result as any)[0]?.insertId });
+    } catch (e: any) {
+      console.error("[WA] schedule:", e?.message);
+      if (!res.headersSent) res.status(500).json({ error: e?.message || "falha ao agendar" });
+    }
+  });
+
+  // Lista mensagens agendadas (pendentes) de uma conversa
+  app.get("/api/wa/conversations/:id/scheduled", async (req, res) => {
+    if (!(await auth(req, res))) return;
+    const db = await getDb();
+    if (!db) return res.json([]);
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select()
+      .from(waScheduledMessages)
+      .where(and(eq(waScheduledMessages.conversationId, id), eq(waScheduledMessages.status, "pending")))
+      .orderBy(waScheduledMessages.sendAt);
+    res.json(rows);
+  });
+
+  // Cancela uma mensagem agendada (antes de ser enviada)
+  app.post("/api/wa/scheduled/:id/cancel", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    const db = await getDb();
+    if (!db) return res.status(500).json({ error: "sem banco" });
+    const id = parseInt(req.params.id);
+    const row = (await db.select().from(waScheduledMessages).where(eq(waScheduledMessages.id, id)).limit(1))[0];
+    if (!row || row.status !== "pending") return res.status(400).json({ error: "não é possível cancelar" });
+    await db.update(waScheduledMessages).set({ status: "cancelled" }).where(eq(waScheduledMessages.id, id));
+    await sysMsg(db, row.conversationId, `🕒 Mensagem agendada cancelada`, user.id);
+    res.json({ ok: true });
+  });
+
+
   // Relatórios / métricas do atendimento (SÓ administrador)
   app.get("/api/wa/reports", async (req, res) => {
     const user = await auth(req, res);

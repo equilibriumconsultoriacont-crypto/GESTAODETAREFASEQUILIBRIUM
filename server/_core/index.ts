@@ -263,13 +263,14 @@ async function startServer() {
         "ALTER TABLE `recurring_tasks` ADD COLUMN `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
         // WhatsApp — Atendimento
         "CREATE TABLE IF NOT EXISTS `wa_contacts` (`id` int AUTO_INCREMENT NOT NULL, `waNumber` varchar(32) NOT NULL, `jid` varchar(128), `lid` varchar(128), `clientId` int, `name` varchar(255), `avatarUrl` mediumtext, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `wa_contacts_id` PRIMARY KEY(`id`), CONSTRAINT `wa_contacts_waNumber_unique` UNIQUE(`waNumber`))",
-        "CREATE TABLE IF NOT EXISTS `wa_conversations` (`id` int AUTO_INCREMENT NOT NULL, `contactId` int NOT NULL, `status` enum('queue','active','concluded','dismissed','open','pending','closed') NOT NULL DEFAULT 'queue', `assignedAgentId` int, `unreadCount` int NOT NULL DEFAULT 0, `lastMessageAt` timestamp NOT NULL DEFAULT (now()), `concludedAt` timestamp NULL, `queuedAt` timestamp NULL, `assignedAt` timestamp NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_conversations_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `wa_conversations` (`id` int AUTO_INCREMENT NOT NULL, `contactId` int NOT NULL, `status` enum('queue','active','concluded','dismissed','open','pending','closed') NOT NULL DEFAULT 'queue', `assignedAgentId` int, `unreadCount` int NOT NULL DEFAULT 0, `lastMessageAt` timestamp NOT NULL DEFAULT (now()), `concludedAt` timestamp NULL, `queuedAt` timestamp NULL, `assignedAt` timestamp NULL, `lastAutoReplyAt` timestamp NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_conversations_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `wa_messages` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `senderType` enum('contact','agent','system') NOT NULL, `fromMe` boolean NOT NULL DEFAULT false, `content` text, `messageType` enum('text','image','audio','video','document','sticker','location','template','other') NOT NULL DEFAULT 'text', `mediaUrl` mediumtext, `replyTo` text, `waMessageId` varchar(128), `status` enum('received','sent','delivered','read','failed') NOT NULL DEFAULT 'sent', `agentId` int, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_messages_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `wa_tags` (`id` int AUTO_INCREMENT NOT NULL, `name` varchar(64) NOT NULL, `color` varchar(20) NOT NULL DEFAULT '#3E9AA6', CONSTRAINT `wa_tags_id` PRIMARY KEY(`id`), CONSTRAINT `wa_tags_name_unique` UNIQUE(`name`))",
         "CREATE TABLE IF NOT EXISTS `wa_conversation_tags` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `tagId` int NOT NULL, CONSTRAINT `wa_conversation_tags_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `wa_sessions` (`id` int AUTO_INCREMENT NOT NULL, `sessionName` varchar(64) NOT NULL, `keyId` varchar(255) NOT NULL, `keyData` mediumtext, `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `wa_sessions_id` PRIMARY KEY(`id`), CONSTRAINT `wa_sessions_name_key_unique` UNIQUE(`sessionName`,`keyId`))",
         "CREATE TABLE IF NOT EXISTS `wa_config` (`k` varchar(64) NOT NULL, `v` text, CONSTRAINT `wa_config_k` PRIMARY KEY(`k`))",
         "CREATE TABLE IF NOT EXISTS `wa_push_subs` (`id` int AUTO_INCREMENT NOT NULL, `endpoint` varchar(512) NOT NULL, `p256dh` varchar(255), `auth` varchar(255), `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_push_subs_id` PRIMARY KEY(`id`), CONSTRAINT `wa_push_subs_endpoint_unique` UNIQUE(`endpoint`))",
+        "CREATE TABLE IF NOT EXISTS `wa_scheduled_messages` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `agentId` int NOT NULL, `content` text NOT NULL, `sendAt` timestamp NOT NULL, `status` enum('pending','sent','failed','cancelled') NOT NULL DEFAULT 'pending', `errorMsg` text, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_scheduled_messages_id` PRIMARY KEY(`id`))",
         "CREATE INDEX `wa_messages_conv_idx` ON `wa_messages` (`conversationId`, `createdAt`)",
         "CREATE INDEX `wa_conversations_status_idx` ON `wa_conversations` (`status`, `lastMessageAt`)",
       ];
@@ -647,13 +648,14 @@ async function ensureSchema() {
       // Tabelas do WhatsApp — criadas no boot (idempotente), sem depender do /admin/setup
       const waTables = [
         "CREATE TABLE IF NOT EXISTS `wa_contacts` (`id` int AUTO_INCREMENT NOT NULL, `waNumber` varchar(32) NOT NULL, `jid` varchar(128), `lid` varchar(128), `clientId` int, `name` varchar(255), `avatarUrl` mediumtext, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `wa_contacts_id` PRIMARY KEY(`id`), CONSTRAINT `wa_contacts_waNumber_unique` UNIQUE(`waNumber`))",
-        "CREATE TABLE IF NOT EXISTS `wa_conversations` (`id` int AUTO_INCREMENT NOT NULL, `contactId` int NOT NULL, `status` enum('queue','active','concluded','dismissed','open','pending','closed') NOT NULL DEFAULT 'queue', `assignedAgentId` int, `unreadCount` int NOT NULL DEFAULT 0, `lastMessageAt` timestamp NOT NULL DEFAULT (now()), `concludedAt` timestamp NULL, `queuedAt` timestamp NULL, `assignedAt` timestamp NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_conversations_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `wa_conversations` (`id` int AUTO_INCREMENT NOT NULL, `contactId` int NOT NULL, `status` enum('queue','active','concluded','dismissed','open','pending','closed') NOT NULL DEFAULT 'queue', `assignedAgentId` int, `unreadCount` int NOT NULL DEFAULT 0, `lastMessageAt` timestamp NOT NULL DEFAULT (now()), `concludedAt` timestamp NULL, `queuedAt` timestamp NULL, `assignedAt` timestamp NULL, `lastAutoReplyAt` timestamp NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_conversations_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `wa_messages` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `senderType` enum('contact','agent','system') NOT NULL, `fromMe` boolean NOT NULL DEFAULT false, `content` text, `messageType` enum('text','image','audio','video','document','sticker','location','template','other') NOT NULL DEFAULT 'text', `mediaUrl` mediumtext, `replyTo` text, `waMessageId` varchar(128), `status` enum('received','sent','delivered','read','failed') NOT NULL DEFAULT 'sent', `agentId` int, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_messages_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `wa_tags` (`id` int AUTO_INCREMENT NOT NULL, `name` varchar(64) NOT NULL, `color` varchar(20) NOT NULL DEFAULT '#3E9AA6', CONSTRAINT `wa_tags_id` PRIMARY KEY(`id`), CONSTRAINT `wa_tags_name_unique` UNIQUE(`name`))",
         "CREATE TABLE IF NOT EXISTS `wa_conversation_tags` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `tagId` int NOT NULL, CONSTRAINT `wa_conversation_tags_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `wa_sessions` (`id` int AUTO_INCREMENT NOT NULL, `sessionName` varchar(64) NOT NULL, `keyId` varchar(255) NOT NULL, `keyData` mediumtext, `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `wa_sessions_id` PRIMARY KEY(`id`), CONSTRAINT `wa_sessions_name_key_unique` UNIQUE(`sessionName`,`keyId`))",
         "CREATE TABLE IF NOT EXISTS `wa_config` (`k` varchar(64) NOT NULL, `v` text, CONSTRAINT `wa_config_k` PRIMARY KEY(`k`))",
         "CREATE TABLE IF NOT EXISTS `wa_push_subs` (`id` int AUTO_INCREMENT NOT NULL, `endpoint` varchar(512) NOT NULL, `p256dh` varchar(255), `auth` varchar(255), `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_push_subs_id` PRIMARY KEY(`id`), CONSTRAINT `wa_push_subs_endpoint_unique` UNIQUE(`endpoint`))",
+        "CREATE TABLE IF NOT EXISTS `wa_scheduled_messages` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `agentId` int NOT NULL, `content` text NOT NULL, `sendAt` timestamp NOT NULL, `status` enum('pending','sent','failed','cancelled') NOT NULL DEFAULT 'pending', `errorMsg` text, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_scheduled_messages_id` PRIMARY KEY(`id`))",
       ];
       for (const s of waTables) {
         try { await conn.query(s); }
@@ -688,6 +690,8 @@ async function ensureSchema() {
         if (Number(qc?.[0]?.cnt ?? 0) === 0) await conn.query("ALTER TABLE `wa_conversations` ADD COLUMN `queuedAt` timestamp NULL");
         const [ac]: any = await conn.query("SELECT COUNT(*) cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wa_conversations' AND COLUMN_NAME = 'assignedAt'");
         if (Number(ac?.[0]?.cnt ?? 0) === 0) await conn.query("ALTER TABLE `wa_conversations` ADD COLUMN `assignedAt` timestamp NULL");
+        const [lrc]: any = await conn.query("SELECT COUNT(*) cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wa_conversations' AND COLUMN_NAME = 'lastAutoReplyAt'");
+        if (Number(lrc?.[0]?.cnt ?? 0) === 0) await conn.query("ALTER TABLE `wa_conversations` ADD COLUMN `lastAutoReplyAt` timestamp NULL");
         const [rtc]: any = await conn.query("SELECT COUNT(*) cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wa_messages' AND COLUMN_NAME = 'replyTo'");
         if (Number(rtc?.[0]?.cnt ?? 0) === 0) await conn.query("ALTER TABLE `wa_messages` ADD COLUMN `replyTo` text");
       } catch (e: any) { console.warn("[Migração WA] fluxo atendimento:", e?.message?.slice(0, 140)); }
@@ -954,3 +958,49 @@ setInterval(async () => {
     console.warn("[KeepAlive] Erro no ping do banco:", err);
   }
 }, 4 * 60 * 1000); // a cada 4 minutos
+
+// ── Envio de mensagens do WhatsApp agendadas ──────────────────────────────────
+// A cada minuto, verifica se há mensagens agendadas (wa_scheduled_messages) cuja hora já
+// chegou e envia. Protegido: um erro numa mensagem não afeta as outras nem derruba o ciclo.
+setInterval(async () => {
+  try {
+    const { getDb } = await import("../db");
+    const db = await getDb();
+    if (!db) return;
+    const { waScheduledMessages, waConversations, waContacts, waMessages, users } = await import("../../drizzle/schema");
+    const { eq, and, lte, sql } = await import("drizzle-orm");
+    const due = await db
+      .select()
+      .from(waScheduledMessages)
+      .where(and(eq(waScheduledMessages.status, "pending"), lte(waScheduledMessages.sendAt, new Date())))
+      .limit(20);
+    for (const sched of due) {
+      try {
+        const conv = (await db.select().from(waConversations).where(eq(waConversations.id, sched.conversationId)).limit(1))[0];
+        const contact = conv ? (await db.select().from(waContacts).where(eq(waContacts.id, conv.contactId)).limit(1))[0] : null;
+        if (!conv || !contact) {
+          await db.update(waScheduledMessages).set({ status: "failed", errorMsg: "conversa ou contato não encontrado" }).where(eq(waScheduledMessages.id, sched.id));
+          continue;
+        }
+        const { sendToJid } = await import("../wa/connection");
+        const target = contact.jid || (contact.waNumber.includes("@") ? contact.waNumber : contact.waNumber + "@s.whatsapp.net");
+        const agent = (await db.select({ name: sql<string>`coalesce(nullif(name,''), substring_index(email,'@',1))` }).from(users).where(eq(users.id, sched.agentId)).limit(1))[0];
+        const label = agent?.name || "Atendente";
+        const sent = await sendToJid(target, `*${label}*\n${sched.content}`);
+        await db.insert(waMessages).values({
+          conversationId: sched.conversationId, senderType: "agent", fromMe: true, content: sched.content,
+          messageType: "text", waMessageId: (sent as any)?.key?.id || null, status: "sent", agentId: sched.agentId,
+        });
+        await db.update(waConversations).set({ lastMessageAt: new Date() }).where(eq(waConversations.id, sched.conversationId));
+        await db.update(waScheduledMessages).set({ status: "sent" }).where(eq(waScheduledMessages.id, sched.id));
+        const { waEvents } = await import("../wa/events");
+        waEvents.emit("wa", { kind: "message", conversationId: sched.conversationId, contactId: 0, number: "", fromMe: true, text: "", type: "text" });
+      } catch (e: any) {
+        console.warn("[WA Scheduler] falha ao enviar mensagem agendada:", e?.message);
+        await db.update(waScheduledMessages).set({ status: "failed", errorMsg: (e?.message || "erro").slice(0, 500) }).where(eq(waScheduledMessages.id, sched.id)).catch(() => {});
+      }
+    }
+  } catch (err: any) {
+    console.warn("[WA Scheduler] erro no ciclo:", err?.message);
+  }
+}, 60 * 1000); // a cada minuto
