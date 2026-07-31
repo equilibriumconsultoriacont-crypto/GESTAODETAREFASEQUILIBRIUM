@@ -207,7 +207,12 @@ function DepartmentsTab() {
 // ABA USUÁRIOS
 // ═══════════════════════════════════════════════════════════════════
 // Definição dos módulos da plataforma e os níveis de cada um
-const PLATFORM_MODULES = [
+const PLATFORM_MODULES: Array<{
+  id: string; name: string; color: string;
+  levels: { value: string; label: string }[];
+  hasDataScope: boolean;
+  disabled?: boolean;
+}> = [
   {
     id: "tarefas", name: "Gestão de Tarefas", color: "#24646c",
     levels: [

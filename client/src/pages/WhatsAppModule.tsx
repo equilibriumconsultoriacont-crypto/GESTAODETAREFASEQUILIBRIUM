@@ -3,7 +3,7 @@ import { CalendarView } from "./Calendar";
 import { Link } from "wouter";
 import {
   ArrowLeft, ChevronLeft, Send, QrCode, Search, Sun, Moon, RotateCw, Check, CheckCheck, Clock, MessageSquare,
-  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus, Building2, ChevronDown, BarChart3, Reply, X as XIcon, CalendarDays,
+  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus, Building2, ChevronDown, BarChart3, Reply, X as XIcon, CalendarDays, CheckSquare,
 } from "lucide-react";
 
 /* ── Temas ─────────────────────────────────────────────────────────────────── */
@@ -48,6 +48,7 @@ type Conv = {
   id: number; status: string; unreadCount: number; lastMessageAt: string;
   name: string | null; waNumber: string; lastMessage: string | null; lastFromMe: number;
   assignedAgentId?: number | null; assignedAgentName?: string | null;
+  contactId?: number; clientId?: number | null; clientName?: string | null; clientPhone?: string | null; lid?: string | null;
 };
 type Msg = {
   id: number; senderType: string; fromMe: number | boolean; content: string | null;
@@ -327,6 +328,7 @@ export default function WhatsAppModule() {
 
   const [contactForm, setContactForm] = useState<any>(null);
   const [replyingTo, setReplyingTo] = useState<Msg | null>(null);
+  const [taskForm, setTaskForm] = useState<any>(null);
   const reloadContacts = () => api("/api/wa/contacts").then((r) => Array.isArray(r) && setContacts(r)).catch(() => {});
   const saveContact = async () => {
     const f = contactForm;
@@ -345,6 +347,17 @@ export default function WhatsAppModule() {
       }
       setContactForm(null); reloadContacts(); loadConvs();
     } else alert(r?.error || "Não foi possível salvar o contato.");
+  };
+
+  const submitTask = async () => {
+    const f = taskForm;
+    if (!f || !active) return;
+    const r = await api(`/api/wa/conversations/${active.id}/create-task`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: f.title, taskType: f.taskType, competencia: f.competencia, dueDate: f.dueDate, description: f.description }),
+    }).catch(() => ({ error: "falha" } as any));
+    if (r?.ok) { setTaskForm(null); loadMsgs(active.id); }
+    else alert(r?.error || "Não foi possível criar a tarefa.");
   };
 
   const openTransfer = () => {
@@ -887,6 +900,18 @@ export default function WhatsAppModule() {
                                 style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: t.surfaceHi, color: t.textMuted, cursor: "pointer", display: "grid", placeItems: "center" }}>
                                 <Reply size={13} />
                               </button>
+                              {!!m.content && m.messageType === "text" && (
+                                <button onClick={() => setTaskForm({
+                                    title: m.content!.length > 80 ? m.content!.slice(0, 80) + "…" : m.content,
+                                    taskType: "OUTROS",
+                                    competencia: `${String(new Date().getMonth() + 1).padStart(2, "0")}/${new Date().getFullYear()}`,
+                                    dueDate: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
+                                    description: `Solicitado pelo cliente via WhatsApp:\n"${m.content}"`,
+                                  })} className="wa-tap" aria-label="Criar tarefa" title="Criar tarefa a partir desta mensagem"
+                                  style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: t.surfaceHi, color: t.textMuted, cursor: "pointer", display: "grid", placeItems: "center" }}>
+                                  <CheckSquare size={13} />
+                                </button>
+                              )}
                               {me && m.messageType === "text" && !!m.content && (
                                 <>
                                   <button onClick={() => editMsg(m)} className="wa-tap" aria-label="Editar" title="Editar"
@@ -1093,6 +1118,71 @@ export default function WhatsAppModule() {
                   background: !contactForm.id && contactForm.number.replace(/\D/g, "").length < 10 ? t.surfaceHi : t.accent,
                   color: !contactForm.id && contactForm.number.replace(/\D/g, "").length < 10 ? t.textFaint : t.accentText }}>
                 Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal criar tarefa a partir de uma mensagem */}
+      {taskForm && (
+        <div onClick={() => setTaskForm(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "grid", placeItems: "center", zIndex: 50, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: 440, maxHeight: "88vh", overflowY: "auto", background: t.surface, border: `1px solid ${t.border}`, borderRadius: 16, padding: 20, boxShadow: "0 12px 40px rgba(0,0,0,.35)" }}>
+            <div style={{ fontSize: 15, fontWeight: 650, marginBottom: 4 }}>Criar tarefa</div>
+            <div style={{ fontSize: 12.5, color: t.textFaint, marginBottom: 16 }}>
+              Tarefa única — não se repete nos próximos meses.
+            </div>
+
+            {!active?.clientId ? (
+              <div style={{ background: t.dangerSoft, border: `1px solid ${t.dangerBorder}`, borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 12.5, color: t.text }}>
+                Este contato ainda não está vinculado a uma empresa. Vincule antes de criar a tarefa.
+                <button onClick={() => { setTaskForm(null); setContactForm({ id: active?.contactId, name: active?.name || "", number: active?.waNumber || "", clientId: "" }); }}
+                  className="wa-tap" style={{ display: "block", marginTop: 8, background: t.accent, color: t.accentText, border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                  Vincular empresa
+                </button>
+              </div>
+            ) : null}
+
+            <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, display: "block", marginBottom: 6 }}>Título</label>
+            <input value={taskForm.title} onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })} placeholder="Ex.: Declaração de faturamento"
+              style={{ width: "100%", background: t.surfaceHi, color: t.text, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none", marginBottom: 14 }} />
+
+            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, display: "block", marginBottom: 6 }}>Tipo</label>
+                <select value={taskForm.taskType} onChange={(e) => setTaskForm({ ...taskForm, taskType: e.target.value })}
+                  style={{ width: "100%", background: t.surfaceHi, color: t.text, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, cursor: "pointer" }}>
+                  {["OUTROS", "DAS", "NFS", "DCTF", "SPED", "PIS", "COFINS", "ICMS", "ISSQN", "PGDAS"].map((tp) => (<option key={tp} value={tp}>{tp}</option>))}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, display: "block", marginBottom: 6 }}>Competência</label>
+                <input value={taskForm.competencia} onChange={(e) => setTaskForm({ ...taskForm, competencia: e.target.value })} placeholder="MM/AAAA"
+                  style={{ width: "100%", background: t.surfaceHi, color: t.text, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none" }} />
+              </div>
+            </div>
+
+            <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, display: "block", marginBottom: 6 }}>Vencimento</label>
+            <input type="date" value={taskForm.dueDate} onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })}
+              style={{ width: "100%", background: t.surfaceHi, color: t.text, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none", marginBottom: 14, colorScheme: t.name === "dark" ? "dark" : "light" }} />
+
+            <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, display: "block", marginBottom: 6 }}>Descrição</label>
+            <textarea value={taskForm.description} onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })} rows={4}
+              style={{ width: "100%", background: t.surfaceHi, color: t.text, border: `1px solid ${t.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 13, outline: "none", marginBottom: 18, resize: "vertical", fontFamily: "inherit" }} />
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setTaskForm(null)} className="wa-tap"
+                style={{ height: 38, padding: "0 16px", borderRadius: 10, border: `1px solid ${t.border}`, background: "transparent", color: t.textMuted, cursor: "pointer", fontSize: 13.5 }}>
+                Cancelar
+              </button>
+              <button onClick={submitTask} disabled={!active?.clientId || !taskForm.title.trim()} className="wa-tap"
+                style={{ height: 38, padding: "0 18px", borderRadius: 10, border: "none", fontSize: 13.5, fontWeight: 600,
+                  cursor: !active?.clientId || !taskForm.title.trim() ? "default" : "pointer",
+                  background: !active?.clientId || !taskForm.title.trim() ? t.surfaceHi : t.accent,
+                  color: !active?.clientId || !taskForm.title.trim() ? t.textFaint : t.accentText }}>
+                Criar tarefa
               </button>
             </div>
           </div>
