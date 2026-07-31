@@ -60,7 +60,7 @@ const C = {
   ok: "#34d399",
 };
 
-type TabKey = "staff" | "clients" | "departments" | "tools";
+type TabKey = "staff" | "clients" | "tools";
 
 export default function UserManagementPage() {
   const { user, loading } = useAuth();
@@ -87,7 +87,6 @@ export default function UserManagementPage() {
   const tabs: { key: TabKey; label: string; icon: any }[] = [
     { key: "staff", label: "Funcionários", icon: Users },
     { key: "clients", label: "Clientes", icon: KeyRound },
-    { key: "departments", label: "Departamentos", icon: Building2 },
     { key: "tools", label: "Ferramentas", icon: Wrench },
   ];
 
@@ -129,7 +128,6 @@ export default function UserManagementPage() {
       <main style={{ maxWidth: 1080, margin: "0 auto", padding: "22px 20px 60px" }}>
         {tab === "staff" && <StaffTab />}
         {tab === "clients" && <ClientsTab />}
-        {tab === "departments" && <DepartmentsTab />}
         {tab === "tools" && <ToolsTab />}
       </main>
     </div>
@@ -543,86 +541,6 @@ function ClientsTab() {
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setResetFor(null)} style={ghostBtn}>Cancelar</button>
               <button onClick={doReset} disabled={resetMut.isPending} style={{ background: C.brand, color: "#04211f", border: "none", borderRadius: 10, padding: "10px 18px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Redefinir</button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-/* ─────────────────────────── Departamentos ─────────────────────────── */
-
-const DEPT_COLORS = ["#24646c", "#c084fc", "#fb923c", "#4ade80", "#facc15", "#f87171", "#60a5fa", "#2dd4bf"];
-
-function DepartmentsTab() {
-  const { data: depts = [], refetch } = trpc.departments.listAll.useQuery();
-  const createMut = trpc.departments.create.useMutation();
-  const updateMut = trpc.departments.update.useMutation();
-  const deleteMut = trpc.departments.delete.useMutation();
-
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
-  const [name, setName] = useState("");
-  const [color, setColor] = useState(DEPT_COLORS[0]);
-
-  const openCreate = () => { setEditing(null); setName(""); setColor(DEPT_COLORS[0]); setOpen(true); };
-  const openEdit = (d: any) => { setEditing(d); setName(d.name); setColor(d.color || DEPT_COLORS[0]); setOpen(true); };
-
-  const save = async () => {
-    if (!name.trim()) { toast.error("Informe o nome"); return; }
-    try {
-      if (editing) { await updateMut.mutateAsync({ id: editing.id, name, color }); toast.success("Departamento atualizado"); }
-      else { await createMut.mutateAsync({ name, color }); toast.success("Departamento criado"); }
-      setOpen(false); refetch();
-    } catch (e: any) { toast.error(e?.message || "Não foi possível salvar"); }
-  };
-
-  const remove = async (d: any) => {
-    if (!confirm(`Excluir o departamento "${d.name}"? Usuários vinculados perderão esse departamento.`)) return;
-    try { await deleteMut.mutateAsync({ id: d.id }); toast.success("Departamento excluído"); refetch(); }
-    catch (e: any) { toast.error(e?.message || "Não foi possível excluir"); }
-  };
-
-  return (
-    <div>
-      <SectionHeader title="Departamentos" subtitle="Áreas do escritório usadas para organizar tarefas e limitar o que cada funcionário vê."
-        action={<PrimaryBtn onClick={openCreate}><PlusCircle size={16} /> Novo departamento</PrimaryBtn>} />
-
-      {depts.length === 0 ? <EmptyState icon={Building2} text="Nenhum departamento cadastrado ainda." />
-        : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
-            {(depts as any[]).map((d) => (
-              <div key={d.id} style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 12, height: 12, borderRadius: 4, background: d.color || C.brand, flex: "none" }} />
-                <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{d.name}</span>
-                <button onClick={() => openEdit(d)} title="Editar" style={iconBtn}><Pencil size={14} /></button>
-                <button onClick={() => remove(d)} title="Excluir" style={{ ...iconBtn, color: C.danger }}><Trash2 size={14} /></button>
-              </div>
-            ))}
-          </div>
-        )}
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-sm" style={{ background: C.panel, borderColor: C.border, color: C.text }}>
-          <DialogHeader><DialogTitle style={{ color: C.text }}>{editing ? "Editar departamento" : "Novo departamento"}</DialogTitle></DialogHeader>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 4 }}>
-            <div>
-              <label style={labelStyle}>Nome</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} style={fieldStyle} placeholder="Ex.: Fiscal, Contábil, Pessoal" />
-            </div>
-            <div>
-              <label style={labelStyle}>Cor</label>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {DEPT_COLORS.map((cc) => (
-                  <button key={cc} onClick={() => setColor(cc)}
-                    style={{ width: 30, height: 30, borderRadius: 8, background: cc, border: color === cc ? `2px solid ${C.text}` : "2px solid transparent", cursor: "pointer" }} />
-                ))}
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button onClick={() => setOpen(false)} style={ghostBtn}>Cancelar</button>
-              <button onClick={save} disabled={createMut.isPending || updateMut.isPending} style={{ background: C.brand, color: "#04211f", border: "none", borderRadius: 10, padding: "10px 18px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{editing ? "Salvar" : "Criar"}</button>
             </div>
           </div>
         </DialogContent>

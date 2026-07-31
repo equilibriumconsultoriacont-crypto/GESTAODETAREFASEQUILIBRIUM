@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   BarChart3,
   BookOpen,
   Package,
@@ -42,14 +43,7 @@ const menuGroups = [
       { href: "/catalogo", label: "Tarefas Base", icon: BookOpen, adminOnly: true },
       { href: "/catalogos", label: "Catálogos", icon: Package, adminOnly: true },
       { href: "/recorrentes", label: "Recorrentes", icon: RefreshCw, adminOnly: true },
-    ],
-  },
-  {
-    id: "sistema",
-    label: "Sistema",
-    items: [
-      { href: "/acessos-clientes", label: "Portal Clientes", icon: KeyRound, adminOnly: true },
-      { href: "/configuracoes", label: "Configurações", icon: Settings, adminOnly: true },
+      { href: "/configuracoes", label: "Departamentos", icon: Building2, adminOnly: true },
     ],
   },
 ];
@@ -186,6 +180,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <button onClick={() => setMobileOpen(true)} style={{ color: "#a1a1aa" }}>
             <Menu size={20} />
           </button>
+          <Link href="/">
+            <button className="flex items-center" style={{ color: "#9fd4dc" }} title="Voltar à Plataforma" aria-label="Voltar à Plataforma">
+              <ArrowLeft size={19} />
+            </button>
+          </Link>
           <img src="/logo.png" alt="Equilibrium" className="w-7 h-7 object-contain" />
           <span className="font-semibold text-sm flex-1" style={{ color: "#e5e5e5" }}>Equilibrium</span>
           <button onClick={() => logout()} className="flex items-center gap-1 text-xs" style={{ color: "#f87171" }} title="Sair">

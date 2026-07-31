@@ -648,7 +648,7 @@ export default function WhatsAppModule() {
           ]) as [string, string, any][]).map(([key, label, Icon]) => {
             const on = section === key;
             return (
-              <button key={key} onClick={() => setSection(key as any)} className="wa-tap" title={label}
+              <button key={key} onClick={() => { setSection(key as any); setActive(null); }} className="wa-tap" title={label}
                 style={{ width: isMobile ? 46 : 62, padding: "9px 0", borderRadius: 12, border: "none", cursor: "pointer",
                   background: on ? t.accent : "transparent", color: on ? t.accentText : t.textMuted,
                   display: "flex", flexDirection: "column", alignItems: "center", gap: 4, fontSize: 9.5, fontWeight: 600, lineHeight: 1.1 }}>
@@ -911,13 +911,13 @@ export default function WhatsAppModule() {
                     const showLabel = me && label !== prevLabel;
                     const nonText = m.messageType !== "text" && m.messageType !== "template";
                     return (
-                      <div key={m.id} className="wa-msg" style={{ alignSelf: me ? "flex-end" : "flex-start", maxWidth: "76%", marginTop: grouped && !showLabel ? 0 : 6, display: "flex", flexDirection: "column", alignItems: me ? "flex-end" : "flex-start" }}>
+                      <div key={m.id} className="wa-msg" style={{ alignSelf: me ? "flex-end" : "flex-start", maxWidth: isMobile ? "90%" : "76%", marginTop: grouped && !showLabel ? 0 : 6, display: "flex", flexDirection: "column", alignItems: me ? "flex-end" : "flex-start" }}>
                         {showLabel && (
                           <div style={{ fontSize: 11, fontWeight: 600, color: t.accent, textAlign: "right", margin: "0 4px 3px 0" }}>
                             {label}
                           </div>
                         )}
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, maxWidth: "100%", flexDirection: me ? "row" : "row-reverse" }}>
+                        <div style={{ display: "flex", alignItems: isMobile ? (me ? "flex-end" : "flex-start") : "center", gap: isMobile ? 3 : 6, maxWidth: "100%", flexDirection: isMobile ? "column" : (me ? "row" : "row-reverse") }}>
                           {m.content !== "🚫 Mensagem apagada" && (
                             <div className="wa-msg-actions" style={{ display: "flex", gap: 2, flex: "none" }}>
                               <button onClick={() => setReplyingTo(m)} className="wa-tap" aria-label="Responder" title="Responder"

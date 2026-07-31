@@ -18,30 +18,11 @@ export default function AdminSettingsPage() {
     <AppLayout>
       <div className="max-w-4xl space-y-5">
         <div>
-          <h1 className="text-xl font-bold" style={{ color: "#e5e5e5" }}>Configurações</h1>
-          <p className="text-sm mt-0.5" style={{ color: "#a1a1aa" }}>Gerencie departamentos e usuários do sistema</p>
+          <h1 className="text-xl font-bold" style={{ color: "#e5e5e5" }}>Departamentos</h1>
+          <p className="text-sm mt-0.5" style={{ color: "#a1a1aa" }}>Áreas do escritório usadas para organizar as tarefas e o acesso da equipe. O cadastro de usuários e clientes fica no módulo Gerenciamento de Usuários.</p>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-2 border-b" style={{ borderColor: "#1e4f5c" }}>
-          <button onClick={() => setTab("departments")}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors"
-            style={{ color: tab === "departments" ? "#9fd4dc" : "#52525b", borderBottom: tab === "departments" ? "2px solid #9fd4dc" : "2px solid transparent" }}>
-            <Building2 size={15} /> Departamentos
-          </button>
-          <button onClick={() => setTab("users")}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors"
-            style={{ color: tab === "users" ? "#9fd4dc" : "#52525b", borderBottom: tab === "users" ? "2px solid #9fd4dc" : "2px solid transparent" }}>
-            <Users size={15} /> Usuários
-          </button>
-          <button onClick={() => setTab("email")}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors"
-            style={{ color: tab === "email" ? "#9fd4dc" : "#52525b", borderBottom: tab === "email" ? "2px solid #9fd4dc" : "2px solid transparent" }}>
-            <Mail size={15} /> E-mail
-          </button>
-        </div>
-
-        {tab === "departments" ? <DepartmentsTab /> : tab === "users" ? <UsersTab /> : <EmailTab />}
+        <DepartmentsTab />
       </div>
     </AppLayout>
   );
