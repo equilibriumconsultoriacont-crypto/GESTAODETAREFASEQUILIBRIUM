@@ -752,6 +752,26 @@ async function ensureSchema() {
         }
       } catch (e: any) { console.warn("[Migração users col] ", e?.message?.slice(0, 140)); }
 
+      // Permite o MESMO e-mail em papéis diferentes (ex.: um acesso "cliente" e um acesso
+      // "administrador" com o mesmo e-mail, senhas diferentes). Antes o e-mail era único
+      // globalmente; agora é único por (email, role).
+      try {
+        const [ux]: any = await conn.query(
+          "SELECT COUNT(*) as cnt FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND INDEX_NAME = 'users_email_unique'"
+        );
+        if (Number(ux?.[0]?.cnt ?? 0) > 0) {
+          await conn.query("ALTER TABLE `users` DROP INDEX `users_email_unique`");
+          console.log("[Migração] Removida a restrição UNIQUE global de users.email.");
+        }
+        const [uer]: any = await conn.query(
+          "SELECT COUNT(*) as cnt FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND INDEX_NAME = 'users_email_role_unique'"
+        );
+        if (Number(uer?.[0]?.cnt ?? 0) === 0) {
+          await conn.query("ALTER TABLE `users` ADD UNIQUE INDEX `users_email_role_unique` (`email`, `role`)");
+          console.log("[Migração] Criado índice único users(email, role).");
+        }
+      } catch (e: any) { console.warn("[Migração users email/role] ", e?.message?.slice(0, 140)); }
+
       // Backfill: todo cliente ativo com email que ainda não tem acesso ganha um
       // usuário pendente (senha inicial 123456, troca obrigatória no 1º login).
       try {

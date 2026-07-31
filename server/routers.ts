@@ -61,6 +61,7 @@ import {
   getPool,
   upsertUser,
   getUserByEmail,
+  getUserByEmailAndRole,
 } from "./db";
 import { buildAlertEmailHtml, buildGuiaEmailHtml, sendEmail } from "./email";
 import { storagePut, storageDelete, storageGetBuffer } from "./storage";
@@ -91,7 +92,7 @@ const clientsRouter = router({
       // Cria automaticamente o acesso do cliente (senha inicial 123456, troca no 1º login).
       try {
         const email = input.email.trim().toLowerCase();
-        const existing = await getUserByEmail(email);
+        const existing = await getUserByEmailAndRole(email, "client");
         if (!existing) {
           await provisionClientAccess(email, id, input.name);
         }
@@ -119,7 +120,7 @@ const clientsRouter = router({
       await updateClient(id, data);
       if (data.email) {
         try {
-          const existing = await getUserByEmail(data.email);
+          const existing = await getUserByEmailAndRole(data.email, "client");
           if (!existing) {
             await provisionClientAccess(data.email, id, data.name);
           }
@@ -1172,7 +1173,7 @@ async function provisionClientAccess(email: string, clientId: number, name?: str
   const tempPassword = generateTempPassword();
   const passwordHash = await bcryptjs.hash(tempPassword, 10);
   await createPendingClientUser(email, passwordHash, clientId);
-  const created = await getUserByEmail(email);
+  const created = await getUserByEmailAndRole(email, "client");
   if (created) await addUserCompanyAccess(created.id, clientId);
   try {
     const { sendEmail } = await import("./email");
@@ -1392,21 +1393,22 @@ const clientAccessRouter = router({
     }))
     .mutation(async ({ input }) => {
       const email = input.email.trim().toLowerCase();
-      const existing = await getUserByEmail(email);
+      const existing = await getUserByEmailAndRole(email, "client");
       if (existing) {
-        // E-mail já existe → apenas VINCULA à empresa (pode acessar várias, escolhe
-        // no login). Não mexe na senha nem na empresa principal.
+        // Já existe um acesso de CLIENTE com esse e-mail → apenas VINCULA à empresa (pode
+        // acessar várias, escolhe no login). Não mexe na senha nem na empresa principal.
         await addUserCompanyAccess(existing.id, input.clientId);
         return { success: true, action: "linked" };
       }
-      // Novo e-mail → cria o acesso. Senha em branco = gerada (envie depois com Reenviar).
+      // Sem acesso de cliente ainda com esse e-mail (mesmo que exista um acesso de
+      // administrador/usuário com o mesmo e-mail, são contas independentes) → cria o acesso.
       const pwd = input.password && input.password.length >= 6 ? input.password : generateTempPassword();
       const passwordHash = await bcryptjs.hash(pwd, 10);
       await upsertUser({
         email, name: email, passwordHash, role: "client",
         clientId: input.clientId, lastSignedIn: new Date(),
       });
-      const created = await getUserByEmail(email);
+      const created = await getUserByEmailAndRole(email, "client");
       if (created) await addUserCompanyAccess(created.id, input.clientId);
       return { success: true, action: "created" };
     }),
@@ -1469,7 +1471,7 @@ const clientAccessRouter = router({
     .mutation(async ({ input }) => {
       // Usa o e-mail DO ACESSO (login), nunca o e-mail da empresa — eles podem diferir.
       const email = input.email.trim().toLowerCase();
-      const existing = await getUserByEmail(email);
+      const existing = await getUserByEmailAndRole(email, "client");
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Acesso não encontrado para esse e-mail." });
       }
@@ -1607,11 +1609,14 @@ const usersRouter = router({
       modules: z.array(z.object({ module: z.string(), level: z.string() })).default([]),
     }))
     .mutation(async ({ input }) => {
-      const { createLocalUser, setUserDepartments, setUserClients, setUserModules, getUserByEmail } = await import("./db");
+      const { createLocalUser, setUserDepartments, setUserClients, setUserModules, getUserByEmailAndRole } = await import("./db");
       const bcryptjs = (await import("bcryptjs")).default;
 
-      const existing = await getUserByEmail(input.email);
-      if (existing) throw new TRPCError({ code: "CONFLICT", message: "Já existe um usuário com esse e-mail" });
+      // Mesmo e-mail pode ter contas em papéis diferentes (ex.: já é "cliente" e agora vira
+      // também "administrador"), com senhas diferentes. Só bloqueia duplicidade DENTRO do
+      // mesmo papel.
+      const existing = await getUserByEmailAndRole(input.email, input.role);
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "Já existe um usuário com esse e-mail nesse mesmo perfil" });
 
       const passwordHash = await bcryptjs.hash(input.password, 10);
       const userId = await createLocalUser({
@@ -1865,20 +1870,29 @@ export const appRouter = router({
     login: publicProcedure
       .input(z.object({ email: z.string().email(), password: z.string().min(6) }))
       .mutation(async ({ input, ctx }) => {
-        const user = await getUserByEmail(input.email.trim().toLowerCase());
-        if (!user || !user.passwordHash) {
+        // Um e-mail pode ter mais de uma conta (ex.: acesso de cliente e acesso de
+        // administrador com o mesmo e-mail). A senha decide qual conta é usada: testa a
+        // senha em cada conta até achar a que bate.
+        const { getUsersByEmail } = await import("./db");
+        const candidates = await getUsersByEmail(input.email.trim().toLowerCase());
+        if (!candidates.length) {
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Credenciais inválidas" });
         }
-        // Detectar hash legado do Manus (não-bcrypt, 44 chars base64)
-        const isBcryptHash = user.passwordHash.startsWith("$2b$") || user.passwordHash.startsWith("$2a$");
-        if (!isBcryptHash) {
-          throw new TRPCError({
-            code: "UNAUTHORIZED",
-            message: "Senha incompatível com o novo sistema. Contate o administrador para redefinir sua senha.",
-          });
+        let user: (typeof candidates)[number] | undefined;
+        for (const cand of candidates) {
+          if (!cand.passwordHash) continue;
+          const isBcryptHash = cand.passwordHash.startsWith("$2b$") || cand.passwordHash.startsWith("$2a$");
+          if (!isBcryptHash) continue; // hash legado nessa conta específica; tenta as outras
+          if (await bcryptjs.compare(input.password, cand.passwordHash)) { user = cand; break; }
         }
-        const isValidPassword = await bcryptjs.compare(input.password, user.passwordHash);
-        if (!isValidPassword) {
+        if (!user) {
+          // Se a única conta encontrada tem hash legado, dá a mensagem específica (ajuda no suporte)
+          if (candidates.length === 1 && candidates[0].passwordHash && !candidates[0].passwordHash.startsWith("$2")) {
+            throw new TRPCError({
+              code: "UNAUTHORIZED",
+              message: "Senha incompatível com o novo sistema. Contate o administrador para redefinir sua senha.",
+            });
+          }
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Credenciais inválidas" });
         }
         // Atualiza lastSignedIn sem tocar no passwordHash

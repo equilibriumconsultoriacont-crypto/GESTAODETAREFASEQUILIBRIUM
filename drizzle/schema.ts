@@ -14,7 +14,7 @@ export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
   openId: varchar("openId", { length: 64 }).unique(),
   name: text("name"),
-  email: varchar("email", { length: 320 }).notNull().unique(),
+  email: varchar("email", { length: 320 }).notNull(), // único por (email, role) — não mais globalmente único
   passwordHash: varchar("passwordHash", { length: 255 }),
   loginMethod: varchar("loginMethod", { length: 64 }).default("local").notNull(),
   role: mysqlEnum("role", ["user", "admin", "client"]).default("user").notNull(),

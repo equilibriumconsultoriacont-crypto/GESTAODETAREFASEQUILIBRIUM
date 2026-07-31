@@ -141,6 +141,38 @@ export async function getUserById(id: number) {
   }
 }
 
+// Um e-mail pode ter várias contas (ex.: uma "cliente" e uma "administrador"), diferenciadas
+// pela senha no login. Esta busca por PAPEL específico, para checagens de duplicidade e
+// operações que sabem qual conta querem (ex.: provisionar acesso de cliente).
+export async function getUserByEmailAndRole(email: string, role: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const normalized = email.trim().toLowerCase();
+  try {
+    const result = await db.select().from(users).where(and(eq(users.email, normalized), eq(users.role, role as any))).limit(1);
+    return result[0] ?? undefined;
+  } catch (err: any) {
+    if (!isMissingColumn(err)) throw err;
+    const result = await db.select(userColsSafe).from(users).where(and(eq(users.email, normalized), eq(users.role, role as any))).limit(1);
+    return result[0] ? ({ ...result[0], mustChangePassword: false } as any) : undefined;
+  }
+}
+
+// Todas as contas com esse e-mail (pode haver mais de uma, com papéis diferentes). Usado no
+// login: tenta a senha em cada uma até achar a que bate.
+export async function getUsersByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const normalized = email.trim().toLowerCase();
+  try {
+    return await db.select().from(users).where(eq(users.email, normalized));
+  } catch (err: any) {
+    if (!isMissingColumn(err)) throw err;
+    const result = await db.select(userColsSafe).from(users).where(eq(users.email, normalized));
+    return result.map((r: any) => ({ ...r, mustChangePassword: false }));
+  }
+}
+
 export async function getUserByEmail(email: string) {
   const db = await getDb();
   if (!db) return undefined;
