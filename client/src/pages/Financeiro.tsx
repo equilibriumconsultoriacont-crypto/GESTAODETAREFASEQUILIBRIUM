@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   ArrowLeft, Wallet, Receipt, Repeat, QrCode, PlusCircle, Pencil, Trash2, Search, Lock,
-  CheckCircle2, RotateCcw, TrendingUp, Clock, AlertTriangle, X,
+  CheckCircle2, RotateCcw, TrendingUp, Clock, AlertTriangle, X, Send, Mail,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -149,12 +149,16 @@ function PainelTab({ onGo }: { onGo: (t: Tab) => void }) {
 
 /* ── Contas a Receber ── */
 function TitulosTab() {
+  const utils = trpc.useUtils();
   const { data: titulos = [], refetch, isLoading } = trpc.financeiro.listTitulos.useQuery({});
   const { data: clientsCfg = [] } = trpc.financeiro.clientsWithConfig.useQuery();
   const createMut = trpc.financeiro.createTitulo.useMutation();
   const cancelMut = trpc.financeiro.cancelTitulo.useMutation();
   const baixaMut = trpc.financeiro.baixaManual.useMutation();
   const reverterMut = trpc.financeiro.reverterBaixa.useMutation();
+  const enviarMut = trpc.financeiro.enviarCobranca.useMutation();
+  // atualiza painel + lista após qualquer ação
+  const refreshAll = () => { refetch(); utils.financeiro.dashboard.invalidate(); utils.financeiro.listTitulos.invalidate(); };
 
   const [query, setQuery] = useState("");
   const [statusF, setStatusF] = useState("todos");
@@ -184,14 +188,19 @@ function TitulosTab() {
         amount: form.amount, competencia: form.competencia || undefined,
         dueDate: form.dueDate, sendDate: form.sendDate || undefined,
       });
-      toast.success("Conta a receber criada"); setOpen(false); refetch();
+      toast.success("Conta a receber criada"); setOpen(false); refreshAll();
     } catch (e: any) { toast.error(e?.message || "Não foi possível criar"); }
   };
-  const cancel = async (t: any) => { if (!confirm("Cancelar esta conta a receber?")) return; try { await cancelMut.mutateAsync({ id: t.id }); toast.success("Cancelada"); refetch(); } catch (e: any) { toast.error(e?.message); } };
-  const reverter = async (t: any) => { if (!confirm("Reverter a baixa? A conta volta para 'aberto'.")) return; try { await reverterMut.mutateAsync({ tituloId: t.id }); toast.success("Baixa revertida"); refetch(); } catch (e: any) { toast.error(e?.message); } };
+  const cancel = async (t: any) => { if (!confirm("Cancelar esta conta a receber?")) return; try { await cancelMut.mutateAsync({ id: t.id }); toast.success("Cancelada"); refreshAll(); } catch (e: any) { toast.error(e?.message); } };
+  const reverter = async (t: any) => { if (!confirm("Reverter a baixa? A conta volta para 'aberto'.")) return; try { await reverterMut.mutateAsync({ tituloId: t.id }); toast.success("Baixa revertida"); refreshAll(); } catch (e: any) { toast.error(e?.message); } };
   const doBaixa = async () => {
-    try { await baixaMut.mutateAsync({ tituloId: baixaFor.id, amount: baixaFor._amount || undefined, paidDate: baixaFor._paidDate || undefined, method: baixaFor._method || undefined, note: baixaFor._note || undefined }); toast.success("Baixa registrada"); setBaixaFor(null); refetch(); }
+    try { await baixaMut.mutateAsync({ tituloId: baixaFor.id, amount: baixaFor._amount || undefined, paidDate: baixaFor._paidDate || undefined, method: baixaFor._method || undefined, note: baixaFor._note || undefined }); toast.success("Baixa registrada"); setBaixaFor(null); refreshAll(); }
     catch (e: any) { toast.error(e?.message || "Não foi possível dar baixa"); }
+  };
+  const enviar = async (t: any) => {
+    if (!confirm(`Enviar a cobrança de ${brl(t.amount)} por e-mail para ${t.clientName}?`)) return;
+    try { const r: any = await enviarMut.mutateAsync({ tituloId: t.id }); toast.success(`Cobrança enviada para ${r?.to || "o cliente"}`); refreshAll(); }
+    catch (e: any) { toast.error(e?.message || "Não foi possível enviar"); }
   };
 
   return (
@@ -231,6 +240,9 @@ function TitulosTab() {
                   </div>
                   <div style={{ fontSize: 16, fontWeight: 750, color: t.status === "pago" ? C.green : C.text }}>{brl(t.amount)}</div>
                   <div style={{ display: "flex", gap: 6 }}>
+                    {t.status !== "cancelado" && t.status !== "pago" && (
+                      <button onClick={() => enviar(t)} disabled={enviarMut.isPending} title="Enviar cobrança por e-mail" style={{ ...iconBtn, color: "#7dd3fc", borderColor: "rgba(125,211,252,.3)" }}><Send size={15} /></button>
+                    )}
                     {t.status === "pago" ? (
                       <button onClick={() => reverter(t)} title="Reverter baixa" style={{ ...iconBtn, color: C.amber }}><RotateCcw size={15} /></button>
                     ) : t.status !== "cancelado" ? (
@@ -332,10 +344,18 @@ function TitulosTab() {
 
 /* ── Honorários (config por cliente) ── */
 function HonorariosTab() {
+  const utils = trpc.useUtils();
   const { data: rows = [], refetch, isLoading } = trpc.financeiro.clientsWithConfig.useQuery();
   const upsertMut = trpc.financeiro.upsertClientConfig.useMutation();
+  const gerarMut = trpc.financeiro.gerarCobrancaMes.useMutation();
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<any>(null);
+
+  const gerar = async (r: any) => {
+    if (!confirm(`Gerar a cobrança de honorário deste mês para ${r.name} (${brl(r.honorarioValue)})?`)) return;
+    try { const res: any = await gerarMut.mutateAsync({ clientId: r.clientId }); toast.success(`Cobrança de ${res?.competencia || "este mês"} gerada — veja em Contas a Receber`); utils.financeiro.dashboard.invalidate(); utils.financeiro.listTitulos.invalidate(); }
+    catch (e: any) { toast.error(e?.message || "Não foi possível gerar"); }
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -353,7 +373,7 @@ function HonorariosTab() {
         weekendRule: editing.weekendRule || "mantem",
         billingEmail: editing.billingEmail || "",
       });
-      toast.success("Honorário configurado"); setEditing(null); refetch();
+      toast.success("Honorário configurado"); setEditing(null); refetch(); utils.financeiro.dashboard.invalidate();
     } catch (e: any) { toast.error(e?.message || "Não foi possível salvar"); }
   };
 
@@ -380,6 +400,12 @@ function HonorariosTab() {
                   </div>
                 </div>
                 {r.hasHonorario && <span style={{ fontSize: 10.5, fontWeight: 700, color: C.green, background: C.greenSoft, padding: "2px 8px", borderRadius: 6 }}>Honorário ativo</span>}
+                {r.hasHonorario && r.honorarioValue && r.dueDay && (
+                  <button onClick={() => gerar(r)} disabled={gerarMut.isPending} title="Gerar a cobrança de honorário deste mês"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "7px 11px", borderRadius: 9, border: `1px solid ${C.brand}`, background: C.brandSoft, color: C.brandText, cursor: "pointer", whiteSpace: "nowrap" }}>
+                    <Receipt size={14} /> Gerar mês
+                  </button>
+                )}
                 <button onClick={() => setEditing({ ...r, honorarioValue: r.honorarioValue || "", dueDay: r.dueDay || "", sendDay: r.sendDay || "", weekendRule: r.weekendRule || "mantem", billingEmail: r.billingEmail || "" })}
                   style={{ ...iconBtn }} title="Configurar"><Pencil size={15} /></button>
               </div>

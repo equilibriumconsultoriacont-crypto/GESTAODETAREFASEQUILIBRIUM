@@ -9,8 +9,43 @@ import {
   clients,
 } from "../drizzle/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
+import { sendEmail } from "./email";
 
 const money = z.string().regex(/^\d+([.,]\d{1,2})?$/, "valor inválido").transform((v) => v.replace(",", "."));
+
+const brl = (v: any) => "R$ " + Number(String(v ?? 0).replace(",", ".")).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Ajusta o vencimento se cair em fim de semana (regra do cliente, inspirado no OMIE).
+function adjustWeekend(d: Date, rule: string | null): Date {
+  const day = d.getDay(); // 0 = domingo, 6 = sábado
+  if (rule === "antecipa") {
+    if (day === 0) d.setDate(d.getDate() - 2);
+    else if (day === 6) d.setDate(d.getDate() - 1);
+  } else if (rule === "posterga") {
+    if (day === 6) d.setDate(d.getDate() + 2);
+    else if (day === 0) d.setDate(d.getDate() + 1);
+  }
+  return d;
+}
+
+// HTML do e-mail de cobrança. Se a config de PIX estiver ativa, inclui a chave.
+function buildCobrancaEmail(opts: { clientName: string; description: string; amount: string; dueDate: Date; competencia?: string | null; pix?: any }): string {
+  const venc = opts.dueDate.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  const pixBlock = opts.pix?.active && opts.pix?.pixKey
+    ? `<tr><td style="padding:16px 0;border-top:1px solid #eee"><strong>Pagamento via PIX</strong><br/>Chave (${opts.pix.pixKeyType || "-"}): <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">${opts.pix.pixKey}</code><br/>${opts.pix.beneficiaryName ? "Beneficiário: " + opts.pix.beneficiaryName + "<br/>" : ""}${opts.pix.instructions ? '<span style="color:#555">' + opts.pix.instructions + "</span>" : ""}</td></tr>`
+    : `<tr><td style="padding:16px 0;border-top:1px solid #eee;color:#555">Os dados para pagamento serão informados pelo escritório.</td></tr>`;
+  return `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#222">
+    <h2 style="color:#24646c">Equilibrium Consultoria Contábil</h2>
+    <p>Olá, ${opts.clientName || "cliente"}.</p>
+    <p>Segue a cobrança referente a <strong>${opts.description}</strong>${opts.competencia ? " (competência " + opts.competencia + ")" : ""}.</p>
+    <table style="width:100%;border-collapse:collapse;margin:12px 0">
+      <tr><td style="padding:8px 0"><strong>Valor</strong></td><td style="text-align:right;font-size:20px;font-weight:bold;color:#24646c">${brl(opts.amount)}</td></tr>
+      <tr><td style="padding:8px 0"><strong>Vencimento</strong></td><td style="text-align:right">${venc}</td></tr>
+      ${pixBlock}
+    </table>
+    <p style="color:#888;font-size:12px">Se já efetuou o pagamento, desconsidere este aviso.</p>
+  </div>`;
+}
 
 export const financeiroRouter = router({
   // ── Painel: resumo ──────────────────────────────────────────────────────────
@@ -253,6 +288,49 @@ export const financeiroRouter = router({
       await db.update(financialTitulos).set({ status: input.decisao === "confirmar" ? "pago" : "enviado", updatedAt: new Date() }).where(eq(financialTitulos.id, pay.tituloId));
       return { ok: true };
     }),
+
+  // ── Gerar a cobrança (título) do mês a partir do honorário configurado ───────
+  // (Fase 2 fará isso automático todo mês; este botão permite gerar manualmente já na Fase 1.)
+  gerarCobrancaMes: adminProcedure
+    .input(z.object({ clientId: z.number(), competencia: z.string().regex(/^\d{2}\/\d{4}$/).optional() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("sem banco");
+      const cfg = (await db.select().from(financialClientConfig).where(eq(financialClientConfig.clientId, input.clientId)).limit(1))[0];
+      if (!cfg || !cfg.hasHonorario) throw new Error("Cliente sem honorário configurado");
+      if (!cfg.honorarioValue || !cfg.dueDay) throw new Error("Configure o valor e o dia de vencimento do honorário primeiro");
+      const now = new Date();
+      const comp = input.competencia || `${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+      const [mm, yyyy] = comp.split("/").map(Number);
+      const due = adjustWeekend(new Date(yyyy, mm - 1, cfg.dueDay), cfg.weekendRule);
+      const sendDate = cfg.sendDay ? new Date(yyyy, mm - 1, cfg.sendDay) : null;
+      const existing = (await db.select({ id: financialTitulos.id }).from(financialTitulos)
+        .where(and(eq(financialTitulos.clientId, input.clientId), eq(financialTitulos.kind, "honorario"), eq(financialTitulos.competencia, comp), sql`${financialTitulos.status} <> 'cancelado'`)).limit(1))[0];
+      if (existing) throw new Error(`Já existe cobrança de honorário para ${comp}`);
+      await db.insert(financialTitulos).values({
+        clientId: input.clientId, kind: "honorario", description: `Honorário ${comp}`, category: "Honorário",
+        amount: cfg.honorarioValue, competencia: comp, dueDate: due, sendDate, status: "aberto", origin: "recorrencia", recurringConfigId: cfg.id,
+      } as any);
+      return { ok: true, competencia: comp };
+    }),
+
+  // ── Enviar a cobrança por e-mail (manual, disponível já na fase de teste) ─────
+  enviarCobranca: adminProcedure.input(z.object({ tituloId: z.number() })).mutation(async ({ input }) => {
+    const db = await getDb();
+    if (!db) throw new Error("sem banco");
+    const row = (await db
+      .select({ id: financialTitulos.id, status: financialTitulos.status, description: financialTitulos.description, amount: financialTitulos.amount, competencia: financialTitulos.competencia, dueDate: financialTitulos.dueDate, clientName: clients.name, clientEmail: clients.email, billingEmail: financialClientConfig.billingEmail })
+      .from(financialTitulos).leftJoin(clients, eq(clients.id, financialTitulos.clientId)).leftJoin(financialClientConfig, eq(financialClientConfig.clientId, financialTitulos.clientId))
+      .where(eq(financialTitulos.id, input.tituloId)).limit(1))[0];
+    if (!row) throw new Error("título não encontrado");
+    const to = row.billingEmail || row.clientEmail;
+    if (!to) throw new Error("Cliente sem e-mail cadastrado");
+    const pix = (await db.select().from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
+    const html = buildCobrancaEmail({ clientName: row.clientName || "", description: row.description, amount: row.amount, dueDate: new Date(row.dueDate as any), competencia: row.competencia, pix });
+    await sendEmail({ to, subject: `Cobrança - ${row.description}`, html });
+    await db.update(financialTitulos).set({ status: row.status === "pago" ? "pago" : "enviado", sentAt: new Date(), updatedAt: new Date() }).where(eq(financialTitulos.id, input.tituloId));
+    return { ok: true, to };
+  }),
 
   // ── Configuração global de recebimento (PIX / QR) ────────────────────────────
   getConfig: adminProcedure.query(async () => {
