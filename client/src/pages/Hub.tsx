@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
-import { CheckSquare, FileText, LogOut, MessageCircle, ExternalLink, Users } from "lucide-react";
+import { CheckSquare, FileText, LogOut, MessageCircle, ExternalLink, Users, Wallet } from "lucide-react";
 
 // Definição dos módulos da plataforma
 const MODULES = [
@@ -39,6 +39,16 @@ const MODULES = [
     icon: Users,
     color: "#2f8f9e",
     path: "/usuarios",
+    available: true,
+    adminOnly: true,
+  },
+  {
+    id: "financeiro",
+    name: "Financeiro",
+    description: "Honorários, contas a receber e cobranças do escritório.",
+    icon: Wallet,
+    color: "#34d399",
+    path: "/financeiro",
     available: true,
     adminOnly: true,
   },

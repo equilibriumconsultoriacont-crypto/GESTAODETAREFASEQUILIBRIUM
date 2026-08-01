@@ -24,6 +24,7 @@ import TaskCatalogsPage from "./pages/TaskCatalogs";
 import PendingSendsPage from "./pages/PendingSends";
 import AdminSettingsPage from "./pages/AdminSettings";
 import UserManagementPage from "./pages/UserManagement";
+import FinanceiroPage from "./pages/Financeiro";
 import CalendarPage from "./pages/Calendar";
 import Hub from "./pages/Hub";
 import Proposals from "./pages/Proposals";
@@ -92,6 +93,7 @@ function Router() {
       <Route path="/pendentes-envio" component={PendingSendsPage} />
       <Route path="/configuracoes" component={AdminSettingsPage} />
       <Route path="/usuarios" component={UserManagementPage} />
+      <Route path="/financeiro" component={FinanceiroPage} />
 
       {/* Módulo Propostas */}
       <Route path="/propostas" component={Proposals} />
