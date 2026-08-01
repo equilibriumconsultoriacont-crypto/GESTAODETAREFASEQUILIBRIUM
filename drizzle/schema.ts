@@ -458,3 +458,86 @@ export const waScheduledMessages = mysqlTable("wa_scheduled_messages", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// MÓDULO FINANCEIRO (contas a receber / honorários) — inspirado no Contas a Receber
+// e na Régua de Cobrança do OMIE.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Configuração financeira por cliente: se tem honorário mensal, valor, quando vence e
+// quando a cobrança é enviada. Alimentado pelos clientes do módulo de Tarefas.
+export const financialClientConfig = mysqlTable("fin_client_config", {
+  id: int("id").autoincrement().primaryKey(),
+  clientId: int("clientId").notNull().unique(),
+  hasHonorario: boolean("hasHonorario").default(false).notNull(),
+  honorarioValue: varchar("honorarioValue", { length: 20 }), // ex "350.00"
+  dueDay: int("dueDay"), // dia do mês em que o honorário vence (1-28)
+  sendDay: int("sendDay"), // dia do mês em que a cobrança é enviada por e-mail
+  // Regra quando o vencimento cai em fim de semana/feriado (inspirado no OMIE):
+  weekendRule: mysqlEnum("weekendRule", ["mantem", "antecipa", "posterga"]).default("mantem").notNull(),
+  billingEmail: varchar("billingEmail", { length: 320 }), // opcional; vazio = usa o e-mail do cadastro
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type FinancialClientConfig = typeof financialClientConfig.$inferSelect;
+
+// Título = uma conta a receber (honorário mensal ou serviço eventual como abertura/encerramento).
+export const financialTitulos = mysqlTable("fin_titulos", {
+  id: int("id").autoincrement().primaryKey(),
+  clientId: int("clientId").notNull(),
+  kind: mysqlEnum("kind", ["honorario", "eventual"]).default("eventual").notNull(),
+  description: varchar("description", { length: 255 }).notNull(),
+  category: varchar("category", { length: 80 }), // classificação p/ relatórios (Honorário, Abertura, etc.)
+  amount: varchar("amount", { length: 20 }).notNull(), // ex "350.00"
+  competencia: varchar("competencia", { length: 7 }), // MM/AAAA (para honorários)
+  dueDate: timestamp("dueDate").notNull(), // vencimento
+  sendDate: timestamp("sendDate"), // dia de enviar a cobrança por e-mail
+  status: mysqlEnum("status", [
+    "rascunho",   // criado (ex.: por tarefa avulsa) mas ainda a configurar
+    "aberto",     // pronto, aguardando o dia de envio
+    "enviado",    // cobrança enviada por e-mail, aguardando pagamento
+    "em_conferencia", // cliente subiu comprovante, aguardando o escritório validar
+    "pago",       // baixa confirmada
+    "vencido",    // passou do vencimento sem pagamento
+    "cancelado",
+  ]).default("aberto").notNull(),
+  origin: mysqlEnum("origin", ["manual", "recorrencia", "tarefa"]).default("manual").notNull(),
+  recurringConfigId: int("recurringConfigId"), // se veio da recorrência do honorário (fin_client_config.id)
+  taskId: int("taskId"), // se veio de "Movimenta financeiro" de uma tarefa
+  sentAt: timestamp("sentAt"), // quando o e-mail de cobrança foi enviado
+  reminderSentAt: timestamp("reminderSentAt"), // quando o lembrete pós-vencimento foi enviado
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type FinancialTitulo = typeof financialTitulos.$inferSelect;
+
+// Comprovante de pagamento enviado pelo cliente (fica "aguardando conferência" até o escritório validar).
+export const financialPayments = mysqlTable("fin_payments", {
+  id: int("id").autoincrement().primaryKey(),
+  tituloId: int("tituloId").notNull(),
+  comprovanteUrl: mediumtext("comprovanteUrl"), // arquivo do comprovante (data URL) — opcional na baixa manual
+  amount: varchar("amount", { length: 20 }), // valor informado
+  paidDate: timestamp("paidDate"), // data do pagamento (do comprovante)
+  method: varchar("method", { length: 30 }), // pix / boleto / manual
+  status: mysqlEnum("status", ["aguardando_conferencia", "confirmado", "rejeitado"]).default("aguardando_conferencia").notNull(),
+  submittedByClient: boolean("submittedByClient").default(false).notNull(), // veio do portal do cliente?
+  confirmedBy: int("confirmedBy"), // usuário do escritório que confirmou/rejeitou
+  confirmedAt: timestamp("confirmedAt"),
+  note: varchar("note", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type FinancialPayment = typeof financialPayments.$inferSelect;
+
+// Configuração global de recebimento (chave PIX / QR). Fica pronto e vazio até ter a conta PJ.
+export const financialConfig = mysqlTable("fin_config", {
+  id: int("id").autoincrement().primaryKey(),
+  pixKey: varchar("pixKey", { length: 200 }),
+  pixKeyType: varchar("pixKeyType", { length: 20 }), // cnpj / email / telefone / aleatoria
+  beneficiaryName: varchar("beneficiaryName", { length: 200 }),
+  beneficiaryDoc: varchar("beneficiaryDoc", { length: 20 }), // CNPJ
+  pixQrImage: mediumtext("pixQrImage"), // imagem do QR (data URL) que você vai me enviar
+  instructions: text("instructions"), // instruções extras no e-mail de cobrança
+  active: boolean("active").default(false).notNull(), // liga quando a conta PJ estiver pronta
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type FinancialConfig = typeof financialConfig.$inferSelect;

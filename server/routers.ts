@@ -68,6 +68,7 @@ import { storagePut, storageDelete, storageGetBuffer } from "./storage";
 import { sendGuiaConfirmationWhatsApp } from "./whatsapp";
 // getUserByEmail, upsertUser already imported above
 import bcryptjs from "bcryptjs";
+import { financeiroRouter } from "./financeiroRouter";
 
 // ─── Clients Router ───────────────────────────────────────────────────────────
 const clientsRouter = router({
@@ -1978,6 +1979,7 @@ export const appRouter = router({
   departments: departmentsRouter,
   usersAdmin: usersRouter,
   calendar: calendarRouter,
+  financeiro: financeiroRouter,
   modules: modulesRouter,
   proposals: proposalsRouter,
   clientPortal: clientPortalRouter,
