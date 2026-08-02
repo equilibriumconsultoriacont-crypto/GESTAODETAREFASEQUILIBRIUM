@@ -475,6 +475,9 @@ export const financialClientConfig = mysqlTable("fin_client_config", {
   // Regra quando o vencimento cai em fim de semana/feriado (inspirado no OMIE):
   weekendRule: mysqlEnum("weekendRule", ["mantem", "antecipa", "posterga"]).default("mantem").notNull(),
   billingEmail: varchar("billingEmail", { length: 320 }), // opcional; vazio = usa o e-mail do cadastro
+  recurring: boolean("recurring").default(true).notNull(), // recorrente (todo mês) ou mês único
+  activated: boolean("activated").default(false).notNull(), // "play" dado — gera cobrança
+  lastGenComp: varchar("lastGenComp", { length: 7 }), // última competência (MM/AAAA) já gerada
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -541,3 +544,21 @@ export const financialConfig = mysqlTable("fin_config", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type FinancialConfig = typeof financialConfig.$inferSelect;
+
+// Contas a PAGAR (despesas/fornecedores do escritório) — para ter noção do que entra e do que sai.
+export const financialPayables = mysqlTable("fin_payables", {
+  id: int("id").autoincrement().primaryKey(),
+  description: varchar("description", { length: 255 }).notNull(),
+  supplier: varchar("supplier", { length: 200 }), // fornecedor/credor
+  category: varchar("category", { length: 80 }), // ex: Aluguel, Salários, Impostos, Software
+  amount: varchar("amount", { length: 20 }).notNull(),
+  dueDate: timestamp("dueDate").notNull(),
+  status: mysqlEnum("status", ["aberto", "pago", "vencido", "cancelado"]).default("aberto").notNull(),
+  recurring: boolean("recurring").default(false).notNull(), // despesa fixa mensal?
+  paidDate: timestamp("paidDate"),
+  paidBy: int("paidBy"),
+  note: varchar("note", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type FinancialPayable = typeof financialPayables.$inferSelect;

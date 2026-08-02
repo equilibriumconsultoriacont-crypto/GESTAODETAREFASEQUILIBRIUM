@@ -271,10 +271,11 @@ async function startServer() {
         "CREATE TABLE IF NOT EXISTS `wa_config` (`k` varchar(64) NOT NULL, `v` text, CONSTRAINT `wa_config_k` PRIMARY KEY(`k`))",
         "CREATE TABLE IF NOT EXISTS `wa_push_subs` (`id` int AUTO_INCREMENT NOT NULL, `endpoint` varchar(512) NOT NULL, `p256dh` varchar(255), `auth` varchar(255), `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_push_subs_id` PRIMARY KEY(`id`), CONSTRAINT `wa_push_subs_endpoint_unique` UNIQUE(`endpoint`))",
         "CREATE TABLE IF NOT EXISTS `wa_scheduled_messages` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `agentId` int NOT NULL, `content` text NOT NULL, `sendAt` timestamp NOT NULL, `status` enum('pending','sent','failed','cancelled') NOT NULL DEFAULT 'pending', `errorMsg` text, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_scheduled_messages_id` PRIMARY KEY(`id`))",
-        "CREATE TABLE IF NOT EXISTS `fin_client_config` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `hasHonorario` boolean NOT NULL DEFAULT false, `honorarioValue` varchar(20), `dueDay` int, `sendDay` int, `weekendRule` enum('mantem','antecipa','posterga') NOT NULL DEFAULT 'mantem', `billingEmail` varchar(320), `active` boolean NOT NULL DEFAULT true, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_client_config_id` PRIMARY KEY(`id`), CONSTRAINT `fin_client_config_clientId_unique` UNIQUE(`clientId`))",
+        "CREATE TABLE IF NOT EXISTS `fin_client_config` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `hasHonorario` boolean NOT NULL DEFAULT false, `honorarioValue` varchar(20), `dueDay` int, `sendDay` int, `weekendRule` enum('mantem','antecipa','posterga') NOT NULL DEFAULT 'mantem', `billingEmail` varchar(320), `recurring` boolean NOT NULL DEFAULT true, `activated` boolean NOT NULL DEFAULT false, `lastGenComp` varchar(7), `active` boolean NOT NULL DEFAULT true, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_client_config_id` PRIMARY KEY(`id`), CONSTRAINT `fin_client_config_clientId_unique` UNIQUE(`clientId`))",
         "CREATE TABLE IF NOT EXISTS `fin_titulos` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `kind` enum('honorario','eventual') NOT NULL DEFAULT 'eventual', `description` varchar(255) NOT NULL, `category` varchar(80), `amount` varchar(20) NOT NULL, `competencia` varchar(7), `dueDate` timestamp NOT NULL, `sendDate` timestamp NULL, `status` enum('rascunho','aberto','enviado','em_conferencia','pago','vencido','cancelado') NOT NULL DEFAULT 'aberto', `origin` enum('manual','recorrencia','tarefa') NOT NULL DEFAULT 'manual', `recurringConfigId` int, `taskId` int, `sentAt` timestamp NULL, `reminderSentAt` timestamp NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_titulos_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `fin_payments` (`id` int AUTO_INCREMENT NOT NULL, `tituloId` int NOT NULL, `comprovanteUrl` mediumtext, `amount` varchar(20), `paidDate` timestamp NULL, `method` varchar(30), `status` enum('aguardando_conferencia','confirmado','rejeitado') NOT NULL DEFAULT 'aguardando_conferencia', `submittedByClient` boolean NOT NULL DEFAULT false, `confirmedBy` int, `confirmedAt` timestamp NULL, `note` varchar(500), `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_payments_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `fin_config` (`id` int AUTO_INCREMENT NOT NULL, `pixKey` varchar(200), `pixKeyType` varchar(20), `beneficiaryName` varchar(200), `beneficiaryDoc` varchar(20), `pixQrImage` mediumtext, `instructions` text, `active` boolean NOT NULL DEFAULT false, `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_config_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `fin_payables` (`id` int AUTO_INCREMENT NOT NULL, `description` varchar(255) NOT NULL, `supplier` varchar(200), `category` varchar(80), `amount` varchar(20) NOT NULL, `dueDate` timestamp NOT NULL, `status` enum('aberto','pago','vencido','cancelado') NOT NULL DEFAULT 'aberto', `recurring` boolean NOT NULL DEFAULT false, `paidDate` timestamp NULL, `paidBy` int, `note` varchar(500), `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_payables_id` PRIMARY KEY(`id`))",
         "CREATE INDEX `wa_messages_conv_idx` ON `wa_messages` (`conversationId`, `createdAt`)",
         "CREATE INDEX `wa_conversations_status_idx` ON `wa_conversations` (`status`, `lastMessageAt`)",
       ];
@@ -660,10 +661,11 @@ async function ensureSchema() {
         "CREATE TABLE IF NOT EXISTS `wa_config` (`k` varchar(64) NOT NULL, `v` text, CONSTRAINT `wa_config_k` PRIMARY KEY(`k`))",
         "CREATE TABLE IF NOT EXISTS `wa_push_subs` (`id` int AUTO_INCREMENT NOT NULL, `endpoint` varchar(512) NOT NULL, `p256dh` varchar(255), `auth` varchar(255), `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_push_subs_id` PRIMARY KEY(`id`), CONSTRAINT `wa_push_subs_endpoint_unique` UNIQUE(`endpoint`))",
         "CREATE TABLE IF NOT EXISTS `wa_scheduled_messages` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `agentId` int NOT NULL, `content` text NOT NULL, `sendAt` timestamp NOT NULL, `status` enum('pending','sent','failed','cancelled') NOT NULL DEFAULT 'pending', `errorMsg` text, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_scheduled_messages_id` PRIMARY KEY(`id`))",
-        "CREATE TABLE IF NOT EXISTS `fin_client_config` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `hasHonorario` boolean NOT NULL DEFAULT false, `honorarioValue` varchar(20), `dueDay` int, `sendDay` int, `weekendRule` enum('mantem','antecipa','posterga') NOT NULL DEFAULT 'mantem', `billingEmail` varchar(320), `active` boolean NOT NULL DEFAULT true, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_client_config_id` PRIMARY KEY(`id`), CONSTRAINT `fin_client_config_clientId_unique` UNIQUE(`clientId`))",
+        "CREATE TABLE IF NOT EXISTS `fin_client_config` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `hasHonorario` boolean NOT NULL DEFAULT false, `honorarioValue` varchar(20), `dueDay` int, `sendDay` int, `weekendRule` enum('mantem','antecipa','posterga') NOT NULL DEFAULT 'mantem', `billingEmail` varchar(320), `recurring` boolean NOT NULL DEFAULT true, `activated` boolean NOT NULL DEFAULT false, `lastGenComp` varchar(7), `active` boolean NOT NULL DEFAULT true, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_client_config_id` PRIMARY KEY(`id`), CONSTRAINT `fin_client_config_clientId_unique` UNIQUE(`clientId`))",
         "CREATE TABLE IF NOT EXISTS `fin_titulos` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `kind` enum('honorario','eventual') NOT NULL DEFAULT 'eventual', `description` varchar(255) NOT NULL, `category` varchar(80), `amount` varchar(20) NOT NULL, `competencia` varchar(7), `dueDate` timestamp NOT NULL, `sendDate` timestamp NULL, `status` enum('rascunho','aberto','enviado','em_conferencia','pago','vencido','cancelado') NOT NULL DEFAULT 'aberto', `origin` enum('manual','recorrencia','tarefa') NOT NULL DEFAULT 'manual', `recurringConfigId` int, `taskId` int, `sentAt` timestamp NULL, `reminderSentAt` timestamp NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_titulos_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `fin_payments` (`id` int AUTO_INCREMENT NOT NULL, `tituloId` int NOT NULL, `comprovanteUrl` mediumtext, `amount` varchar(20), `paidDate` timestamp NULL, `method` varchar(30), `status` enum('aguardando_conferencia','confirmado','rejeitado') NOT NULL DEFAULT 'aguardando_conferencia', `submittedByClient` boolean NOT NULL DEFAULT false, `confirmedBy` int, `confirmedAt` timestamp NULL, `note` varchar(500), `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_payments_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `fin_config` (`id` int AUTO_INCREMENT NOT NULL, `pixKey` varchar(200), `pixKeyType` varchar(20), `beneficiaryName` varchar(200), `beneficiaryDoc` varchar(20), `pixQrImage` mediumtext, `instructions` text, `active` boolean NOT NULL DEFAULT false, `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_config_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `fin_payables` (`id` int AUTO_INCREMENT NOT NULL, `description` varchar(255) NOT NULL, `supplier` varchar(200), `category` varchar(80), `amount` varchar(20) NOT NULL, `dueDate` timestamp NOT NULL, `status` enum('aberto','pago','vencido','cancelado') NOT NULL DEFAULT 'aberto', `recurring` boolean NOT NULL DEFAULT false, `paidDate` timestamp NULL, `paidBy` int, `note` varchar(500), `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_payables_id` PRIMARY KEY(`id`))",
       ];
       for (const s of waTables) {
         try { await conn.query(s); }
@@ -703,6 +705,18 @@ async function ensureSchema() {
         const [rtc]: any = await conn.query("SELECT COUNT(*) cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wa_messages' AND COLUMN_NAME = 'replyTo'");
         if (Number(rtc?.[0]?.cnt ?? 0) === 0) await conn.query("ALTER TABLE `wa_messages` ADD COLUMN `replyTo` text");
       } catch (e: any) { console.warn("[Migração WA] fluxo atendimento:", e?.message?.slice(0, 140)); }
+
+      // Migração Financeiro: novas colunas de recorrência no fin_client_config (bancos já criados)
+      try {
+        for (const [col, ddl] of [
+          ["recurring", "ADD COLUMN `recurring` boolean NOT NULL DEFAULT true"],
+          ["activated", "ADD COLUMN `activated` boolean NOT NULL DEFAULT false"],
+          ["lastGenComp", "ADD COLUMN `lastGenComp` varchar(7)"],
+        ] as [string, string][]) {
+          const [c]: any = await conn.query(`SELECT COUNT(*) cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fin_client_config' AND COLUMN_NAME = '${col}'`);
+          if (Number(c?.[0]?.cnt ?? 0) === 0) await conn.query("ALTER TABLE `fin_client_config` " + ddl);
+        }
+      } catch (e: any) { console.warn("[Migração Financeiro]:", e?.message?.slice(0, 140)); }
 
       const [rows]: any = await conn.query(
         "SELECT COUNT(*) as cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'task_templates' AND COLUMN_NAME = 'dueDateAdjust'"
@@ -1012,3 +1026,40 @@ setInterval(async () => {
     console.warn("[WA Scheduler] erro no ciclo:", err?.message);
   }
 }, 60 * 1000); // a cada minuto
+
+// ── Geração automática de honorários recorrentes ──────────────────────────────
+// A cada 6h, para cada honorário ATIVO e RECORRENTE, gera o título do mês atual se ainda não
+// foi gerado (controla por lastGenComp). Protegido: erro num cliente não afeta os outros.
+async function rodarRecorrenciaHonorarios() {
+  try {
+    const { getDb } = await import("../db");
+    const db = await getDb();
+    if (!db) return;
+    const { financialClientConfig } = await import("../../drizzle/schema");
+    const { and, eq, ne, or, isNull } = await import("drizzle-orm");
+    const { gerarTituloHonorario, compAtual } = await import("../financeiroRouter");
+    const comp = compAtual();
+    const configs = await db.select().from(financialClientConfig).where(
+      and(
+        eq(financialClientConfig.hasHonorario, true),
+        eq(financialClientConfig.activated, true),
+        eq(financialClientConfig.recurring, true),
+        eq(financialClientConfig.active, true),
+        or(isNull(financialClientConfig.lastGenComp), ne(financialClientConfig.lastGenComp, comp)),
+      ),
+    );
+    for (const cfg of configs) {
+      try {
+        await gerarTituloHonorario(db, cfg, comp);
+        await db.update(financialClientConfig).set({ lastGenComp: comp, updatedAt: new Date() }).where(eq(financialClientConfig.id, cfg.id));
+      } catch (e: any) {
+        console.warn("[Recorrência honorário] cliente", cfg.clientId, ":", e?.message);
+      }
+    }
+    if (configs.length) console.log(`[Recorrência honorário] ${configs.length} honorário(s) processado(s) para ${comp}`);
+  } catch (err: any) {
+    console.warn("[Recorrência honorário] erro no ciclo:", err?.message);
+  }
+}
+setTimeout(rodarRecorrenciaHonorarios, 30 * 1000); // uma vez logo após subir
+setInterval(rodarRecorrenciaHonorarios, 6 * 60 * 60 * 1000); // e a cada 6h

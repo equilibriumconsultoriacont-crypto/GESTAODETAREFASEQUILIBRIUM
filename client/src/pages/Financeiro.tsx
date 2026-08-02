@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   ArrowLeft, Wallet, Receipt, Repeat, QrCode, PlusCircle, Pencil, Trash2, Search, Lock,
-  CheckCircle2, RotateCcw, TrendingUp, Clock, AlertTriangle, X, Send, Mail,
+  CheckCircle2, RotateCcw, TrendingUp, Clock, AlertTriangle, X, Send, Mail, Play, Pause, TrendingDown, Wallet2, Scale,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -34,7 +34,7 @@ const STATUS_LABEL: Record<string, { label: string; color: string; soft: string 
   cancelado: { label: "Cancelado", color: C.textFaint, soft: "rgba(92,113,109,.14)" },
 };
 
-type Tab = "painel" | "titulos" | "honorarios" | "recebimento";
+type Tab = "painel" | "titulos" | "pagar" | "honorarios" | "recebimento";
 
 export default function FinanceiroPage() {
   const { user, loading } = useAuth();
@@ -58,6 +58,7 @@ export default function FinanceiroPage() {
   const tabs: { key: Tab; label: string; icon: any }[] = [
     { key: "painel", label: "Painel", icon: TrendingUp },
     { key: "titulos", label: "Contas a Receber", icon: Receipt },
+    { key: "pagar", label: "Contas a Pagar", icon: TrendingDown },
     { key: "honorarios", label: "Honorários", icon: Repeat },
     { key: "recebimento", label: "Recebimento (PIX)", icon: QrCode },
   ];
@@ -96,6 +97,7 @@ export default function FinanceiroPage() {
       <main style={{ maxWidth: 1080, margin: "0 auto", padding: "22px 20px 60px" }}>
         {tab === "painel" && <PainelTab onGo={setTab} />}
         {tab === "titulos" && <TitulosTab />}
+        {tab === "pagar" && <PayablesTab />}
         {tab === "honorarios" && <HonorariosTab />}
         {tab === "recebimento" && <RecebimentoTab />}
       </main>
@@ -119,8 +121,10 @@ function SectionHeader({ title, subtitle, action }: { title: string; subtitle: s
 function PainelTab({ onGo }: { onGo: (t: Tab) => void }) {
   const { data } = trpc.financeiro.dashboard.useQuery(undefined, { refetchOnWindowFocus: true, refetchInterval: 45_000 });
   const cards = [
-    { label: "A receber", value: brl(data?.aReceber ?? 0), icon: Clock, color: C.brandText, soft: C.brandSoft },
-    { label: "Recebido", value: brl(data?.recebido ?? 0), icon: CheckCircle2, color: C.green, soft: C.greenSoft },
+    { label: "A receber", value: brl(data?.aReceber ?? 0), icon: Clock, color: C.brandText, soft: C.brandSoft, onClick: () => onGo("titulos") },
+    { label: "Recebido", value: brl(data?.recebido ?? 0), icon: CheckCircle2, color: C.green, soft: C.greenSoft, onClick: () => onGo("titulos") },
+    { label: "A pagar", value: brl(data?.aPagar ?? 0), icon: TrendingDown, color: C.amber, soft: C.amberSoft, onClick: () => onGo("pagar") },
+    { label: "Saldo (recebido − pago)", value: brl(data?.saldo ?? 0), icon: Scale, color: Number(String(data?.saldo ?? 0).replace(",", ".")) < 0 ? C.danger : C.green, soft: Number(String(data?.saldo ?? 0).replace(",", ".")) < 0 ? C.dangerSoft : C.greenSoft },
     { label: "Vencidos", value: String(data?.vencidos ?? 0), icon: AlertTriangle, color: C.danger, soft: C.dangerSoft, onClick: () => onGo("titulos") },
     { label: "Em conferência", value: String(data?.emConferencia ?? 0), icon: Receipt, color: C.amber, soft: C.amberSoft, onClick: () => onGo("titulos") },
     { label: "Honorários ativos", value: String(data?.honorariosAtivos ?? 0), icon: Repeat, color: C.brandText, soft: C.brandSoft, onClick: () => onGo("honorarios") },
@@ -157,6 +161,7 @@ function TitulosTab() {
   const baixaMut = trpc.financeiro.baixaManual.useMutation();
   const reverterMut = trpc.financeiro.reverterBaixa.useMutation();
   const enviarMut = trpc.financeiro.enviarCobranca.useMutation();
+  const deleteMut = trpc.financeiro.deleteTitulo.useMutation();
   // atualiza painel + lista após qualquer ação
   const refreshAll = () => { refetch(); utils.financeiro.dashboard.invalidate(); utils.financeiro.listTitulos.invalidate(); };
 
@@ -201,6 +206,11 @@ function TitulosTab() {
     if (!confirm(`Enviar a cobrança de ${brl(t.amount)} por e-mail para ${t.clientName}?`)) return;
     try { const r: any = await enviarMut.mutateAsync({ tituloId: t.id }); toast.success(`Cobrança enviada para ${r?.to || "o cliente"}`); refreshAll(); }
     catch (e: any) { toast.error(e?.message || "Não foi possível enviar"); }
+  };
+  const excluir = async (t: any) => {
+    if (!confirm(`Excluir DEFINITIVAMENTE este lançamento de ${t.clientName}? Não dá para desfazer.`)) return;
+    try { await deleteMut.mutateAsync({ id: t.id }); toast.success("Lançamento excluído"); refreshAll(); }
+    catch (e: any) { toast.error(e?.message || "Não foi possível excluir"); }
   };
 
   return (
@@ -250,6 +260,9 @@ function TitulosTab() {
                     ) : null}
                     {t.status !== "cancelado" && t.status !== "pago" && (
                       <button onClick={() => cancel(t)} title="Cancelar" style={{ ...iconBtn, color: C.danger }}><Trash2 size={15} /></button>
+                    )}
+                    {t.status === "cancelado" && (
+                      <button onClick={() => excluir(t)} disabled={deleteMut.isPending} title="Excluir definitivamente" style={{ ...iconBtn, color: C.danger, borderColor: "rgba(248,113,113,.4)", background: C.dangerSoft }}><Trash2 size={15} /></button>
                     )}
                   </div>
                 </div>
@@ -347,14 +360,22 @@ function HonorariosTab() {
   const utils = trpc.useUtils();
   const { data: rows = [], refetch, isLoading } = trpc.financeiro.clientsWithConfig.useQuery();
   const upsertMut = trpc.financeiro.upsertClientConfig.useMutation();
-  const gerarMut = trpc.financeiro.gerarCobrancaMes.useMutation();
+  const ativarMut = trpc.financeiro.ativarHonorario.useMutation();
+  const pausarMut = trpc.financeiro.pausarHonorario.useMutation();
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<any>(null);
 
-  const gerar = async (r: any) => {
-    if (!confirm(`Gerar a cobrança de honorário deste mês para ${r.name} (${brl(r.honorarioValue)})?`)) return;
-    try { const res: any = await gerarMut.mutateAsync({ clientId: r.clientId }); toast.success(`Cobrança de ${res?.competencia || "este mês"} gerada — veja em Contas a Receber`); utils.financeiro.dashboard.invalidate(); utils.financeiro.listTitulos.invalidate(); }
-    catch (e: any) { toast.error(e?.message || "Não foi possível gerar"); }
+  const ativar = async (r: any) => {
+    try {
+      const res: any = await ativarMut.mutateAsync({ clientId: r.clientId });
+      toast.success(res?.recurring ? `Ativado e recorrente — cobrança de ${res?.competencia} gerada; os próximos meses serão automáticos` : `Cobrança de ${res?.competencia} gerada (mês único)`);
+      refetch(); utils.financeiro.dashboard.invalidate(); utils.financeiro.listTitulos.invalidate();
+    } catch (e: any) { toast.error(e?.message || "Não foi possível ativar"); }
+  };
+  const pausar = async (r: any) => {
+    if (!confirm(`Pausar a recorrência de ${r.name}? Não gera mais cobranças automáticas (as já criadas permanecem).`)) return;
+    try { await pausarMut.mutateAsync({ clientId: r.clientId }); toast.success("Recorrência pausada"); refetch(); }
+    catch (e: any) { toast.error(e?.message); }
   };
 
   const filtered = useMemo(() => {
@@ -371,6 +392,7 @@ function HonorariosTab() {
         dueDay: editing.hasHonorario && editing.dueDay ? Number(editing.dueDay) : undefined,
         sendDay: editing.hasHonorario && editing.sendDay ? Number(editing.sendDay) : undefined,
         weekendRule: editing.weekendRule || "mantem",
+        recurring: editing.recurring !== false,
         billingEmail: editing.billingEmail || "",
       });
       toast.success("Honorário configurado"); setEditing(null); refetch(); utils.financeiro.dashboard.invalidate();
@@ -390,23 +412,34 @@ function HonorariosTab() {
         : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {filtered.map((r: any) => (
-              <div key={r.clientId} style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              <div key={r.clientId} style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <div style={{ flex: 1, minWidth: 200 }}>
                   <div style={{ fontWeight: 650, fontSize: 14.5 }}>{r.name}</div>
                   <div style={{ fontSize: 12.5, color: C.textFaint, marginTop: 2 }}>
                     {r.hasHonorario
-                      ? <>Honorário {brl(r.honorarioValue)} · vence dia {r.dueDay || "—"} · cobra dia {r.sendDay || "—"}</>
+                      ? <>{brl(r.honorarioValue)} · vence dia {r.dueDay || "—"} · cobra dia {r.sendDay || "—"} · {r.recurring !== false ? "recorrente" : "mês único"}</>
                       : "Sem honorário mensal configurado"}
                   </div>
                 </div>
-                {r.hasHonorario && <span style={{ fontSize: 10.5, fontWeight: 700, color: C.green, background: C.greenSoft, padding: "2px 8px", borderRadius: 6 }}>Honorário ativo</span>}
-                {r.hasHonorario && r.honorarioValue && r.dueDay && (
-                  <button onClick={() => gerar(r)} disabled={gerarMut.isPending} title="Gerar a cobrança de honorário deste mês"
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "7px 11px", borderRadius: 9, border: `1px solid ${C.brand}`, background: C.brandSoft, color: C.brandText, cursor: "pointer", whiteSpace: "nowrap" }}>
-                    <Receipt size={14} /> Gerar mês
-                  </button>
+                {r.hasHonorario && (
+                  r.activated
+                    ? <span style={{ fontSize: 10.5, fontWeight: 700, color: C.green, background: C.greenSoft, padding: "3px 9px", borderRadius: 6 }}>▶ Ativo{r.recurring !== false ? " (recorrente)" : ""}</span>
+                    : r.honorarioValue && r.dueDay
+                      ? <span style={{ fontSize: 10.5, fontWeight: 700, color: C.amber, background: C.amberSoft, padding: "3px 9px", borderRadius: 6 }}>Configurado — pausado</span>
+                      : <span style={{ fontSize: 10.5, fontWeight: 700, color: C.textFaint, background: "rgba(92,113,109,.14)", padding: "3px 9px", borderRadius: 6 }}>Falta configurar</span>
                 )}
-                <button onClick={() => setEditing({ ...r, honorarioValue: r.honorarioValue || "", dueDay: r.dueDay || "", sendDay: r.sendDay || "", weekendRule: r.weekendRule || "mantem", billingEmail: r.billingEmail || "" })}
+                {r.hasHonorario && r.honorarioValue && r.dueDay && (
+                  r.activated
+                    ? <button onClick={() => pausar(r)} disabled={pausarMut.isPending} title="Pausar recorrência"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "7px 11px", borderRadius: 9, border: `1px solid ${C.border}`, background: "transparent", color: C.textMuted, cursor: "pointer", whiteSpace: "nowrap" }}>
+                        <Pause size={13} /> Pausar
+                      </button>
+                    : <button onClick={() => ativar(r)} disabled={ativarMut.isPending} title="Ativar: gera a cobrança e, se recorrente, repete todo mês"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, padding: "7px 12px", borderRadius: 9, border: "none", background: C.green, color: "#04211f", cursor: "pointer", whiteSpace: "nowrap" }}>
+                        <Play size={13} /> Ativar
+                      </button>
+                )}
+                <button onClick={() => setEditing({ ...r, honorarioValue: r.honorarioValue || "", dueDay: r.dueDay || "", sendDay: r.sendDay || "", weekendRule: r.weekendRule || "mantem", recurring: r.recurring !== false, billingEmail: r.billingEmail || "" })}
                   style={{ ...iconBtn }} title="Configurar"><Pencil size={15} /></button>
               </div>
             ))}
@@ -439,6 +472,13 @@ function HonorariosTab() {
                     </div>
                   </div>
                   <div>
+                    <label style={labelStyle}>Recorrência</label>
+                    <select value={editing.recurring !== false ? "sim" : "nao"} onChange={(e) => setEditing({ ...editing, recurring: e.target.value === "sim" })} style={{ ...fieldStyle, cursor: "pointer" }}>
+                      <option value="sim">Recorrente — gera todo mês automaticamente</option>
+                      <option value="nao">Mês único — gera só quando eu ativar</option>
+                    </select>
+                  </div>
+                  <div>
                     <label style={labelStyle}>Se o vencimento cair em fim de semana/feriado</label>
                     <select value={editing.weekendRule} onChange={(e) => setEditing({ ...editing, weekendRule: e.target.value })} style={{ ...fieldStyle, cursor: "pointer" }}>
                       <option value="mantem">Mantém a data</option>
@@ -455,6 +495,126 @@ function HonorariosTab() {
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                 <button onClick={() => setEditing(null)} style={ghostBtn}>Cancelar</button>
                 <button onClick={save} disabled={upsertMut.isPending} style={primaryBtn}>Salvar</button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+/* ── Contas a Pagar ── */
+function PayablesTab() {
+  const utils = trpc.useUtils();
+  const { data: rows = [], refetch, isLoading } = trpc.financeiro.listPayables.useQuery({});
+  const createMut = trpc.financeiro.createPayable.useMutation();
+  const baixaMut = trpc.financeiro.baixaPayable.useMutation();
+  const reverterMut = trpc.financeiro.reverterPayable.useMutation();
+  const deleteMut = trpc.financeiro.deletePayable.useMutation();
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<any>(null);
+  const refreshAll = () => { refetch(); utils.financeiro.dashboard.invalidate(); };
+
+  const PAY_STATUS: Record<string, { label: string; color: string; soft: string }> = {
+    aberto: { label: "Aberto", color: C.amber, soft: C.amberSoft },
+    pago: { label: "Pago", color: C.green, soft: C.greenSoft },
+    vencido: { label: "Vencido", color: C.danger, soft: C.dangerSoft },
+    cancelado: { label: "Cancelado", color: C.textFaint, soft: "rgba(92,113,109,.14)" },
+  };
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (rows as any[]).filter((p) => !q || (p.description ?? "").toLowerCase().includes(q) || (p.supplier ?? "").toLowerCase().includes(q));
+  }, [rows, query]);
+
+  const openCreate = () => { setForm({ description: "", supplier: "", category: "", amount: "", dueDate: new Date().toISOString().slice(0, 10), recurring: false }); setOpen(true); };
+  const save = async () => {
+    if (!form.description.trim()) return toast.error("Informe a descrição");
+    if (!form.amount) return toast.error("Informe o valor");
+    try { await createMut.mutateAsync({ description: form.description, supplier: form.supplier || undefined, category: form.category || undefined, amount: form.amount, dueDate: form.dueDate, recurring: !!form.recurring }); toast.success("Conta a pagar criada"); setOpen(false); refreshAll(); }
+    catch (e: any) { toast.error(e?.message || "Não foi possível criar"); }
+  };
+  const baixa = async (p: any) => { try { await baixaMut.mutateAsync({ id: p.id }); toast.success("Marcada como paga"); refreshAll(); } catch (e: any) { toast.error(e?.message); } };
+  const reverter = async (p: any) => { try { await reverterMut.mutateAsync({ id: p.id }); toast.success("Revertida"); refreshAll(); } catch (e: any) { toast.error(e?.message); } };
+  const excluir = async (p: any) => { if (!confirm(`Excluir "${p.description}"?`)) return; try { await deleteMut.mutateAsync({ id: p.id }); toast.success("Excluída"); refreshAll(); } catch (e: any) { toast.error(e?.message); } };
+
+  return (
+    <div>
+      <SectionHeader title="Contas a pagar" subtitle="Despesas e fornecedores do escritório — para acompanhar o que sai e o saldo."
+        action={<button onClick={openCreate} style={{ ...primaryBtn, display: "inline-flex", alignItems: "center", gap: 7 }}><PlusCircle size={16} /> Nova despesa</button>} />
+      <div style={{ position: "relative", marginBottom: 14 }}>
+        <Search size={16} style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: C.textFaint }} />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por descrição ou fornecedor…" style={{ ...fieldStyle, paddingLeft: 38 }} />
+      </div>
+
+      {isLoading ? <div style={{ color: C.textFaint, textAlign: "center", padding: 40 }}>Carregando…</div>
+        : filtered.length === 0 ? <div style={{ color: C.textFaint, textAlign: "center", padding: 40 }}>Nenhuma conta a pagar {query ? "com esse filtro" : "ainda"}.</div>
+        : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {filtered.map((p: any) => {
+              const st = PAY_STATUS[p.status] || PAY_STATUS.aberto;
+              return (
+                <div key={p.id} style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 650, fontSize: 14.5 }}>{p.description}</span>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: st.color, background: st.soft, padding: "2px 8px", borderRadius: 6 }}>{st.label}</span>
+                      {p.recurring && <span style={{ fontSize: 10.5, fontWeight: 600, color: C.brandText, background: C.brandSoft, padding: "2px 7px", borderRadius: 5 }}>Fixa</span>}
+                    </div>
+                    <div style={{ fontSize: 12.5, color: C.textFaint, marginTop: 3 }}>
+                      {p.supplier ? p.supplier + " · " : ""}{p.category ? p.category + " · " : ""}vence {new Date(p.dueDate).toLocaleDateString("pt-BR")}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 750, color: p.status === "pago" ? C.green : C.text }}>{brl(p.amount)}</div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {p.status === "pago"
+                      ? <button onClick={() => reverter(p)} title="Reverter pagamento" style={{ ...iconBtn, color: C.amber }}><RotateCcw size={15} /></button>
+                      : <button onClick={() => baixa(p)} title="Marcar como paga" style={{ ...iconBtn, color: C.green, borderColor: "rgba(52,211,153,.3)" }}><CheckCircle2 size={15} /></button>}
+                    <button onClick={() => excluir(p)} title="Excluir" style={{ ...iconBtn, color: C.danger }}><Trash2 size={15} /></button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md max-h-[88vh] overflow-y-auto" style={{ background: C.panel, borderColor: C.border, color: C.text }}>
+          <DialogHeader><DialogTitle style={{ color: C.text }}>Nova conta a pagar</DialogTitle></DialogHeader>
+          {form && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 4 }}>
+              <div>
+                <label style={labelStyle}>Descrição</label>
+                <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Ex.: Aluguel, Energia, Salário…" style={fieldStyle} />
+              </div>
+              <div style={{ display: "flex", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Fornecedor (opcional)</label>
+                  <input value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} style={fieldStyle} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Categoria (opcional)</label>
+                  <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Aluguel, Impostos…" style={fieldStyle} />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Valor (R$)</label>
+                  <input value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0,00" style={fieldStyle} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Vencimento</label>
+                  <input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} style={{ ...fieldStyle, colorScheme: "dark" }} />
+                </div>
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
+                <input type="checkbox" checked={!!form.recurring} onChange={(e) => setForm({ ...form, recurring: e.target.checked })} style={{ accentColor: C.brand }} />
+                <span style={{ fontSize: 13.5 }}>Despesa fixa mensal</span>
+              </label>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button onClick={() => setOpen(false)} style={ghostBtn}>Cancelar</button>
+                <button onClick={save} disabled={createMut.isPending} style={primaryBtn}>Criar</button>
               </div>
             </div>
           )}

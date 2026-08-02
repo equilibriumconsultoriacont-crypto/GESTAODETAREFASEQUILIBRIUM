@@ -6,6 +6,7 @@ import {
   financialTitulos,
   financialPayments,
   financialConfig,
+  financialPayables,
   clients,
 } from "../drizzle/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
@@ -47,11 +48,31 @@ function buildCobrancaEmail(opts: { clientName: string; description: string; amo
   </div>`;
 }
 
+// Gera o título de honorário de uma competência a partir da config, sem duplicar. Reutilizado
+// pelo botão "play" e pelo job mensal automático.
+export async function gerarTituloHonorario(db: any, cfg: any, comp: string): Promise<{ created: boolean }> {
+  if (!cfg?.honorarioValue || !cfg?.dueDay) return { created: false };
+  const [mm, yyyy] = comp.split("/").map(Number);
+  const due = adjustWeekend(new Date(yyyy, mm - 1, cfg.dueDay), cfg.weekendRule);
+  const sendDate = cfg.sendDay ? new Date(yyyy, mm - 1, cfg.sendDay) : null;
+  const existing = (await db.select({ id: financialTitulos.id }).from(financialTitulos)
+    .where(and(eq(financialTitulos.clientId, cfg.clientId), eq(financialTitulos.kind, "honorario"), eq(financialTitulos.competencia, comp), sql`${financialTitulos.status} <> 'cancelado'`)).limit(1))[0];
+  if (existing) return { created: false };
+  await db.insert(financialTitulos).values({
+    clientId: cfg.clientId, kind: "honorario", description: `Honorário ${comp}`, category: "Honorário",
+    amount: cfg.honorarioValue, competencia: comp, dueDate: due, sendDate, status: "aberto", origin: "recorrencia", recurringConfigId: cfg.id,
+  });
+  return { created: true };
+}
+export function compAtual(d = new Date()): string {
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+}
+
 export const financeiroRouter = router({
   // ── Painel: resumo ──────────────────────────────────────────────────────────
   dashboard: adminProcedure.query(async () => {
     const db = await getDb();
-    const empty = { aReceber: "0.00", recebido: "0.00", vencidos: 0, emConferencia: 0, honorariosAtivos: 0 };
+    const empty = { aReceber: "0.00", recebido: "0.00", aPagar: "0.00", pago: "0.00", saldo: "0.00", vencidos: 0, emConferencia: 0, honorariosAtivos: 0 };
     if (!db) return empty;
     try {
       const sum = (whereStatus: string[]) =>
@@ -59,14 +80,26 @@ export const financeiroRouter = router({
           .select({ total: sql<string>`coalesce(sum(cast(${financialTitulos.amount} as decimal(12,2))), 0)` })
           .from(financialTitulos)
           .where(sql`${financialTitulos.status} in (${sql.join(whereStatus.map((s) => sql`${s}`), sql`, `)})`);
+      const sumPay = (whereStatus: string[]) =>
+        db
+          .select({ total: sql<string>`coalesce(sum(cast(${financialPayables.amount} as decimal(12,2))), 0)` })
+          .from(financialPayables)
+          .where(sql`${financialPayables.status} in (${sql.join(whereStatus.map((s) => sql`${s}`), sql`, `)})`);
       const [aReceber] = await sum(["aberto", "enviado", "em_conferencia", "vencido"]);
       const [recebido] = await sum(["pago"]);
+      const [aPagar] = await sumPay(["aberto", "vencido"]);
+      const [pago] = await sumPay(["pago"]);
       const [venc] = await db.select({ n: sql<number>`count(*)` }).from(financialTitulos).where(eq(financialTitulos.status, "vencido"));
       const [conf] = await db.select({ n: sql<number>`count(*)` }).from(financialTitulos).where(eq(financialTitulos.status, "em_conferencia"));
       const [hon] = await db.select({ n: sql<number>`count(*)` }).from(financialClientConfig).where(and(eq(financialClientConfig.hasHonorario, true), eq(financialClientConfig.active, true)));
+      const recebidoN = Number(recebido?.total ?? 0);
+      const pagoN = Number(pago?.total ?? 0);
       return {
         aReceber: Number(aReceber?.total ?? 0).toFixed(2),
-        recebido: Number(recebido?.total ?? 0).toFixed(2),
+        recebido: recebidoN.toFixed(2),
+        aPagar: Number(aPagar?.total ?? 0).toFixed(2),
+        pago: pagoN.toFixed(2),
+        saldo: (recebidoN - pagoN).toFixed(2),
         vencidos: Number(venc?.n ?? 0),
         emConferencia: Number(conf?.n ?? 0),
         honorariosAtivos: Number(hon?.n ?? 0),
@@ -93,6 +126,8 @@ export const financeiroRouter = router({
         sendDay: financialClientConfig.sendDay,
         weekendRule: financialClientConfig.weekendRule,
         billingEmail: financialClientConfig.billingEmail,
+        recurring: financialClientConfig.recurring,
+        activated: financialClientConfig.activated,
         configId: financialClientConfig.id,
       })
       .from(clients)
@@ -110,6 +145,7 @@ export const financeiroRouter = router({
         dueDay: z.number().min(1).max(28).optional(),
         sendDay: z.number().min(1).max(28).optional(),
         weekendRule: z.enum(["mantem", "antecipa", "posterga"]).default("mantem"),
+        recurring: z.boolean().default(true),
         billingEmail: z.string().email().optional().or(z.literal("")),
       })
     )
@@ -123,6 +159,7 @@ export const financeiroRouter = router({
         dueDay: input.dueDay ?? null,
         sendDay: input.sendDay ?? null,
         weekendRule: input.weekendRule,
+        recurring: input.recurring,
         billingEmail: input.billingEmail || null,
         updatedAt: new Date(),
       };
@@ -233,6 +270,16 @@ export const financeiroRouter = router({
     return { ok: true };
   }),
 
+  // Exclui de vez o título (para erros de teste ou lançamentos que não deveriam existir).
+  // Remove também eventuais comprovantes/baixas ligados a ele.
+  deleteTitulo: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+    const db = await getDb();
+    if (!db) throw new Error("sem banco");
+    await db.delete(financialPayments).where(eq(financialPayments.tituloId, input.id));
+    await db.delete(financialTitulos).where(eq(financialTitulos.id, input.id));
+    return { ok: true };
+  }),
+
   // ── Baixa manual (dar como pago) e reversão ──────────────────────────────────
   baixaManual: adminProcedure
     .input(z.object({ tituloId: z.number(), amount: money.optional(), paidDate: z.string().optional(), method: z.string().optional(), note: z.string().optional() }))
@@ -289,8 +336,29 @@ export const financeiroRouter = router({
       return { ok: true };
     }),
 
-  // ── Gerar a cobrança (título) do mês a partir do honorário configurado ───────
-  // (Fase 2 fará isso automático todo mês; este botão permite gerar manualmente já na Fase 1.)
+  // ── Ativar ("play"), pausar e gerar honorário ────────────────────────────────
+  // "Play": marca como ativo e já gera a cobrança do mês atual. Se for recorrente, o job mensal
+  // gera os próximos meses sozinho. Se for mês único, gera só este e não repete.
+  ativarHonorario: adminProcedure.input(z.object({ clientId: z.number() })).mutation(async ({ input }) => {
+    const db = await getDb();
+    if (!db) throw new Error("sem banco");
+    const cfg = (await db.select().from(financialClientConfig).where(eq(financialClientConfig.clientId, input.clientId)).limit(1))[0];
+    if (!cfg || !cfg.hasHonorario) throw new Error("Cliente sem honorário configurado");
+    if (!cfg.honorarioValue || !cfg.dueDay) throw new Error("Configure valor e dia de vencimento antes de ativar");
+    const comp = compAtual();
+    const { created } = await gerarTituloHonorario(db, cfg, comp);
+    await db.update(financialClientConfig).set({ activated: true, lastGenComp: comp, updatedAt: new Date() }).where(eq(financialClientConfig.id, cfg.id));
+    return { ok: true, competencia: comp, created, recurring: cfg.recurring };
+  }),
+
+  pausarHonorario: adminProcedure.input(z.object({ clientId: z.number() })).mutation(async ({ input }) => {
+    const db = await getDb();
+    if (!db) throw new Error("sem banco");
+    await db.update(financialClientConfig).set({ activated: false, updatedAt: new Date() }).where(eq(financialClientConfig.clientId, input.clientId));
+    return { ok: true };
+  }),
+
+  // Geração manual avulsa de um mês específico (sem mexer no play/recorrência)
   gerarCobrancaMes: adminProcedure
     .input(z.object({ clientId: z.number(), competencia: z.string().regex(/^\d{2}\/\d{4}$/).optional() }))
     .mutation(async ({ input }) => {
@@ -299,18 +367,9 @@ export const financeiroRouter = router({
       const cfg = (await db.select().from(financialClientConfig).where(eq(financialClientConfig.clientId, input.clientId)).limit(1))[0];
       if (!cfg || !cfg.hasHonorario) throw new Error("Cliente sem honorário configurado");
       if (!cfg.honorarioValue || !cfg.dueDay) throw new Error("Configure o valor e o dia de vencimento do honorário primeiro");
-      const now = new Date();
-      const comp = input.competencia || `${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
-      const [mm, yyyy] = comp.split("/").map(Number);
-      const due = adjustWeekend(new Date(yyyy, mm - 1, cfg.dueDay), cfg.weekendRule);
-      const sendDate = cfg.sendDay ? new Date(yyyy, mm - 1, cfg.sendDay) : null;
-      const existing = (await db.select({ id: financialTitulos.id }).from(financialTitulos)
-        .where(and(eq(financialTitulos.clientId, input.clientId), eq(financialTitulos.kind, "honorario"), eq(financialTitulos.competencia, comp), sql`${financialTitulos.status} <> 'cancelado'`)).limit(1))[0];
-      if (existing) throw new Error(`Já existe cobrança de honorário para ${comp}`);
-      await db.insert(financialTitulos).values({
-        clientId: input.clientId, kind: "honorario", description: `Honorário ${comp}`, category: "Honorário",
-        amount: cfg.honorarioValue, competencia: comp, dueDate: due, sendDate, status: "aberto", origin: "recorrencia", recurringConfigId: cfg.id,
-      } as any);
+      const comp = input.competencia || compAtual();
+      const { created } = await gerarTituloHonorario(db, cfg, comp);
+      if (!created) throw new Error(`Já existe cobrança de honorário para ${comp}`);
       return { ok: true, competencia: comp };
     }),
 
@@ -330,6 +389,62 @@ export const financeiroRouter = router({
     await sendEmail({ to, subject: `Cobrança - ${row.description}`, html });
     await db.update(financialTitulos).set({ status: row.status === "pago" ? "pago" : "enviado", sentAt: new Date(), updatedAt: new Date() }).where(eq(financialTitulos.id, input.tituloId));
     return { ok: true, to };
+  }),
+
+  // ── Contas a PAGAR (despesas do escritório) ──────────────────────────────────
+  listPayables: adminProcedure
+    .input(z.object({ status: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return [];
+      const conds: any[] = [];
+      if (input?.status && input.status !== "todos") conds.push(eq(financialPayables.status, input.status as any));
+      return db.select().from(financialPayables).where(conds.length ? and(...conds) : sql`1=1`).orderBy(desc(financialPayables.dueDate)).limit(500);
+    }),
+
+  createPayable: adminProcedure
+    .input(z.object({ description: z.string().min(1), supplier: z.string().optional(), category: z.string().optional(), amount: money, dueDate: z.string(), recurring: z.boolean().default(false), note: z.string().optional() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("sem banco");
+      const r = await db.insert(financialPayables).values({
+        description: input.description, supplier: input.supplier || null, category: input.category || null,
+        amount: input.amount, dueDate: new Date(input.dueDate), recurring: input.recurring, note: input.note || null, status: "aberto",
+      } as any);
+      return { ok: true, id: (r as any)[0]?.insertId };
+    }),
+
+  updatePayable: adminProcedure
+    .input(z.object({ id: z.number(), description: z.string().optional(), supplier: z.string().optional(), category: z.string().optional(), amount: money.optional(), dueDate: z.string().optional(), recurring: z.boolean().optional() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("sem banco");
+      const patch: any = { updatedAt: new Date() };
+      for (const k of ["description", "supplier", "category", "amount", "recurring"] as const) if (input[k] !== undefined) patch[k] = input[k];
+      if (input.dueDate !== undefined) patch.dueDate = new Date(input.dueDate);
+      await db.update(financialPayables).set(patch).where(eq(financialPayables.id, input.id));
+      return { ok: true };
+    }),
+
+  baixaPayable: adminProcedure.input(z.object({ id: z.number(), paidDate: z.string().optional() })).mutation(async ({ input, ctx }) => {
+    const db = await getDb();
+    if (!db) throw new Error("sem banco");
+    await db.update(financialPayables).set({ status: "pago", paidDate: input.paidDate ? new Date(input.paidDate) : new Date(), paidBy: ctx.user!.id, updatedAt: new Date() }).where(eq(financialPayables.id, input.id));
+    return { ok: true };
+  }),
+
+  reverterPayable: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+    const db = await getDb();
+    if (!db) throw new Error("sem banco");
+    await db.update(financialPayables).set({ status: "aberto", paidDate: null, updatedAt: new Date() }).where(eq(financialPayables.id, input.id));
+    return { ok: true };
+  }),
+
+  deletePayable: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+    const db = await getDb();
+    if (!db) throw new Error("sem banco");
+    await db.delete(financialPayables).where(eq(financialPayables.id, input.id));
+    return { ok: true };
   }),
 
   // ── Configuração global de recebimento (PIX / QR) ────────────────────────────
