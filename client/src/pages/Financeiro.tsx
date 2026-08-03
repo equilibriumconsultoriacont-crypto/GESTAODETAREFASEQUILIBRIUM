@@ -653,7 +653,7 @@ function RecebimentoTab() {
           <div style={{ flex: 1 }}>
             <label style={labelStyle}>Tipo</label>
             <select value={current.pixKeyType} onChange={(e) => set("pixKeyType", e.target.value)} style={{ ...fieldStyle, cursor: "pointer" }}>
-              <option value="cnpj">CNPJ</option><option value="email">E-mail</option><option value="telefone">Telefone</option><option value="aleatoria">Aleatória</option>
+              <option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="email">E-mail</option><option value="telefone">Telefone</option><option value="aleatoria">Aleatória</option>
             </select>
           </div>
         </div>

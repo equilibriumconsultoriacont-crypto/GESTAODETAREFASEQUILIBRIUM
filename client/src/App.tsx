@@ -26,6 +26,7 @@ import AdminSettingsPage from "./pages/AdminSettings";
 import UserManagementPage from "./pages/UserManagement";
 import FinanceiroPage from "./pages/Financeiro";
 import CalendarPage from "./pages/Calendar";
+import CobrancaPublicaPage from "./pages/CobrancaPublica";
 import Hub from "./pages/Hub";
 import Proposals from "./pages/Proposals";
 import WhatsAppModule from "./pages/WhatsAppModule";
@@ -40,6 +41,14 @@ function Router() {
   const [location] = useLocation();
   // Página pública do tutorial (aberta pelo link do e-mail, antes do login)
   if (location === "/instalar") return <InstallGuide />;
+  // Página pública de cobrança/comprovante (aberta pelo link do e-mail, sem login)
+  if (location.startsWith("/cobranca/")) {
+    return (
+      <Switch>
+        <Route path="/cobranca/:id" component={CobrancaPublicaPage} />
+      </Switch>
+    );
+  }
 
   if (loading) {
     return (

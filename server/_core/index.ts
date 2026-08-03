@@ -599,6 +599,8 @@ async function startServer() {
   // ── WhatsApp: endpoints do painel (conversas, mensagens, envio, tags) ──
   const { registerWaRoutes } = await import("../wa/routes");
   registerWaRoutes(app);
+  const { registerFinanceiroRoutes } = await import("../financeiroRoutes");
+  registerFinanceiroRoutes(app);
 
   // ── Migração automática de schema (roda 1x quando o banco está atrás do código) ──
   await ensureSchema();

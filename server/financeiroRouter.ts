@@ -11,6 +11,9 @@ import {
 } from "../drizzle/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { sendEmail } from "./email";
+import { buildPixBRCode } from "./pix";
+
+const APP_URL = process.env.APP_URL || "https://gestaodetarefasequilibrium.onrender.com";
 
 const money = z.string().regex(/^\d+([.,]\d{1,2})?$/, "valor inválido").transform((v) => v.replace(",", "."));
 
@@ -29,12 +32,29 @@ function adjustWeekend(d: Date, rule: string | null): Date {
   return d;
 }
 
-// HTML do e-mail de cobrança. Se a config de PIX estiver ativa, inclui a chave.
-function buildCobrancaEmail(opts: { clientName: string; description: string; amount: string; dueDate: Date; competencia?: string | null; pix?: any }): string {
+// HTML do e-mail de cobrança: valor, vencimento, PIX (QR + copia e cola) e botão de comprovante.
+function buildCobrancaEmail(opts: { tituloId: number; baseUrl: string; clientName: string; description: string; amount: string; dueDate: Date; competencia?: string | null; pix?: any }): string {
   const venc = opts.dueDate.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
-  const pixBlock = opts.pix?.active && opts.pix?.pixKey
-    ? `<tr><td style="padding:16px 0;border-top:1px solid #eee"><strong>Pagamento via PIX</strong><br/>Chave (${opts.pix.pixKeyType || "-"}): <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">${opts.pix.pixKey}</code><br/>${opts.pix.beneficiaryName ? "Beneficiário: " + opts.pix.beneficiaryName + "<br/>" : ""}${opts.pix.instructions ? '<span style="color:#555">' + opts.pix.instructions + "</span>" : ""}</td></tr>`
-    : `<tr><td style="padding:16px 0;border-top:1px solid #eee;color:#555">Os dados para pagamento serão informados pelo escritório.</td></tr>`;
+  const compUrl = `${opts.baseUrl}/cobranca/${opts.tituloId}`;
+  let pixBlock: string;
+  if (opts.pix?.active && opts.pix?.pixKey) {
+    let copiaCola = "";
+    try {
+      copiaCola = buildPixBRCode({ key: opts.pix.pixKey, keyType: opts.pix.pixKeyType || undefined, name: opts.pix.beneficiaryName || "Equilibrium", city: "Rio Claro", amount: opts.amount, txid: `T${opts.tituloId}` });
+    } catch { copiaCola = ""; }
+    pixBlock = `<tr><td style="padding:16px 0;border-top:1px solid #eee">
+      <strong>Pague com PIX</strong><br/>
+      <div style="text-align:center;margin:10px 0">
+        <img src="${opts.baseUrl}/api/financeiro/pix-qr/${opts.tituloId}.png" alt="QR Code PIX" width="200" height="200" style="border:1px solid #eee;border-radius:8px"/>
+      </div>
+      ${copiaCola ? `<div style="font-size:12px;color:#555;margin-bottom:4px">PIX copia e cola:</div>
+      <div style="word-break:break-all;background:#f3f4f6;padding:10px;border-radius:6px;font-family:monospace;font-size:11px">${copiaCola}</div>` : ""}
+      ${opts.pix.beneficiaryName ? `<div style="font-size:12px;color:#555;margin-top:8px">Beneficiário: ${opts.pix.beneficiaryName}</div>` : ""}
+      ${opts.pix.instructions ? `<div style="font-size:12px;color:#555;margin-top:4px">${opts.pix.instructions}</div>` : ""}
+    </td></tr>`;
+  } else {
+    pixBlock = `<tr><td style="padding:16px 0;border-top:1px solid #eee;color:#555">Os dados para pagamento serão informados pelo escritório.</td></tr>`;
+  }
   return `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#222">
     <h2 style="color:#24646c">Equilibrium Consultoria Contábil</h2>
     <p>Olá, ${opts.clientName || "cliente"}.</p>
@@ -44,7 +64,10 @@ function buildCobrancaEmail(opts: { clientName: string; description: string; amo
       <tr><td style="padding:8px 0"><strong>Vencimento</strong></td><td style="text-align:right">${venc}</td></tr>
       ${pixBlock}
     </table>
-    <p style="color:#888;font-size:12px">Se já efetuou o pagamento, desconsidere este aviso.</p>
+    <div style="text-align:center;margin:20px 0">
+      <a href="${compUrl}" style="display:inline-block;background:#24646c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold">Já paguei — enviar comprovante</a>
+    </div>
+    <p style="color:#888;font-size:12px">Ao enviar o comprovante, ele fica em conferência e o escritório dá baixa após validar. Se já enviou, desconsidere.</p>
   </div>`;
 }
 
@@ -385,7 +408,7 @@ export const financeiroRouter = router({
     const to = row.billingEmail || row.clientEmail;
     if (!to) throw new Error("Cliente sem e-mail cadastrado");
     const pix = (await db.select().from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
-    const html = buildCobrancaEmail({ clientName: row.clientName || "", description: row.description, amount: row.amount, dueDate: new Date(row.dueDate as any), competencia: row.competencia, pix });
+    const html = buildCobrancaEmail({ tituloId: row.id, baseUrl: APP_URL, clientName: row.clientName || "", description: row.description, amount: row.amount, dueDate: new Date(row.dueDate as any), competencia: row.competencia, pix });
     await sendEmail({ to, subject: `Cobrança - ${row.description}`, html });
     await db.update(financialTitulos).set({ status: row.status === "pago" ? "pago" : "enviado", sentAt: new Date(), updatedAt: new Date() }).where(eq(financialTitulos.id, input.tituloId));
     return { ok: true, to };
