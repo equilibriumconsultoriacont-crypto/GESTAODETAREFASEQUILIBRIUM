@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   ArrowLeft, Wallet, Receipt, Repeat, QrCode, PlusCircle, Pencil, Trash2, Search, Lock,
-  CheckCircle2, RotateCcw, TrendingUp, Clock, AlertTriangle, X, Send, Mail, Play, Pause, TrendingDown, Wallet2, Scale,
+  CheckCircle2, RotateCcw, TrendingUp, Clock, AlertTriangle, X, Send, Mail, Play, Pause, TrendingDown, Scale, Eye,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -162,6 +162,9 @@ function TitulosTab() {
   const reverterMut = trpc.financeiro.reverterBaixa.useMutation();
   const enviarMut = trpc.financeiro.enviarCobranca.useMutation();
   const deleteMut = trpc.financeiro.deleteTitulo.useMutation();
+  const conferirMut = trpc.financeiro.conferirComprovante.useMutation();
+  const [conferindo, setConferindo] = useState<any>(null);
+  const { data: comprovantes = [] } = trpc.financeiro.listPayments.useQuery({ tituloId: conferindo?.id ?? 0 }, { enabled: !!conferindo });
   // atualiza painel + lista após qualquer ação
   const refreshAll = () => { refetch(); utils.financeiro.dashboard.invalidate(); utils.financeiro.listTitulos.invalidate(); };
 
@@ -212,6 +215,13 @@ function TitulosTab() {
     try { await deleteMut.mutateAsync({ id: t.id }); toast.success("Lançamento excluído"); refreshAll(); }
     catch (e: any) { toast.error(e?.message || "Não foi possível excluir"); }
   };
+  const conferir = async (decisao: "confirmar" | "rejeitar") => {
+    const pay = (comprovantes as any[]).find((p) => p.status === "aguardando_conferencia") || (comprovantes as any[])[0];
+    if (!pay) return toast.error("Nenhum comprovante para conferir");
+    if (decisao === "rejeitar" && !confirm("Rejeitar o comprovante? A cobrança volta para 'enviado'.")) return;
+    try { await conferirMut.mutateAsync({ paymentId: pay.id, decisao }); toast.success(decisao === "confirmar" ? "Comprovante confirmado — baixa dada" : "Comprovante rejeitado"); setConferindo(null); refreshAll(); }
+    catch (e: any) { toast.error(e?.message || "Não foi possível conferir"); }
+  };
 
   return (
     <div>
@@ -250,6 +260,9 @@ function TitulosTab() {
                   </div>
                   <div style={{ fontSize: 16, fontWeight: 750, color: t.status === "pago" ? C.green : C.text }}>{brl(t.amount)}</div>
                   <div style={{ display: "flex", gap: 6 }}>
+                    {t.status === "em_conferencia" && (
+                      <button onClick={() => setConferindo(t)} title="Conferir comprovante" style={{ ...iconBtn, color: C.amber, borderColor: "rgba(224,164,88,.4)", background: C.amberSoft }}><Eye size={15} /></button>
+                    )}
                     {t.status !== "cancelado" && t.status !== "pago" && (
                       <button onClick={() => enviar(t)} disabled={enviarMut.isPending} title="Enviar cobrança por e-mail" style={{ ...iconBtn, color: "#7dd3fc", borderColor: "rgba(125,211,252,.3)" }}><Send size={15} /></button>
                     )}
@@ -346,6 +359,41 @@ function TitulosTab() {
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                 <button onClick={() => setBaixaFor(null)} style={ghostBtn}>Cancelar</button>
                 <button onClick={doBaixa} disabled={baixaMut.isPending} style={{ ...primaryBtn, background: C.green }}>Confirmar baixa</button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Conferência de comprovante */}
+      <Dialog open={!!conferindo} onOpenChange={(v) => { if (!v) setConferindo(null); }}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" style={{ background: C.panel, borderColor: C.border, color: C.text }}>
+          <DialogHeader><DialogTitle style={{ color: C.text }}>Conferir comprovante</DialogTitle></DialogHeader>
+          {conferindo && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 4 }}>
+              <p style={{ fontSize: 13, color: C.textMuted }}>{conferindo.clientName} · {conferindo.description} · <strong style={{ color: C.text }}>{brl(conferindo.amount)}</strong></p>
+              {(comprovantes as any[]).length === 0 ? (
+                <div style={{ color: C.textFaint, textAlign: "center", padding: 20, fontSize: 13 }}>Carregando comprovante…</div>
+              ) : (
+                (comprovantes as any[]).map((p) => (
+                  <div key={p.id} style={{ background: C.panelHi, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+                    <div style={{ fontSize: 12, color: C.textFaint, marginBottom: 8 }}>
+                      Enviado {p.submittedByClient ? "pelo cliente" : "manualmente"} · {p.createdAt ? new Date(p.createdAt).toLocaleString("pt-BR") : ""}
+                      {p.status !== "aguardando_conferencia" && ` · ${p.status === "confirmado" ? "✓ confirmado" : "✗ rejeitado"}`}
+                    </div>
+                    {p.comprovanteUrl ? (
+                      String(p.comprovanteUrl).startsWith("data:image") ? (
+                        <a href={p.comprovanteUrl} target="_blank" rel="noreferrer"><img src={p.comprovanteUrl} alt="comprovante" style={{ width: "100%", borderRadius: 8, border: `1px solid ${C.border}` }} /></a>
+                      ) : (
+                        <a href={p.comprovanteUrl} target="_blank" rel="noreferrer" download={`comprovante-${p.id}.pdf`} style={{ display: "inline-block", background: C.brandSoft, color: C.brandText, borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>📄 Abrir comprovante (PDF)</a>
+                      )
+                    ) : <span style={{ fontSize: 13, color: C.textFaint }}>Sem arquivo anexado</span>}
+                  </div>
+                ))
+              )}
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button onClick={() => conferir("rejeitar")} disabled={conferirMut.isPending} style={{ ...ghostBtn, color: C.danger, borderColor: "rgba(248,113,113,.4)" }}>Rejeitar</button>
+                <button onClick={() => conferir("confirmar")} disabled={conferirMut.isPending} style={{ ...primaryBtn, background: C.green }}>Confirmar e dar baixa</button>
               </div>
             </div>
           )}
