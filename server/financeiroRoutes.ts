@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { financialTitulos, financialPayments, financialConfig, clients } from "../drizzle/schema";
 import { buildPixBRCode, pixQrPngBuffer } from "./pix";
@@ -8,6 +8,18 @@ import { buildPixBRCode, pixQrPngBuffer } from "./pix";
 // Observação: identificam a cobrança pelo id do título. Numa evolução, dá para usar um token
 // assinado por cobrança para evitar adivinhação de ids — por ora atende a fase de teste.
 export function registerFinanceiroRoutes(app: Express) {
+  // Contagem de comprovantes aguardando conferência (para o badge/notificação, estilo WhatsApp)
+  app.get("/api/financeiro/pendencias", async (_req, res) => {
+    const db = await getDb();
+    if (!db) return res.json({ count: 0 });
+    try {
+      const [r]: any = await db.select({ n: sql`count(*)` }).from(financialPayments).where(eq(financialPayments.status, "aguardando_conferencia"));
+      res.json({ count: Number(r?.n ?? 0) });
+    } catch {
+      res.json({ count: 0 });
+    }
+  });
+
   // Dados da cobrança para a página pública de pagamento
   app.get("/api/financeiro/cobranca/:id", async (req, res) => {
     const db = await getDb();

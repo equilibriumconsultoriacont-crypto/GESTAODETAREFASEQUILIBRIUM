@@ -5,7 +5,7 @@ import {
   ArrowLeft, Wallet, Receipt, Repeat, QrCode, PlusCircle, Pencil, Trash2, Search, Lock,
   CheckCircle2, RotateCcw, TrendingUp, Clock, AlertTriangle, X, Send, Mail, Play, Pause, TrendingDown, Scale, Eye,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 
@@ -40,6 +40,34 @@ export default function FinanceiroPage() {
   const { user, loading } = useAuth();
   const [, setLocation] = useLocation();
   const [tab, setTab] = useState<Tab>("painel");
+
+  // Notificação de comprovante aguardando conferência (estilo WhatsApp): badge, título da aba e
+  // aviso quando um novo comprovante chega.
+  const [pend, setPend] = useState(0);
+  const prevPend = useRef<number | null>(null);
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
+    const load = () =>
+      fetch("/api/financeiro/pendencias", { credentials: "include" })
+        .then((r) => r.json())
+        .then((d) => {
+          const c = d?.count || 0;
+          if (prevPend.current !== null && c > prevPend.current) {
+            const novos = c - prevPend.current;
+            toast.success(novos === 1 ? "Novo comprovante recebido — confira em Contas a Receber" : `${novos} novos comprovantes para conferir`);
+            if ("Notification" in window && Notification.permission === "granted") {
+              try { new Notification("Comprovante para aprovar", { body: "Um cliente enviou um comprovante de pagamento." }); } catch {}
+            }
+          }
+          prevPend.current = c;
+          setPend(c);
+        })
+        .catch(() => {});
+    load();
+    const iv = setInterval(load, 15000);
+    return () => clearInterval(iv);
+  }, []);
+  useEffect(() => { document.title = pend > 0 ? `(${pend}) Financeiro` : "Financeiro"; return () => { document.title = "Financeiro"; }; }, [pend]);
 
   if (loading) return <div style={{ minHeight: "100dvh", background: C.bg, display: "grid", placeItems: "center", color: C.textMuted }}>Carregando…</div>;
   if (!user || (user as any).role !== "admin") {
@@ -88,6 +116,9 @@ export default function FinanceiroPage() {
                   border: `1px solid ${on ? C.brand : C.border}`, background: on ? C.brand : "transparent",
                   color: on ? "#04211f" : C.textMuted, fontSize: 13, fontWeight: 650, cursor: "pointer" }}>
                 <Icon size={15} /> {label}
+                {key === "titulos" && pend > 0 && (
+                  <span style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: "#ef4444", color: "#fff", fontSize: 11, fontWeight: 700, display: "grid", placeItems: "center" }}>{pend > 99 ? "99+" : pend}</span>
+                )}
               </button>
             );
           })}

@@ -59,12 +59,18 @@ export default function Hub() {
   const { data: myModules = [] } = trpc.modules.mine.useQuery();
 
   const [waUnread, setWaUnread] = useState(0);
+  const [finPend, setFinPend] = useState(0);
   useEffect(() => {
-    const load = () =>
+    const load = () => {
       fetch("/api/wa/unread", { credentials: "include" })
         .then((r) => r.json())
         .then((d) => setWaUnread(d?.count || 0))
         .catch(() => {});
+      fetch("/api/financeiro/pendencias", { credentials: "include" })
+        .then((r) => r.json())
+        .then((d) => setFinPend(d?.count || 0))
+        .catch(() => {});
+    };
     load();
     const iv = setInterval(load, 8000);
     return () => clearInterval(iv);
@@ -148,6 +154,11 @@ export default function Hub() {
                       {mod.id === "whatsapp" && waUnread > 0 && (
                         <span style={{ position: "absolute", top: -7, right: -7, minWidth: 21, height: 21, padding: "0 5px", borderRadius: 11, background: "#ef4444", color: "#fff", fontSize: 11.5, fontWeight: 700, display: "grid", placeItems: "center", border: "2px solid #111" }}>
                           {waUnread > 99 ? "99+" : waUnread}
+                        </span>
+                      )}
+                      {mod.id === "financeiro" && finPend > 0 && (
+                        <span style={{ position: "absolute", top: -7, right: -7, minWidth: 21, height: 21, padding: "0 5px", borderRadius: 11, background: "#ef4444", color: "#fff", fontSize: 11.5, fontWeight: 700, display: "grid", placeItems: "center", border: "2px solid #111" }}>
+                          {finPend > 99 ? "99+" : finPend}
                         </span>
                       )}
                     </div>
