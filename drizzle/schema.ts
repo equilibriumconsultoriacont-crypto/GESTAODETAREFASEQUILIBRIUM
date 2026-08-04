@@ -541,6 +541,8 @@ export const financialConfig = mysqlTable("fin_config", {
   pixQrImage: mediumtext("pixQrImage"), // imagem do QR (data URL) que você vai me enviar
   instructions: text("instructions"), // instruções extras no e-mail de cobrança
   active: boolean("active").default(false).notNull(), // liga quando a conta PJ estiver pronta
+  autoCobranca: boolean("autoCobranca").default(false).notNull(), // régua automática (envio + lembrete) ligada?
+  lembreteDias: int("lembreteDias").default(2).notNull(), // dias após o vencimento para o lembrete
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 export type FinancialConfig = typeof financialConfig.$inferSelect;

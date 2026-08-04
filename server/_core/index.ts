@@ -274,7 +274,7 @@ async function startServer() {
         "CREATE TABLE IF NOT EXISTS `fin_client_config` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `hasHonorario` boolean NOT NULL DEFAULT false, `honorarioValue` varchar(20), `dueDay` int, `sendDay` int, `weekendRule` enum('mantem','antecipa','posterga') NOT NULL DEFAULT 'mantem', `billingEmail` varchar(320), `recurring` boolean NOT NULL DEFAULT true, `activated` boolean NOT NULL DEFAULT false, `lastGenComp` varchar(7), `active` boolean NOT NULL DEFAULT true, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_client_config_id` PRIMARY KEY(`id`), CONSTRAINT `fin_client_config_clientId_unique` UNIQUE(`clientId`))",
         "CREATE TABLE IF NOT EXISTS `fin_titulos` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `kind` enum('honorario','eventual') NOT NULL DEFAULT 'eventual', `description` varchar(255) NOT NULL, `category` varchar(80), `amount` varchar(20) NOT NULL, `competencia` varchar(7), `dueDate` timestamp NOT NULL, `sendDate` timestamp NULL, `status` enum('rascunho','aberto','enviado','em_conferencia','pago','vencido','cancelado') NOT NULL DEFAULT 'aberto', `origin` enum('manual','recorrencia','tarefa') NOT NULL DEFAULT 'manual', `recurringConfigId` int, `taskId` int, `sentAt` timestamp NULL, `reminderSentAt` timestamp NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_titulos_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `fin_payments` (`id` int AUTO_INCREMENT NOT NULL, `tituloId` int NOT NULL, `comprovanteUrl` mediumtext, `amount` varchar(20), `paidDate` timestamp NULL, `method` varchar(30), `status` enum('aguardando_conferencia','confirmado','rejeitado') NOT NULL DEFAULT 'aguardando_conferencia', `submittedByClient` boolean NOT NULL DEFAULT false, `confirmedBy` int, `confirmedAt` timestamp NULL, `note` varchar(500), `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_payments_id` PRIMARY KEY(`id`))",
-        "CREATE TABLE IF NOT EXISTS `fin_config` (`id` int AUTO_INCREMENT NOT NULL, `pixKey` varchar(200), `pixKeyType` varchar(20), `beneficiaryName` varchar(200), `beneficiaryDoc` varchar(20), `pixQrImage` mediumtext, `instructions` text, `active` boolean NOT NULL DEFAULT false, `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_config_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `fin_config` (`id` int AUTO_INCREMENT NOT NULL, `pixKey` varchar(200), `pixKeyType` varchar(20), `beneficiaryName` varchar(200), `beneficiaryDoc` varchar(20), `pixQrImage` mediumtext, `instructions` text, `active` boolean NOT NULL DEFAULT false, `autoCobranca` boolean NOT NULL DEFAULT false, `lembreteDias` int NOT NULL DEFAULT 2, `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_config_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `fin_payables` (`id` int AUTO_INCREMENT NOT NULL, `description` varchar(255) NOT NULL, `supplier` varchar(200), `category` varchar(80), `amount` varchar(20) NOT NULL, `dueDate` timestamp NOT NULL, `status` enum('aberto','pago','vencido','cancelado') NOT NULL DEFAULT 'aberto', `recurring` boolean NOT NULL DEFAULT false, `paidDate` timestamp NULL, `paidBy` int, `note` varchar(500), `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_payables_id` PRIMARY KEY(`id`))",
         "CREATE INDEX `wa_messages_conv_idx` ON `wa_messages` (`conversationId`, `createdAt`)",
         "CREATE INDEX `wa_conversations_status_idx` ON `wa_conversations` (`status`, `lastMessageAt`)",
@@ -666,7 +666,7 @@ async function ensureSchema() {
         "CREATE TABLE IF NOT EXISTS `fin_client_config` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `hasHonorario` boolean NOT NULL DEFAULT false, `honorarioValue` varchar(20), `dueDay` int, `sendDay` int, `weekendRule` enum('mantem','antecipa','posterga') NOT NULL DEFAULT 'mantem', `billingEmail` varchar(320), `recurring` boolean NOT NULL DEFAULT true, `activated` boolean NOT NULL DEFAULT false, `lastGenComp` varchar(7), `active` boolean NOT NULL DEFAULT true, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_client_config_id` PRIMARY KEY(`id`), CONSTRAINT `fin_client_config_clientId_unique` UNIQUE(`clientId`))",
         "CREATE TABLE IF NOT EXISTS `fin_titulos` (`id` int AUTO_INCREMENT NOT NULL, `clientId` int NOT NULL, `kind` enum('honorario','eventual') NOT NULL DEFAULT 'eventual', `description` varchar(255) NOT NULL, `category` varchar(80), `amount` varchar(20) NOT NULL, `competencia` varchar(7), `dueDate` timestamp NOT NULL, `sendDate` timestamp NULL, `status` enum('rascunho','aberto','enviado','em_conferencia','pago','vencido','cancelado') NOT NULL DEFAULT 'aberto', `origin` enum('manual','recorrencia','tarefa') NOT NULL DEFAULT 'manual', `recurringConfigId` int, `taskId` int, `sentAt` timestamp NULL, `reminderSentAt` timestamp NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_titulos_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `fin_payments` (`id` int AUTO_INCREMENT NOT NULL, `tituloId` int NOT NULL, `comprovanteUrl` mediumtext, `amount` varchar(20), `paidDate` timestamp NULL, `method` varchar(30), `status` enum('aguardando_conferencia','confirmado','rejeitado') NOT NULL DEFAULT 'aguardando_conferencia', `submittedByClient` boolean NOT NULL DEFAULT false, `confirmedBy` int, `confirmedAt` timestamp NULL, `note` varchar(500), `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_payments_id` PRIMARY KEY(`id`))",
-        "CREATE TABLE IF NOT EXISTS `fin_config` (`id` int AUTO_INCREMENT NOT NULL, `pixKey` varchar(200), `pixKeyType` varchar(20), `beneficiaryName` varchar(200), `beneficiaryDoc` varchar(20), `pixQrImage` mediumtext, `instructions` text, `active` boolean NOT NULL DEFAULT false, `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_config_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `fin_config` (`id` int AUTO_INCREMENT NOT NULL, `pixKey` varchar(200), `pixKeyType` varchar(20), `beneficiaryName` varchar(200), `beneficiaryDoc` varchar(20), `pixQrImage` mediumtext, `instructions` text, `active` boolean NOT NULL DEFAULT false, `autoCobranca` boolean NOT NULL DEFAULT false, `lembreteDias` int NOT NULL DEFAULT 2, `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_config_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `fin_payables` (`id` int AUTO_INCREMENT NOT NULL, `description` varchar(255) NOT NULL, `supplier` varchar(200), `category` varchar(80), `amount` varchar(20) NOT NULL, `dueDate` timestamp NOT NULL, `status` enum('aberto','pago','vencido','cancelado') NOT NULL DEFAULT 'aberto', `recurring` boolean NOT NULL DEFAULT false, `paidDate` timestamp NULL, `paidBy` int, `note` varchar(500), `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `fin_payables_id` PRIMARY KEY(`id`))",
       ];
       for (const s of waTables) {
@@ -719,6 +719,15 @@ async function ensureSchema() {
           if (Number(c?.[0]?.cnt ?? 0) === 0) await conn.query("ALTER TABLE `fin_client_config` " + ddl);
         }
       } catch (e: any) { console.warn("[Migração Financeiro]:", e?.message?.slice(0, 140)); }
+      try {
+        for (const [col, ddl] of [
+          ["autoCobranca", "ADD COLUMN `autoCobranca` boolean NOT NULL DEFAULT false"],
+          ["lembreteDias", "ADD COLUMN `lembreteDias` int NOT NULL DEFAULT 2"],
+        ] as [string, string][]) {
+          const [c]: any = await conn.query(`SELECT COUNT(*) cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fin_config' AND COLUMN_NAME = '${col}'`);
+          if (Number(c?.[0]?.cnt ?? 0) === 0) await conn.query("ALTER TABLE `fin_config` " + ddl);
+        }
+      } catch (e: any) { console.warn("[Migração Financeiro fin_config]:", e?.message?.slice(0, 140)); }
 
       const [rows]: any = await conn.query(
         "SELECT COUNT(*) as cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'task_templates' AND COLUMN_NAME = 'dueDateAdjust'"
@@ -1075,3 +1084,47 @@ async function rodarRecorrenciaHonorarios() {
 }
 setTimeout(rodarRecorrenciaHonorarios, 30 * 1000); // uma vez logo após subir
 setInterval(rodarRecorrenciaHonorarios, 6 * 60 * 60 * 1000); // e a cada 6h
+
+// ── Régua de cobrança automática (só roda se o interruptor estiver LIGADO) ─────
+// 1) Envia a cobrança no dia configurado (sendDate) para títulos ainda não enviados.
+// 2) Manda um lembrete X dias após o vencimento para títulos em aberto sem comprovante.
+// Interruptor global fin_config.autoCobranca (desligado por padrão — seguro para testes).
+async function rodarReguaCobranca() {
+  try {
+    const { getDb } = await import("../db");
+    const db = await getDb();
+    if (!db) return;
+    const { financialConfig, financialTitulos } = await import("../../drizzle/schema");
+    const { and, eq, lte, lt, isNull, sql: dsql } = await import("drizzle-orm");
+    const { enviarCobrancaPorId } = await import("../financeiroRouter");
+
+    const cfg = (await db.select().from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
+    if (!cfg || !cfg.autoCobranca) return; // interruptor desligado -> não envia nada
+
+    const agora = new Date();
+
+    // 1) Envio no dia: status 'aberto', com sendDate <= agora e ainda não enviado
+    const paraEnviar = await db.select({ id: financialTitulos.id }).from(financialTitulos)
+      .where(and(eq(financialTitulos.status, "aberto"), isNull(financialTitulos.sentAt), dsql`${financialTitulos.sendDate} is not null`, lte(financialTitulos.sendDate, agora)))
+      .limit(50);
+    for (const t of paraEnviar) {
+      try { const r = await enviarCobrancaPorId(db, t.id); if (r.ok) console.log("[Régua] cobrança enviada título", t.id, "->", r.to); }
+      catch (e: any) { console.warn("[Régua] envio título", t.id, ":", e?.message); }
+    }
+
+    // 2) Lembrete pós-vencimento: status 'enviado'/'vencido', sem lembrete, vencido há >= lembreteDias
+    const limite = new Date(agora.getTime() - (Number(cfg.lembreteDias ?? 2)) * 24 * 60 * 60 * 1000);
+    const paraLembrar = await db.select({ id: financialTitulos.id }).from(financialTitulos)
+      .where(and(dsql`${financialTitulos.status} in ('enviado','vencido')`, isNull(financialTitulos.reminderSentAt), lt(financialTitulos.dueDate, limite)))
+      .limit(50);
+    for (const t of paraLembrar) {
+      try { const r = await enviarCobrancaPorId(db, t.id, { reminder: true }); if (r.ok) console.log("[Régua] lembrete enviado título", t.id, "->", r.to); }
+      catch (e: any) { console.warn("[Régua] lembrete título", t.id, ":", e?.message); }
+    }
+  } catch (err: any) {
+    console.warn("[Régua] erro no ciclo:", err?.message);
+  }
+}
+setTimeout(rodarReguaCobranca, 40 * 1000); // logo após subir
+setInterval(rodarReguaCobranca, 3 * 60 * 60 * 1000); // e a cada 3h
+

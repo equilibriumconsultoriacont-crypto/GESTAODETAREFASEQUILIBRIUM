@@ -799,6 +799,7 @@ function RecebimentoTab() {
   const current = form ?? {
     pixKey: cfg?.pixKey || "", pixKeyType: cfg?.pixKeyType || "cnpj", beneficiaryName: cfg?.beneficiaryName || "",
     beneficiaryDoc: cfg?.beneficiaryDoc || "", instructions: cfg?.instructions || "", active: cfg?.active || false,
+    autoCobranca: (cfg as any)?.autoCobranca || false, lembreteDias: (cfg as any)?.lembreteDias ?? 2,
   };
   const set = (k: string, v: any) => setForm({ ...current, [k]: v });
   const save = async () => {
@@ -843,7 +844,30 @@ function RecebimentoTab() {
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button onClick={save} disabled={upsertMut.isPending} style={primaryBtn}>Salvar configuração</button>
         </div>
-        <p style={{ fontSize: 12, color: C.textFaint }}>O QR Code em imagem você me envia depois e eu encaixo aqui (Fase 4), junto com a geração automática no e-mail/boleto.</p>
+      </div>
+
+      {/* Régua de cobrança automática */}
+      <div style={{ marginTop: 22 }}>
+        <SectionHeader title="Régua de cobrança automática" subtitle="O sistema envia a cobrança no dia configurado e um lembrete após o vencimento — sozinho." />
+        <div style={{ background: C.dangerSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14, fontSize: 13, color: C.textMuted, marginBottom: 18 }}>
+          <strong style={{ color: C.text }}>Atenção:</strong> com isto <strong style={{ color: C.text }}>ligado</strong>, o sistema dispara e-mails de verdade para os clientes automaticamente. Enquanto estiver testando, deixe <strong style={{ color: C.text }}>desligado</strong> — você continua enviando manualmente pelo botão de avião em cada cobrança.
+        </div>
+        <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20, maxWidth: 560, display: "flex", flexDirection: "column", gap: 14 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", background: C.panelHi, border: `1px solid ${current.autoCobranca ? C.green : C.border}`, borderRadius: 10, padding: "12px 14px" }}>
+            <input type="checkbox" checked={!!current.autoCobranca} onChange={(e) => set("autoCobranca", e.target.checked)} style={{ accentColor: C.green, width: 18, height: 18 }} />
+            <span style={{ fontSize: 14, fontWeight: 650 }}>Ligar envio automático de cobranças e lembretes</span>
+          </label>
+          <div style={{ maxWidth: 240 }}>
+            <label style={labelStyle}>Enviar lembrete após o vencimento (dias)</label>
+            <input type="number" min={0} max={60} value={current.lembreteDias} onChange={(e) => set("lembreteDias", Number(e.target.value))} style={fieldStyle} />
+          </div>
+          <p style={{ fontSize: 12.5, color: C.textFaint }}>
+            Envio: no dia que você definiu em cada honorário (campo "cobra dia"). Lembrete: uma vez, {current.lembreteDias || 2} dia(s) após o vencimento, se ainda não houver comprovante. Cobranças já pagas ou canceladas são ignoradas.
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={save} disabled={upsertMut.isPending} style={primaryBtn}>Salvar régua</button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -33,9 +33,12 @@ function adjustWeekend(d: Date, rule: string | null): Date {
 }
 
 // HTML do e-mail de cobrança: valor, vencimento, PIX (QR + copia e cola) e botão de comprovante.
-function buildCobrancaEmail(opts: { tituloId: number; baseUrl: string; clientName: string; description: string; amount: string; dueDate: Date; competencia?: string | null; pix?: any }): string {
+function buildCobrancaEmail(opts: { tituloId: number; baseUrl: string; clientName: string; description: string; amount: string; dueDate: Date; competencia?: string | null; pix?: any; reminder?: boolean }): string {
   const venc = opts.dueDate.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
   const compUrl = `${opts.baseUrl}/cobranca/${opts.tituloId}`;
+  const reminderBanner = opts.reminder
+    ? `<div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px"><strong>Lembrete:</strong> identificamos que a cobrança abaixo continua em aberto. Se já pagou, é só enviar o comprovante.</div>`
+    : "";
   let pixBlock: string;
   if (opts.pix?.active && opts.pix?.pixKey) {
     let copiaCola = "";
@@ -57,6 +60,7 @@ function buildCobrancaEmail(opts: { tituloId: number; baseUrl: string; clientNam
   }
   return `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#222">
     <h2 style="color:#24646c">Equilibrium Consultoria Contábil</h2>
+    ${reminderBanner}
     <p>Olá, ${opts.clientName || "cliente"}.</p>
     <p>Segue a cobrança referente a <strong>${opts.description}</strong>${opts.competencia ? " (competência " + opts.competencia + ")" : ""}.</p>
     <table style="width:100%;border-collapse:collapse;margin:12px 0">
@@ -89,6 +93,28 @@ export async function gerarTituloHonorario(db: any, cfg: any, comp: string): Pro
 }
 export function compAtual(d = new Date()): string {
   return `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+}
+
+// Envia (ou reenvia como lembrete) a cobrança de um título por e-mail. Reutilizado pela procedure
+// manual e pela régua automática. Retorna { ok, to } ou { ok:false, reason }.
+export async function enviarCobrancaPorId(db: any, tituloId: number, opts?: { reminder?: boolean }): Promise<{ ok: boolean; to?: string; reason?: string }> {
+  const row = (await db
+    .select({ id: financialTitulos.id, status: financialTitulos.status, description: financialTitulos.description, amount: financialTitulos.amount, competencia: financialTitulos.competencia, dueDate: financialTitulos.dueDate, clientName: clients.name, clientEmail: clients.email, billingEmail: financialClientConfig.billingEmail })
+    .from(financialTitulos).leftJoin(clients, eq(clients.id, financialTitulos.clientId)).leftJoin(financialClientConfig, eq(financialClientConfig.clientId, financialTitulos.clientId))
+    .where(eq(financialTitulos.id, tituloId)).limit(1))[0];
+  if (!row) return { ok: false, reason: "não encontrado" };
+  const to = row.billingEmail || row.clientEmail;
+  if (!to) return { ok: false, reason: "sem e-mail" };
+  const pix = (await db.select().from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
+  const html = buildCobrancaEmail({ tituloId: row.id, baseUrl: APP_URL, clientName: row.clientName || "", description: row.description, amount: row.amount, dueDate: new Date(row.dueDate as any), competencia: row.competencia, pix, reminder: opts?.reminder });
+  const subject = opts?.reminder ? `Lembrete de cobrança - ${row.description}` : `Cobrança - ${row.description}`;
+  await sendEmail({ to, subject, html });
+  if (opts?.reminder) {
+    await db.update(financialTitulos).set({ reminderSentAt: new Date(), updatedAt: new Date() }).where(eq(financialTitulos.id, tituloId));
+  } else {
+    await db.update(financialTitulos).set({ status: row.status === "pago" ? "pago" : "enviado", sentAt: new Date(), updatedAt: new Date() }).where(eq(financialTitulos.id, tituloId));
+  }
+  return { ok: true, to };
 }
 
 export const financeiroRouter = router({
@@ -435,18 +461,9 @@ export const financeiroRouter = router({
   enviarCobranca: adminProcedure.input(z.object({ tituloId: z.number() })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new Error("sem banco");
-    const row = (await db
-      .select({ id: financialTitulos.id, status: financialTitulos.status, description: financialTitulos.description, amount: financialTitulos.amount, competencia: financialTitulos.competencia, dueDate: financialTitulos.dueDate, clientName: clients.name, clientEmail: clients.email, billingEmail: financialClientConfig.billingEmail })
-      .from(financialTitulos).leftJoin(clients, eq(clients.id, financialTitulos.clientId)).leftJoin(financialClientConfig, eq(financialClientConfig.clientId, financialTitulos.clientId))
-      .where(eq(financialTitulos.id, input.tituloId)).limit(1))[0];
-    if (!row) throw new Error("título não encontrado");
-    const to = row.billingEmail || row.clientEmail;
-    if (!to) throw new Error("Cliente sem e-mail cadastrado");
-    const pix = (await db.select().from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
-    const html = buildCobrancaEmail({ tituloId: row.id, baseUrl: APP_URL, clientName: row.clientName || "", description: row.description, amount: row.amount, dueDate: new Date(row.dueDate as any), competencia: row.competencia, pix });
-    await sendEmail({ to, subject: `Cobrança - ${row.description}`, html });
-    await db.update(financialTitulos).set({ status: row.status === "pago" ? "pago" : "enviado", sentAt: new Date(), updatedAt: new Date() }).where(eq(financialTitulos.id, input.tituloId));
-    return { ok: true, to };
+    const r = await enviarCobrancaPorId(db, input.tituloId);
+    if (!r.ok) throw new Error(r.reason === "sem e-mail" ? "Cliente sem e-mail cadastrado" : "Título não encontrado");
+    return { ok: true, to: r.to };
   }),
 
   // ── Contas a PAGAR (despesas do escritório) ──────────────────────────────────
@@ -523,6 +540,8 @@ export const financeiroRouter = router({
         pixQrImage: z.string().optional(),
         instructions: z.string().optional(),
         active: z.boolean().optional(),
+        autoCobranca: z.boolean().optional(),
+        lembreteDias: z.number().min(0).max(60).optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -536,6 +555,8 @@ export const financeiroRouter = router({
         pixQrImage: input.pixQrImage ?? null,
         instructions: input.instructions ?? null,
         active: input.active ?? false,
+        autoCobranca: input.autoCobranca ?? false,
+        lembreteDias: input.lembreteDias ?? 2,
         updatedAt: new Date(),
       };
       const existing = (await db.select({ id: financialConfig.id }).from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
