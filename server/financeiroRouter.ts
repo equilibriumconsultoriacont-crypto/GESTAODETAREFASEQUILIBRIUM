@@ -133,6 +133,41 @@ export const financeiroRouter = router({
     }
   }),
 
+  // ── Dados para os gráficos do dashboard ──────────────────────────────────────
+  // Fluxo projetado (a receber x a pagar por mês futuro), recebido x pago por mês (histórico),
+  // e quebra por categoria. Retorna arrays crus; o frontend monta os eixos.
+  dashboardCharts: adminProcedure.query(async () => {
+    const db = await getDb();
+    const empty = { recFuturo: [] as any[], pagFuturo: [] as any[], recebidoMensal: [] as any[], pagoMensal: [] as any[], catReceita: [] as any[], catDespesa: [] as any[] };
+    if (!db) return empty;
+    const num = (v: any) => Number(v ?? 0);
+    try {
+      const recFuturo = await db.select({ mes: sql<string>`DATE_FORMAT(${financialTitulos.dueDate}, '%Y-%m')`, total: sql<string>`coalesce(sum(cast(${financialTitulos.amount} as decimal(12,2))),0)` })
+        .from(financialTitulos).where(sql`${financialTitulos.status} in ('aberto','enviado','em_conferencia','vencido')`).groupBy(sql`DATE_FORMAT(${financialTitulos.dueDate}, '%Y-%m')`);
+      const pagFuturo = await db.select({ mes: sql<string>`DATE_FORMAT(${financialPayables.dueDate}, '%Y-%m')`, total: sql<string>`coalesce(sum(cast(${financialPayables.amount} as decimal(12,2))),0)` })
+        .from(financialPayables).where(sql`${financialPayables.status} in ('aberto','vencido')`).groupBy(sql`DATE_FORMAT(${financialPayables.dueDate}, '%Y-%m')`);
+      const recebidoMensal = await db.select({ mes: sql<string>`DATE_FORMAT(${financialPayments.paidDate}, '%Y-%m')`, total: sql<string>`coalesce(sum(cast(${financialPayments.amount} as decimal(12,2))),0)` })
+        .from(financialPayments).where(sql`${financialPayments.status}='confirmado' and ${financialPayments.paidDate} is not null`).groupBy(sql`DATE_FORMAT(${financialPayments.paidDate}, '%Y-%m')`);
+      const pagoMensal = await db.select({ mes: sql<string>`DATE_FORMAT(${financialPayables.paidDate}, '%Y-%m')`, total: sql<string>`coalesce(sum(cast(${financialPayables.amount} as decimal(12,2))),0)` })
+        .from(financialPayables).where(sql`${financialPayables.status}='pago' and ${financialPayables.paidDate} is not null`).groupBy(sql`DATE_FORMAT(${financialPayables.paidDate}, '%Y-%m')`);
+      const catReceita = await db.select({ categoria: financialTitulos.category, total: sql<string>`coalesce(sum(cast(${financialTitulos.amount} as decimal(12,2))),0)` })
+        .from(financialTitulos).where(sql`${financialTitulos.status} <> 'cancelado'`).groupBy(financialTitulos.category);
+      const catDespesa = await db.select({ categoria: financialPayables.category, total: sql<string>`coalesce(sum(cast(${financialPayables.amount} as decimal(12,2))),0)` })
+        .from(financialPayables).where(sql`${financialPayables.status} <> 'cancelado'`).groupBy(financialPayables.category);
+      return {
+        recFuturo: recFuturo.map((r) => ({ mes: r.mes, total: num(r.total) })),
+        pagFuturo: pagFuturo.map((r) => ({ mes: r.mes, total: num(r.total) })),
+        recebidoMensal: recebidoMensal.map((r) => ({ mes: r.mes, total: num(r.total) })),
+        pagoMensal: pagoMensal.map((r) => ({ mes: r.mes, total: num(r.total) })),
+        catReceita: catReceita.map((r) => ({ categoria: r.categoria ?? "Sem categoria", total: num(r.total) })),
+        catDespesa: catDespesa.map((r) => ({ categoria: r.categoria ?? "Sem categoria", total: num(r.total) })),
+      };
+    } catch (e: any) {
+      console.warn("[Financeiro] dashboardCharts:", e?.message);
+      return empty;
+    }
+  }),
+
   // ── Clientes + configuração de honorário (aba Honorários) ────────────────────
   clientsWithConfig: adminProcedure.query(async () => {
     const db = await getDb();

@@ -8,6 +8,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 
 const C = {
   bg: "#0a0f0e", panel: "#0f1a19", panelHi: "#132321", border: "#1e3a37", borderHi: "#2b5551",
@@ -151,6 +152,7 @@ function SectionHeader({ title, subtitle, action }: { title: string; subtitle: s
 /* ── Painel ── */
 function PainelTab({ onGo }: { onGo: (t: Tab) => void }) {
   const { data } = trpc.financeiro.dashboard.useQuery(undefined, { refetchOnWindowFocus: true, refetchInterval: 45_000 });
+  const { data: charts } = trpc.financeiro.dashboardCharts.useQuery(undefined, { refetchOnWindowFocus: true, refetchInterval: 60_000 });
   const cards = [
     { label: "A receber", value: brl(data?.aReceber ?? 0), icon: Clock, color: C.brandText, soft: C.brandSoft, onClick: () => onGo("titulos") },
     { label: "Recebido", value: brl(data?.recebido ?? 0), icon: CheckCircle2, color: C.green, soft: C.greenSoft, onClick: () => onGo("titulos") },
@@ -160,23 +162,109 @@ function PainelTab({ onGo }: { onGo: (t: Tab) => void }) {
     { label: "Em conferência", value: String(data?.emConferencia ?? 0), icon: Receipt, color: C.amber, soft: C.amberSoft, onClick: () => onGo("titulos") },
     { label: "Honorários ativos", value: String(data?.honorariosAtivos ?? 0), icon: Repeat, color: C.brandText, soft: C.brandSoft, onClick: () => onGo("honorarios") },
   ];
+
+  const MES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  const keyOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const labelOf = (k: string) => { const [y, m] = k.split("-"); return `${MES[Number(m) - 1]}/${y.slice(2)}`; };
+  const sumFor = (arr: any[] | undefined, k: string) => (arr || []).find((r) => r.mes === k)?.total ?? 0;
+  const now = new Date();
+
+  // Fluxo projetado: mês atual + próximos 2
+  const projKeys = [0, 1, 2].map((i) => keyOf(new Date(now.getFullYear(), now.getMonth() + i, 1)));
+  const fluxoData = projKeys.map((k) => ({ mes: labelOf(k), "A receber": sumFor(charts?.recFuturo, k), "A pagar": sumFor(charts?.pagFuturo, k) }));
+  const projReceber = projKeys.reduce((s, k) => s + sumFor(charts?.recFuturo, k), 0);
+  const projPagar = projKeys.reduce((s, k) => s + sumFor(charts?.pagFuturo, k), 0);
+
+  // Histórico: últimos 6 meses
+  const histKeys = [5, 4, 3, 2, 1, 0].map((i) => keyOf(new Date(now.getFullYear(), now.getMonth() - i, 1)));
+  const mensalData = histKeys.map((k) => ({ mes: labelOf(k), Recebido: sumFor(charts?.recebidoMensal, k), Pago: sumFor(charts?.pagoMensal, k) }));
+
+  const topCat = (arr: any[] | undefined) => [...(arr || [])].sort((a, b) => b.total - a.total).slice(0, 6);
+  const catRec = topCat(charts?.catReceita);
+  const catDesp = topCat(charts?.catDespesa);
+  const maxRec = Math.max(1, ...catRec.map((c) => c.total));
+  const maxDesp = Math.max(1, ...catDesp.map((c) => c.total));
+
+  const tipStyle = { background: C.panelHi, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12 };
+  const CardBox = ({ title, children }: { title: string; children: any }) => (
+    <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 14, padding: 18 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>{title}</div>
+      {children}
+    </div>
+  );
+
   return (
     <div>
-      <SectionHeader title="Visão geral" subtitle="Resumo das cobranças do escritório." />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
+      <SectionHeader title="Dashboard" subtitle="Visão geral, projeção de caixa e desempenho do escritório." />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 12 }}>
         {cards.map((c) => (
           <div key={c.label} onClick={c.onClick} style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 14, padding: 16, cursor: c.onClick ? "pointer" : "default" }}>
             <div style={{ width: 34, height: 34, borderRadius: 10, background: c.soft, display: "grid", placeItems: "center", marginBottom: 12 }}>
               <c.icon size={18} style={{ color: c.color }} />
             </div>
-            <div style={{ fontSize: 22, fontWeight: 750 }}>{c.value}</div>
+            <div style={{ fontSize: 21, fontWeight: 750 }}>{c.value}</div>
             <div style={{ fontSize: 12.5, color: C.textMuted, marginTop: 2 }}>{c.label}</div>
           </div>
         ))}
       </div>
-      <div style={{ marginTop: 20, background: C.brandSoft, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14, fontSize: 13, color: C.textMuted }}>
-        Esta é a <strong style={{ color: C.text }}>Fase 1</strong> do Financeiro: cadastro de honorários e serviços, contas a receber e baixa manual.
-        Cobrança automática por e-mail, comprovante pelo portal e boleto/PIX entram nas próximas fases.
+
+      {/* Fluxo de caixa projetado */}
+      <div style={{ marginTop: 16 }}>
+        <CardBox title="Fluxo de caixa projetado — próximos 3 meses">
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: 6 }}>
+            <div><span style={{ fontSize: 12, color: C.textMuted }}>Entradas previstas</span><div style={{ fontSize: 18, fontWeight: 750, color: C.green }}>{brl(projReceber)}</div></div>
+            <div><span style={{ fontSize: 12, color: C.textMuted }}>Saídas previstas</span><div style={{ fontSize: 18, fontWeight: 750, color: C.amber }}>{brl(projPagar)}</div></div>
+            <div><span style={{ fontSize: 12, color: C.textMuted }}>Saldo previsto</span><div style={{ fontSize: 18, fontWeight: 750, color: projReceber - projPagar < 0 ? C.danger : C.green }}>{brl(projReceber - projPagar)}</div></div>
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={fluxoData} margin={{ top: 10, right: 8, left: 8, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
+              <XAxis dataKey="mes" tick={{ fill: C.textMuted, fontSize: 12 }} axisLine={{ stroke: C.border }} tickLine={false} />
+              <YAxis tick={{ fill: C.textMuted, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => "R$" + (v >= 1000 ? (v / 1000).toFixed(0) + "k" : v)} width={48} />
+              <Tooltip contentStyle={tipStyle} formatter={(v: any) => brl(v)} cursor={{ fill: "rgba(255,255,255,.03)" }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="A receber" fill={C.brand} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="A pagar" fill={C.amber} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardBox>
+      </div>
+
+      {/* Receita x Despesa histórico */}
+      <div style={{ marginTop: 16 }}>
+        <CardBox title="Recebido × Pago — últimos 6 meses">
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={mensalData} margin={{ top: 10, right: 8, left: 8, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
+              <XAxis dataKey="mes" tick={{ fill: C.textMuted, fontSize: 12 }} axisLine={{ stroke: C.border }} tickLine={false} />
+              <YAxis tick={{ fill: C.textMuted, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => "R$" + (v >= 1000 ? (v / 1000).toFixed(0) + "k" : v)} width={48} />
+              <Tooltip contentStyle={tipStyle} formatter={(v: any) => brl(v)} cursor={{ fill: "rgba(255,255,255,.03)" }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="Recebido" fill={C.green} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Pago" fill={C.danger} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardBox>
+      </div>
+
+      {/* Por categoria */}
+      <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+        <CardBox title="Receita por categoria">
+          {catRec.length === 0 ? <div style={{ color: C.textFaint, fontSize: 13 }}>Sem dados ainda.</div> : catRec.map((c) => (
+            <div key={c.categoria} style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 4 }}><span style={{ color: C.textMuted }}>{c.categoria}</span><span style={{ fontWeight: 650 }}>{brl(c.total)}</span></div>
+              <div style={{ height: 7, background: C.panelHi, borderRadius: 4, overflow: "hidden" }}><div style={{ height: "100%", width: `${(c.total / maxRec) * 100}%`, background: C.green, borderRadius: 4 }} /></div>
+            </div>
+          ))}
+        </CardBox>
+        <CardBox title="Despesa por categoria">
+          {catDesp.length === 0 ? <div style={{ color: C.textFaint, fontSize: 13 }}>Sem dados ainda.</div> : catDesp.map((c) => (
+            <div key={c.categoria} style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 4 }}><span style={{ color: C.textMuted }}>{c.categoria}</span><span style={{ fontWeight: 650 }}>{brl(c.total)}</span></div>
+              <div style={{ height: 7, background: C.panelHi, borderRadius: 4, overflow: "hidden" }}><div style={{ height: "100%", width: `${(c.total / maxDesp) * 100}%`, background: C.amber, borderRadius: 4 }} /></div>
+            </div>
+          ))}
+        </CardBox>
       </div>
     </div>
   );

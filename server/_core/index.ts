@@ -1037,9 +1037,19 @@ async function rodarRecorrenciaHonorarios() {
     const { getDb } = await import("../db");
     const db = await getDb();
     if (!db) return;
-    const { financialClientConfig } = await import("../../drizzle/schema");
-    const { and, eq, ne, or, isNull } = await import("drizzle-orm");
+    const { financialClientConfig, financialTitulos, financialPayables } = await import("../../drizzle/schema");
+    const { and, eq, ne, or, isNull, lt, sql: dsql } = await import("drizzle-orm");
     const { gerarTituloHonorario, compAtual } = await import("../financeiroRouter");
+
+    // Marca como VENCIDO o que passou do vencimento e ainda está em aberto (deixa o painel correto).
+    try {
+      const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+      await db.update(financialTitulos).set({ status: "vencido", updatedAt: new Date() })
+        .where(and(dsql`${financialTitulos.status} in ('aberto','enviado')`, lt(financialTitulos.dueDate, hoje)));
+      await db.update(financialPayables).set({ status: "vencido", updatedAt: new Date() })
+        .where(and(eq(financialPayables.status, "aberto"), lt(financialPayables.dueDate, hoje)));
+    } catch (e: any) { console.warn("[Vencidos]", e?.message); }
+
     const comp = compAtual();
     const configs = await db.select().from(financialClientConfig).where(
       and(
