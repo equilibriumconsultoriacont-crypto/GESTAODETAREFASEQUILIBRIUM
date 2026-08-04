@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   ArrowLeft, Wallet, Receipt, Repeat, QrCode, PlusCircle, Pencil, Trash2, Search, Lock,
-  CheckCircle2, RotateCcw, TrendingUp, Clock, AlertTriangle, X, Send, Mail, Play, Pause, TrendingDown, Scale, Eye,
+  CheckCircle2, RotateCcw, TrendingUp, Clock, AlertTriangle, X, Send, Mail, Play, Pause, TrendingDown, Scale, Eye, MessageCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -280,6 +280,7 @@ function TitulosTab() {
   const baixaMut = trpc.financeiro.baixaManual.useMutation();
   const reverterMut = trpc.financeiro.reverterBaixa.useMutation();
   const enviarMut = trpc.financeiro.enviarCobranca.useMutation();
+  const enviarWaMut = trpc.financeiro.enviarCobrancaWhatsApp.useMutation();
   const deleteMut = trpc.financeiro.deleteTitulo.useMutation();
   const conferirMut = trpc.financeiro.conferirComprovante.useMutation();
   const [conferindo, setConferindo] = useState<any>(null);
@@ -328,6 +329,11 @@ function TitulosTab() {
     if (!confirm(`Enviar a cobrança de ${brl(t.amount)} por e-mail para ${t.clientName}?`)) return;
     try { const r: any = await enviarMut.mutateAsync({ tituloId: t.id }); toast.success(`Cobrança enviada para ${r?.to || "o cliente"}`); refreshAll(); }
     catch (e: any) { toast.error(e?.message || "Não foi possível enviar"); }
+  };
+  const enviarWa = async (t: any) => {
+    if (!confirm(`Enviar a cobrança de ${brl(t.amount)} pelo WhatsApp para ${t.clientName}?`)) return;
+    try { await enviarWaMut.mutateAsync({ tituloId: t.id }); toast.success("Cobrança enviada pelo WhatsApp"); refreshAll(); }
+    catch (e: any) { toast.error(e?.message || "Não foi possível enviar pelo WhatsApp"); }
   };
   const excluir = async (t: any) => {
     if (!confirm(`Excluir DEFINITIVAMENTE este lançamento de ${t.clientName}? Não dá para desfazer.`)) return;
@@ -384,6 +390,9 @@ function TitulosTab() {
                     )}
                     {t.status !== "cancelado" && t.status !== "pago" && (
                       <button onClick={() => enviar(t)} disabled={enviarMut.isPending} title="Enviar cobrança por e-mail" style={{ ...iconBtn, color: "#7dd3fc", borderColor: "rgba(125,211,252,.3)" }}><Send size={15} /></button>
+                    )}
+                    {t.status !== "cancelado" && t.status !== "pago" && (
+                      <button onClick={() => enviarWa(t)} disabled={enviarWaMut.isPending} title="Enviar cobrança pelo WhatsApp" style={{ ...iconBtn, color: "#25d366", borderColor: "rgba(37,211,102,.35)" }}><MessageCircle size={15} /></button>
                     )}
                     {t.status === "pago" ? (
                       <button onClick={() => reverter(t)} title="Reverter baixa" style={{ ...iconBtn, color: C.amber }}><RotateCcw size={15} /></button>

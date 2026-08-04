@@ -466,6 +466,33 @@ export const financeiroRouter = router({
     return { ok: true, to: r.to };
   }),
 
+  // Envia a cobrança pelo WhatsApp (usa o telefone do cliente + o módulo de Atendimento)
+  enviarCobrancaWhatsApp: adminProcedure.input(z.object({ tituloId: z.number() })).mutation(async ({ input }) => {
+    const db = await getDb();
+    if (!db) throw new Error("sem banco");
+    const row = (await db
+      .select({ id: financialTitulos.id, status: financialTitulos.status, description: financialTitulos.description, amount: financialTitulos.amount, competencia: financialTitulos.competencia, dueDate: financialTitulos.dueDate, clientName: clients.name, phone: clients.phone })
+      .from(financialTitulos).leftJoin(clients, eq(clients.id, financialTitulos.clientId)).where(eq(financialTitulos.id, input.tituloId)).limit(1))[0];
+    if (!row) throw new Error("título não encontrado");
+    const phone = (row.phone || "").replace(/\D/g, "");
+    if (!phone || phone.length < 10) throw new Error("Cliente sem telefone válido cadastrado");
+    const pix = (await db.select().from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
+    const venc = new Date(row.dueDate as any).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    const link = `${APP_URL}/cobranca/${row.id}`;
+    let msg = `*Equilibrium Consultoria Contábil*\n\nOlá, ${row.clientName || "cliente"}! Segue sua cobrança referente a *${row.description}*${row.competencia ? ` (${row.competencia})` : ""}.\n\n💰 Valor: *${brl(row.amount)}*\n📅 Vencimento: ${venc}`;
+    if (pix?.active && pix?.pixKey) {
+      let copiaCola = "";
+      try { copiaCola = buildPixBRCode({ key: pix.pixKey, keyType: pix.pixKeyType || undefined, name: pix.beneficiaryName || "Equilibrium", city: "Rio Claro", amount: row.amount, txid: `T${row.id}` }); } catch { copiaCola = ""; }
+      if (copiaCola) msg += `\n\n*PIX copia e cola:*\n${copiaCola}`;
+    }
+    msg += `\n\nPara pagar e enviar o comprovante, acesse:\n${link}`;
+    const { sendText } = await import("./wa/connection");
+    await sendText(phone, msg);
+    // marca como enviado (mas sem sentAt de e-mail; registra que houve envio)
+    if (row.status === "aberto") await db.update(financialTitulos).set({ status: "enviado", sentAt: new Date(), updatedAt: new Date() }).where(eq(financialTitulos.id, row.id));
+    return { ok: true, phone };
+  }),
+
   // ── Contas a PAGAR (despesas do escritório) ──────────────────────────────────
   listPayables: adminProcedure
     .input(z.object({ status: z.string().optional() }).optional())
