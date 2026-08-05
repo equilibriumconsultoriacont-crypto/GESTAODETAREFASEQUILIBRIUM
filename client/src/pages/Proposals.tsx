@@ -120,7 +120,7 @@ export default function Proposals() {
           </div>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: "#E8F0F0", marginBottom: 8 }}>Sem acesso a este módulo</h1>
           <p style={{ fontSize: 14, color: "#8B9491", marginBottom: 20 }}>
-            Você não tem permissão para acessar o Gerador de Propostas. Peça a um administrador para liberar o módulo.
+            Você não tem permissão para acessar o Gerador de Documentos. Peça a um administrador para liberar o módulo.
           </p>
           <Link href="/">
             <button style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#24646c", border: "none", borderRadius: 8, padding: "10px 16px", color: "#fff", cursor: "pointer", fontSize: 14 }}>

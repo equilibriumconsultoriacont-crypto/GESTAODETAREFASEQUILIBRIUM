@@ -16,8 +16,8 @@ const MODULES = [
   },
   {
     id: "propostas",
-    name: "Gerador de Propostas",
-    description: "Crie propostas comerciais uniformes e profissionais rapidamente.",
+    name: "Gerador de Documentos",
+    description: "Propostas comerciais e declarações de faturamento, no padrão do escritório.",
     icon: FileText,
     color: "#c084fc",
     path: "/propostas",

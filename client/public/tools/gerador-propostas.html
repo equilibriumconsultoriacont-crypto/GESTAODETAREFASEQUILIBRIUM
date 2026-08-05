@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Gerador de Propostas — Equilibrium</title>
+<title>Gerador de Documentos — Equilibrium</title>
 <style>
 :root{
   --bg:#0B1F23; --bg2:#102B31; --bg3:#16383F; --line:#1F4A52; --line2:#2B5F69;
@@ -182,6 +182,7 @@ tr:last-child td{border-bottom:0}
       <button data-tab="cat">Base · serviços</button>
       <button data-tab="fisc">Fiscal</button>
       <button data-tab="ctr">Base · contrato</button>
+      <button data-tab="decl">Declaração</button>
       <button data-tab="salvas">Salvas</button>
     </nav>
   </div>
@@ -473,6 +474,91 @@ tr:last-child td{border-bottom:0}
     <div class="panel pv">
       <h3>Prévia <span class="sp" id="ctrInfo"></span></h3>
       <iframe id="ctrPv"></iframe>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DECLARAÇÃO DE FATURAMENTO ============ -->
+<section class="tab" id="tab-decl">
+  <div style="max-width:860px;margin:0 auto">
+    <div class="panel">
+      <h3>Declaração de faturamento <span class="sp">gera o documento em PDF no padrão do escritório</span></h3>
+      <div class="pad">
+        <label class="f"><span>Finalidade / tipo de declaração</span>
+          <select class="in" id="dTipo">
+            <option value="pj12">Empresa (PJ) — faturamento dos últimos 12 meses</option>
+            <option value="pfsem">Pessoa física — rendimento mensal (sem empresa)</option>
+            <option value="pfcom">Pessoa física — rendimento mensal (sócio de empresa)</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Declarante (contador) <span class="sp">quem assina — já vem preenchido</span></h3>
+      <div class="pad">
+        <div class="row r2">
+          <label class="f"><span>Nome</span><input class="in" id="dcNome"></label>
+          <label class="f"><span>Profissão</span><input class="in" id="dcProf"></label>
+        </div>
+        <div class="row r3">
+          <label class="f"><span>Nacionalidade</span><input class="in" id="dcNac"></label>
+          <label class="f"><span>Estado civil</span><input class="in" id="dcEc"></label>
+          <label class="f"><span>RG</span><input class="in" id="dcRg"></label>
+        </div>
+        <div class="row r2">
+          <label class="f"><span>CPF</span><input class="in" id="dcCpf"></label>
+          <label class="f"><span>CRC</span><input class="in" id="dcCrc"></label>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Dados do declarado</h3>
+      <div class="pad">
+        <div id="dGrEmp">
+          <div class="row r21">
+            <label class="f"><span>Nome / razão social da empresa</span><input class="in" id="dEmpNome"></label>
+            <label class="f"><span>CNPJ</span><input class="in" id="dEmpCnpj" placeholder="00.000.000/0001-00"></label>
+          </div>
+        </div>
+        <div id="dGrPes">
+          <div class="row r21">
+            <label class="f"><span>Nome da pessoa</span><input class="in" id="dPesNome"></label>
+            <label class="f"><span>CPF</span><input class="in" id="dPesCpf" placeholder="000.000.000-00"></label>
+          </div>
+        </div>
+        <div class="row r21">
+          <label class="f"><span>Endereço (rua e nº)</span><input class="in" id="dEnd" placeholder="Rua Exemplo, N° 100"></label>
+          <label class="f"><span>Bairro</span><input class="in" id="dBairro"></label>
+        </div>
+        <div class="row r2">
+          <label class="f"><span>Cidade / UF</span><input class="in" id="dCid" placeholder="Rio Claro - SP"></label>
+          <label class="f"><span>CEP (opcional)</span><input class="in" id="dCep" placeholder="00.000-000"></label>
+        </div>
+        <div id="dGrRend">
+          <div class="row r2">
+            <label class="f"><span>Rendimento mensal (R$)</span><input class="in" id="dRend" placeholder="30000"></label>
+            <label class="f"><span>Por extenso (automático)</span><input class="in" id="dRendExtenso" placeholder="trinta mil reais"></label>
+          </div>
+          <label class="f"><span>Fonte da renda</span><input class="in" id="dFonte" placeholder="comissão de vendas / retirada de lucros da empresa"></label>
+        </div>
+      </div>
+    </div>
+    <div class="panel" id="dGr12">
+      <h3>Faturamento dos últimos 12 meses <span class="sp">edite os valores</span></h3>
+      <div class="pad">
+        <label class="f" style="max-width:240px"><span>Mês inicial (MM/AAAA)</span><input class="in" id="dMesIni" placeholder="03/2025"></label>
+        <div id="dTab12"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="pad">
+        <label class="f"><span>Cidade e data do documento</span><input class="in" id="dCidData" placeholder="Rio Claro, 4 de agosto de 2026"></label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+          <button class="btn p" id="dBaixar">Gerar declaração (PDF)</button>
+          <button class="btn" id="dBaixarHtml">Baixar em HTML</button>
+        </div>
+        <p class="hint" style="margin-top:12px">O PDF abre em uma nova aba pronto para "Salvar como PDF". Para <b>assinar digitalmente</b>, veja a observação no chat.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -2062,6 +2148,175 @@ function ctrTipoLbl(){
   el.textContent = (M&&U) ? 'eventual + continuado' : M ? 'continuado' : U ? 'eventual' : 'sem serviços selecionados';
 }
 
+/* ============ DECLARAÇÃO DE FATURAMENTO ============ */
+var DECL_DEF = { nome:'João Carlos Mendonça', nac:'brasileiro', ec:'solteiro', prof:'contador',
+  rg:'55.075.526', cpf:'491.141.328-00', crc:'1SP.358.722/O-2', crcAssin:'SP-358722/O2', cidade:'Rio Claro' };
+function dSet(id,v){ var el=document.getElementById(id); if(el && !el.value) el.value=v; }
+function dVal(id){ var el=document.getElementById(id); return el?String(el.value).trim():''; }
+var _declInit=false;
+function declUI(){
+  if(!_declInit){
+    _declInit=true;
+    dSet('dcNome',DECL_DEF.nome); dSet('dcProf',DECL_DEF.prof); dSet('dcNac',DECL_DEF.nac);
+    dSet('dcEc',DECL_DEF.ec); dSet('dcRg',DECL_DEF.rg); dSet('dcCpf',DECL_DEF.cpf); dSet('dcCrc',DECL_DEF.crc);
+    var hoje=new Date();
+    var meses=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+    dSet('dCidData', DECL_DEF.cidade+', '+hoje.getDate()+' de '+meses[hoje.getMonth()]+' de '+hoje.getFullYear());
+    var d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-12);
+    dSet('dMesIni', String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear());
+    dGera12();
+  }
+  dTipoChange();
+}
+function dTipoChange(){
+  var t=dVal('dTipo')||'pj12';
+  var showEmp=(t==='pj12'||t==='pfcom'), showPes=(t==='pfsem'||t==='pfcom'),
+      showRend=(t==='pfsem'||t==='pfcom'), show12=(t==='pj12');
+  var e;
+  e=document.getElementById('dGrEmp'); if(e) e.style.display=showEmp?'':'none';
+  e=document.getElementById('dGrPes'); if(e) e.style.display=showPes?'':'none';
+  e=document.getElementById('dGrRend'); if(e) e.style.display=showRend?'':'none';
+  e=document.getElementById('dGr12'); if(e) e.style.display=show12?'':'none';
+}
+function dGera12(){
+  var ini=dVal('dMesIni'); var m=ini.match(/(\d{1,2})\/(\d{4})/);
+  var mes=m?(+m[1]):1, ano=m?(+m[2]):new Date().getFullYear();
+  var old={}; document.querySelectorAll('#dTab12 input[data-mes]').forEach(function(i){ old[i.getAttribute('data-mes')]=i.value; });
+  var html='<table style="width:100%;border-collapse:collapse">';
+  html+='<tr><td style="padding:4px 8px;font-size:.72rem;color:var(--txt3)">Mês</td><td style="padding:4px 8px;font-size:.72rem;color:var(--txt3)">Valor (R$)</td></tr>';
+  for(var i=0;i<12;i++){
+    var mm=((mes-1+i)%12)+1, aa=ano+Math.floor((mes-1+i)/12);
+    var key=String(mm).padStart(2,'0')+'/'+aa;
+    html+='<tr><td style="padding:3px 8px;color:var(--txt2)">'+key+'</td>'+
+      '<td style="padding:3px 8px"><input class="in" data-mes="'+key+'" value="'+(old[key]||'')+'" placeholder="0,00" style="padding:6px 9px"></td></tr>';
+  }
+  html+='</table>';
+  var tb=document.getElementById('dTab12'); if(tb) tb.innerHTML=html;
+}
+function dRendExt(){ var el=document.getElementById('dRendExtenso'); if(el) el.value=valorExtenso(dVal('dRend')); }
+function extNum(n){
+  n=Math.floor(n); if(n===0) return 'zero';
+  var u=['','um','dois','três','quatro','cinco','seis','sete','oito','nove','dez','onze','doze','treze','quatorze','quinze','dezesseis','dezessete','dezoito','dezenove'];
+  var d=['','','vinte','trinta','quarenta','cinquenta','sessenta','setenta','oitenta','noventa'];
+  var c=['','cento','duzentos','trezentos','quatrocentos','quinhentos','seiscentos','setecentos','oitocentos','novecentos'];
+  function tri(x){ if(x===0)return ''; if(x===100)return 'cem'; var s='',ce=Math.floor(x/100),r=x%100;
+    if(ce)s+=c[ce]; if(r){ if(s)s+=' e '; if(r<20)s+=u[r]; else{ var de=Math.floor(r/10),un=r%10; s+=d[de]; if(un)s+=' e '+u[un]; } } return s; }
+  var mi=Math.floor(n/1000000), ml=Math.floor((n%1000000)/1000), re=n%1000;
+  var parts=[];
+  if(mi)parts.push(tri(mi)+(mi===1?' milhão':' milhões'));
+  if(ml)parts.push(ml===1?'mil':tri(ml)+' mil');
+  if(re)parts.push(tri(re));
+  var s='';
+  for(var i=0;i<parts.length;i++){ if(i>0) s+=(i===parts.length-1 && (re<100||re%100===0))?' e ':' '; s+=parts[i]; }
+  return s;
+}
+function valorExtenso(v){
+  v=parseFloat(String(v).replace(/[^\d.,]/g,'').replace(/\./g,'').replace(',','.'))||0;
+  var int=Math.floor(v), ce=Math.round((v-int)*100);
+  var s=extNum(int)+' '+(int===1?'real':'reais');
+  if(ce) s+=' e '+extNum(ce)+' '+(ce===1?'centavo':'centavos');
+  return s;
+}
+function dEndereco(){
+  var end=dVal('dEnd'), bairro=dVal('dBairro'), cid=dVal('dCid'), cep=dVal('dCep');
+  var partes=[]; if(end)partes.push(end); if(bairro)partes.push(bairro); if(cep)partes.push('CEP '+cep); if(cid)partes.push(cid);
+  return partes.join(', ');
+}
+function declaracaoHTML(){
+  var m=DB.marca, t=dVal('dTipo')||'pj12';
+  var nome=dVal('dcNome')||DECL_DEF.nome, nac=dVal('dcNac')||DECL_DEF.nac, ec=dVal('dcEc')||DECL_DEF.ec,
+      prof=dVal('dcProf')||DECL_DEF.prof, rg=dVal('dcRg')||DECL_DEF.rg, cpf=dVal('dcCpf')||DECL_DEF.cpf,
+      crc=dVal('dcCrc')||DECL_DEF.crc;
+  var end=dEndereco();
+  var intro='Eu, <b>'+esc(nome)+'</b>, '+esc(nac)+', '+esc(ec)+', '+esc(prof)+
+    ', portador da Cédula de Identidade RG N° '+esc(rg)+', do CPF nº '+esc(cpf)+
+    ' e do CRC nº '+esc(crc)+', na qualidade de contador, declaro para os devidos fins que ';
+  var corpo='', tabela='';
+  if(t==='pj12'){
+    corpo='a empresa "<b>'+esc(dVal('dEmpNome'))+'</b>" CNPJ: '+esc(dVal('dEmpCnpj'))+
+      ', situada no endereço '+esc(end)+', faturou nos últimos 12 meses os seguintes valores:';
+    var rows=''; document.querySelectorAll('#dTab12 input[data-mes]').forEach(function(i){
+      rows+='<tr><td>'+esc(i.getAttribute('data-mes'))+'</td><td class="vl">R$ '+esc(i.value||'0,00')+'</td></tr>';
+    });
+    tabela='<table class="fat"><thead><tr><th>Mês</th><th class="vl">Valor (R$)</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  } else if(t==='pfsem'){
+    corpo='<b>'+esc(dVal('dPesNome'))+'</b>, portador da cédula de identidade CPF nº '+esc(dVal('dPesCpf'))+
+      ', residente no endereço '+esc(end)+', possui um rendimento mensal em torno de R$ '+esc(dVal('dRend'))+
+      ' ('+esc(dVal('dRendExtenso'))+') provenientes de '+esc(dVal('dFonte'))+'.';
+  } else {
+    corpo='<b>'+esc(dVal('dPesNome'))+'</b>, portador da cédula de identidade CPF nº '+esc(dVal('dPesCpf'))+
+      ', na qualidade de sócio da empresa "<b>'+esc(dVal('dEmpNome'))+'</b>" CNPJ: '+esc(dVal('dEmpCnpj'))+
+      ', situada no endereço '+esc(end)+', possui um rendimento mensal em torno de R$ '+esc(dVal('dRend'))+
+      ' ('+esc(dVal('dRendExtenso'))+') provenientes de '+esc(dVal('dFonte'))+'.';
+  }
+  var cidData=dVal('dCidData');
+  var css=':root{--teal:#24646C;--t900:#0E2C32;--t400:#5E9AA2;--bone:#F2F0EA;--paper:#FBFAF7;--ink:#16201E;--ink-2:#4E5B58;--ink-3:#8B9491;--line:#E3DFD5;--serif:"Fraunces",Georgia,serif;--sans:"Inter",system-ui,sans-serif}'+
+  '*{margin:0;padding:0;box-sizing:border-box}'+
+  'body{font-family:var(--sans);color:var(--ink);background:var(--bone);font-size:11pt;line-height:1.7;-webkit-font-smoothing:antialiased}'+
+  '.pg{max-width:820px;margin:0 auto;background:#fff;min-height:100vh;box-shadow:0 1px 3px rgba(14,44,50,.07),0 12px 40px rgba(14,44,50,.06)}'+
+  '.cab{background:var(--t900);color:#fff;padding:28px 54px 24px;display:flex;align-items:center;justify-content:space-between;gap:22px}'+
+  '.cab img{height:32px;width:auto;display:block}'+
+  '.cab .meta{text-align:right;font-size:8pt;line-height:1.7;color:rgba(255,255,255,.62)}'+
+  '.cab .meta b{display:block;color:#fff;font-size:8.5pt;letter-spacing:.11em;text-transform:uppercase;margin-bottom:3px}'+
+  '.faixa{height:3px;background:linear-gradient(90deg,var(--teal),var(--t400))}'+
+  '.tit{padding:46px 54px 0;text-align:center}'+
+  '.tit .eyebrow{font-size:7.6pt;letter-spacing:.2em;text-transform:uppercase;color:var(--teal);font-weight:600;margin-bottom:11px}'+
+  '.tit h1{font-family:var(--serif);font-size:22pt;font-weight:400;letter-spacing:.22em}'+
+  '.tit .rule{width:52px;height:2px;background:var(--teal);margin:16px auto 0;border-radius:2px}'+
+  '.corpo{padding:40px 54px 54px}'+
+  '.corpo .txt{font-size:11.5pt;color:var(--ink-2);text-align:justify;line-height:2}'+
+  '.corpo .txt b{color:var(--ink);font-weight:600}'+
+  'table.fat{width:100%;border-collapse:collapse;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--paper);margin:26px 0 4px}'+
+  'table.fat th{background:var(--t900);color:#fff;text-align:left;padding:10px 16px;font-size:9pt;font-weight:600}'+
+  'table.fat th.vl,table.fat td.vl{text-align:right}'+
+  'table.fat td{padding:9px 16px;border-bottom:1px solid var(--line);font-size:10pt;color:var(--ink-2)}'+
+  'table.fat tr:last-child td{border-bottom:0}'+
+  '.firmo{margin:34px 0 0;text-align:right;font-size:11pt;color:var(--ink-2);font-style:italic}'+
+  '.assin{margin:64px auto 0;text-align:center;max-width:420px}'+
+  '.assin .ln{border-top:1px solid var(--ink);margin:0 auto 8px;width:300px}'+
+  '.assin .nm{font-weight:600;color:var(--ink);font-size:11pt}'+
+  '.assin .dd{font-size:9.5pt;color:var(--ink-3);margin-top:2px}'+
+  '.assin .data{margin-top:18px;font-size:10pt;color:var(--ink-2)}'+
+  '@media print{body{background:#fff}.pg{box-shadow:none;max-width:100%}}';
+  return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">'+
+  '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+  '<title>Declaração — '+esc(nome)+'</title>'+
+  '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'+
+  '<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">'+
+  '<style>'+css+'</style></head><body><div class="pg">'+
+  '<header class="cab"><img src="'+LH+'" alt="'+esc(m.nome)+'"><div class="meta"><b>Declaração</b>'+esc(m.cidade)+'<br>'+esc(m.waFmt)+'</div></header>'+
+  '<div class="faixa"></div>'+
+  '<div class="tit"><div class="eyebrow">Declaração de faturamento</div><h1>DECLARAÇÃO</h1><div class="rule"></div></div>'+
+  '<div class="corpo"><p class="txt">'+intro+corpo+'</p>'+tabela+
+  '<p class="firmo">Sendo a expressão da verdade, firmo a presente.</p>'+
+  '<div class="assin"><div class="ln"></div><div class="nm">'+esc(nome)+'</div>'+
+  '<div class="dd">CPF: '+esc(cpf)+'</div><div class="dd">CRC: '+esc(dVal('dcCrc')||DECL_DEF.crcAssin)+'</div>'+
+  '<div class="data">'+esc(cidData)+'</div></div></div></div></body></html>';
+}
+function dImprimir(){
+  var w=window.open('','_blank');
+  if(!w){ toast('Permita pop-ups para gerar o PDF'); return; }
+  w.document.open(); w.document.write(declaracaoHTML()); w.document.close(); w.focus();
+  setTimeout(function(){ try{ w.print(); }catch(e){} }, 500);
+}
+function dBaixarHTML(){
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([declaracaoHTML()],{type:'text/html'}));
+  a.download='declaracao.html'; a.click(); URL.revokeObjectURL(a.href); toast('Declaração baixada (HTML)');
+}
+document.addEventListener('input', function(e){
+  if(!e.target) return;
+  if(e.target.id==='dRend') dRendExt();
+  if(e.target.id==='dMesIni') dGera12();
+});
+document.addEventListener('change', function(e){ if(e.target && e.target.id==='dTipo') dTipoChange(); });
+document.addEventListener('click', function(e){
+  if(!e.target || !e.target.closest) return;
+  if(e.target.closest('#dBaixar')) dImprimir();
+  else if(e.target.closest('#dBaixarHtml')) dBaixarHTML();
+});
+/* ============ FIM DECLARAÇÃO ============ */
+
 document.addEventListener('click', e=>{
   const t = e.target.closest('nav button[data-tab]');
   if(!t) return;
@@ -2069,6 +2324,7 @@ document.addEventListener('click', e=>{
   $$('.tab').forEach(s=>s.classList.toggle('on', s.id==='tab-'+t.dataset.tab));
   if(t.dataset.tab==='salvas') listarSalvas();
   if(t.dataset.tab==='ctr') ctrUI();
+  if(t.dataset.tab==='decl') declUI();
 });
 
 let tPv;
