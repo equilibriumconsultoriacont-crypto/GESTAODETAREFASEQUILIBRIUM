@@ -216,7 +216,15 @@ export function CalendarView() {
             ) : (
               <div className="space-y-2">
                 {selectedDayEvents.map((ev: any) => (
-                  <EventCard key={ev.id} event={ev} onEdit={() => openEdit(ev)} onChanged={() => { refetch(); utils.calendar.events.invalidate(); }} />
+                  ev.financeiro ? (
+                    <div key={ev.id} className="rounded-xl p-3" style={{ background: "#0d1f22", border: `1px solid ${ev.color}55`, borderLeft: `3px solid ${ev.color}` }}>
+                      <div className="text-sm font-medium" style={{ color: "#e8f0ef" }}>{ev.title}</div>
+                      {ev.description ? <div className="text-xs mt-0.5" style={{ color: "#8fa5a1" }}>{ev.description}</div> : null}
+                      <div className="text-[10px] mt-1 uppercase tracking-wide" style={{ color: ev.color }}>{ev.finKind === "pagar" ? "Conta a pagar" : "A receber"} · vence hoje</div>
+                    </div>
+                  ) : (
+                    <EventCard key={ev.id} event={ev} onEdit={() => openEdit(ev)} onChanged={() => { refetch(); utils.calendar.events.invalidate(); }} />
+                  )
                 ))}
               </div>
             )}

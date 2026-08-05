@@ -1669,12 +1669,37 @@ const usersRouter = router({
 
 // ─── Calendar Router ──────────────────────────────────────────────────────────
 const calendarRouter = router({
-  // Lista eventos num intervalo (mês)
+  // Lista eventos num intervalo (mês) + vencimentos do financeiro (só admin, read-only)
   events: protectedProcedure
     .input(z.object({ startISO: z.string(), endISO: z.string() }))
     .query(async ({ input, ctx }) => {
       const { getCalendarEvents } = await import("./db");
-      return getCalendarEvents(ctx.user!.id, input.startISO, input.endISO);
+      const eventos: any[] = await getCalendarEvents(ctx.user!.id, input.startISO, input.endISO);
+      // Sobrepõe os vencimentos financeiros (contas a receber e a pagar) como eventos read-only
+      if ((ctx.user as any)?.role === "admin") {
+        try {
+          const db = await getDb();
+          if (db) {
+            const { financialTitulos, financialPayables, clients } = await import("../drizzle/schema");
+            const { and, gte, lte, sql: dsql } = await import("drizzle-orm");
+            const ini = new Date(input.startISO); const fim = new Date(input.endISO);
+            const brlFmt = (v: any) => "R$ " + Number(String(v ?? 0).replace(",", ".")).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+            const receber = await db.select({ id: financialTitulos.id, description: financialTitulos.description, amount: financialTitulos.amount, dueDate: financialTitulos.dueDate, status: financialTitulos.status, clientName: clients.name })
+              .from(financialTitulos).leftJoin(clients, dsql`${clients.id} = ${financialTitulos.clientId}`)
+              .where(and(dsql`${financialTitulos.status} in ('aberto','enviado','em_conferencia','vencido')`, gte(financialTitulos.dueDate, ini), lte(financialTitulos.dueDate, fim)));
+            for (const t of receber) {
+              eventos.push({ id: -2_000_000 - t.id, title: `💰 ${t.clientName || "Cliente"} — ${brlFmt(t.amount)}`, description: t.description, startAt: t.dueDate, endAt: t.dueDate, allDay: true, color: t.status === "vencido" ? "#f87171" : "#34d399", financeiro: true, finKind: "receber", myRole: "owner", myStatus: "ACEITO" });
+            }
+            const pagar = await db.select({ id: financialPayables.id, description: financialPayables.description, amount: financialPayables.amount, dueDate: financialPayables.dueDate, status: financialPayables.status, supplier: financialPayables.supplier })
+              .from(financialPayables)
+              .where(and(dsql`${financialPayables.status} in ('aberto','vencido')`, gte(financialPayables.dueDate, ini), lte(financialPayables.dueDate, fim)));
+            for (const p of pagar) {
+              eventos.push({ id: -3_000_000 - p.id, title: `💸 ${p.description} — ${brlFmt(p.amount)}`, description: p.supplier || "", startAt: p.dueDate, endAt: p.dueDate, allDay: true, color: p.status === "vencido" ? "#f87171" : "#e0a458", financeiro: true, finKind: "pagar", myRole: "owner", myStatus: "ACEITO" });
+            }
+          }
+        } catch (e: any) { console.warn("[Calendário] vencimentos financeiros:", e?.message); }
+      }
+      return eventos;
     }),
 
   create: protectedProcedure
