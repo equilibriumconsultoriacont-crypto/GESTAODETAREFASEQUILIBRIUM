@@ -518,6 +518,38 @@ export function registerWaRoutes(app: Express) {
     } catch (e: any) { res.status(502).json({ error: e?.message || "falha ao enviar mídia" }); }
   });
 
+  // Encaminhar uma mensagem (texto ou mídia) para outro número
+  app.post("/api/wa/messages/:msgId/forward", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    const db = await getDb();
+    if (!db) return res.status(500).json({ error: "sem banco" });
+    const msgId = parseInt(req.params.msgId);
+    const to = String(req.body?.to || "").replace(/\D/g, "");
+    if (!to || to.length < 10) return res.status(400).json({ error: "Informe um número válido, com DDD" });
+    const m = (await db.select().from(waMessages).where(eq(waMessages.id, msgId)).limit(1))[0];
+    if (!m) return res.status(404).json({ error: "mensagem não encontrada" });
+    try {
+      const { sendText, sendMedia, jidFromNumber } = await import("./connection");
+      const nonText = m.messageType !== "text" && m.messageType !== "template";
+      if (nonText && m.mediaUrl) {
+        const match = /^data:(.+?);base64,(.*)$/s.exec(m.mediaUrl);
+        if (!match) return res.status(400).json({ error: "mídia indisponível para encaminhar" });
+        const buffer = Buffer.from(match[2], "base64");
+        const typeMap: Record<string, string> = { image: "image", sticker: "image", video: "video", audio: "audio", document: "document" };
+        const type = typeMap[m.messageType as string] || "document";
+        await sendMedia(jidFromNumber(to), { type, data: buffer, mimetype: match[1], fileName: m.content || "arquivo", caption: type !== "document" && m.content ? m.content : undefined });
+      } else if (m.content) {
+        await sendText(to, m.content);
+      } else {
+        return res.status(400).json({ error: "nada para encaminhar" });
+      }
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(502).json({ error: e?.message || "falha ao encaminhar" });
+    }
+  });
+
   // Excluir mensagem (apaga para todos) — só as que o atendente enviou
   app.post("/api/wa/conversations/:id/messages/:msgId/delete", async (req, res) => {
     const user = await auth(req, res);

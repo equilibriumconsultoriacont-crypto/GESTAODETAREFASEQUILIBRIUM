@@ -3,7 +3,7 @@ import { CalendarView } from "./Calendar";
 import { Link } from "wouter";
 import {
   ArrowLeft, ChevronLeft, Send, QrCode, Search, Sun, Moon, RotateCw, Check, CheckCheck, Clock, MessageSquare,
-  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus, Building2, ChevronDown, BarChart3, Reply, X as XIcon, CalendarDays, CheckSquare,
+  Paperclip, Mic, Square, Image as ImageIcon, FileText, Pencil, Trash2, UserPlus, Building2, ChevronDown, BarChart3, Reply, X as XIcon, CalendarDays, CheckSquare, Forward,
 } from "lucide-react";
 
 /* ── Temas ─────────────────────────────────────────────────────────────────── */
@@ -334,6 +334,31 @@ export default function WhatsAppModule() {
 
   const [contactForm, setContactForm] = useState<any>(null);
   const [replyingTo, setReplyingTo] = useState<Msg | null>(null);
+  const [actionMsg, setActionMsg] = useState<Msg | null>(null);
+  const [forwardMsg, setForwardMsg] = useState<Msg | null>(null);
+  const [forwardNumber, setForwardNumber] = useState("");
+  const [forwarding, setForwarding] = useState(false);
+  const lpTimer = useRef<any>(null);
+  const openActions = (m: Msg) => { if (m.content !== "🚫 Mensagem apagada") setActionMsg(m); };
+  const pressProps = (m: Msg): any => isMobile ? {
+    onTouchStart: () => { lpTimer.current = setTimeout(() => { openActions(m); lpTimer.current = null; }, 420); },
+    onTouchEnd: () => { if (lpTimer.current) { clearTimeout(lpTimer.current); lpTimer.current = null; } },
+    onTouchMove: () => { if (lpTimer.current) { clearTimeout(lpTimer.current); lpTimer.current = null; } },
+    onContextMenu: (e: any) => { e.preventDefault(); openActions(m); },
+  } : {
+    onClick: () => openActions(m),
+    onContextMenu: (e: any) => { e.preventDefault(); openActions(m); },
+  };
+  const doForward = async (numArg?: string) => {
+    if (!forwardMsg) return;
+    const num = (numArg ?? forwardNumber).replace(/\D/g, "");
+    if (num.length < 10) { alert("Informe um número válido, com DDD."); return; }
+    setForwarding(true);
+    const r = await api(`/api/wa/messages/${forwardMsg.id}/forward`, { method: "POST", body: JSON.stringify({ to: num }) }).catch(() => ({ error: "falha" } as any));
+    setForwarding(false);
+    if (r?.ok) { setForwardMsg(null); setForwardNumber(""); }
+    else alert(r?.error || "Não foi possível encaminhar.");
+  };
   const [taskForm, setTaskForm] = useState<any>(null);
   const [scheduleForm, setScheduleForm] = useState<any>(null);
   const [scheduled, setScheduled] = useState<any[]>([]);
@@ -933,43 +958,12 @@ export default function WhatsAppModule() {
                             {label}
                           </div>
                         )}
-                        <div style={{ display: "flex", alignItems: isMobile ? (me ? "flex-end" : "flex-start") : "center", gap: isMobile ? 3 : 6, maxWidth: "100%", flexDirection: isMobile ? "column" : (me ? "row" : "row-reverse") }}>
-                          {m.content !== "🚫 Mensagem apagada" && (
-                            <div className="wa-msg-actions" style={{ display: "flex", gap: 2, flex: "none" }}>
-                              <button onClick={() => setReplyingTo(m)} className="wa-tap" aria-label="Responder" title="Responder"
-                                style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: t.surfaceHi, color: t.textMuted, cursor: "pointer", display: "grid", placeItems: "center" }}>
-                                <Reply size={13} />
-                              </button>
-                              {!!m.content && m.messageType === "text" && (
-                                <button onClick={() => setTaskForm({
-                                    title: m.content!.length > 80 ? m.content!.slice(0, 80) + "…" : m.content,
-                                    taskType: "OUTROS",
-                                    competencia: `${String(new Date().getMonth() + 1).padStart(2, "0")}/${new Date().getFullYear()}`,
-                                    dueDate: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
-                                    description: `Solicitado pelo cliente via WhatsApp:\n"${m.content}"`,
-                                  })} className="wa-tap" aria-label="Criar tarefa" title="Criar tarefa a partir desta mensagem"
-                                  style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: t.surfaceHi, color: t.textMuted, cursor: "pointer", display: "grid", placeItems: "center" }}>
-                                  <CheckSquare size={13} />
-                                </button>
-                              )}
-                              {me && m.messageType === "text" && !!m.content && (
-                                <>
-                                  <button onClick={() => editMsg(m)} className="wa-tap" aria-label="Editar" title="Editar"
-                                    style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: t.surfaceHi, color: t.textMuted, cursor: "pointer", display: "grid", placeItems: "center" }}>
-                                    <Pencil size={13} />
-                                  </button>
-                                  <button onClick={() => deleteMsg(m)} className="wa-tap" aria-label="Apagar" title="Apagar"
-                                    style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: t.surfaceHi, color: t.danger, cursor: "pointer", display: "grid", placeItems: "center" }}>
-                                    <Trash2 size={13} />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          )}
-                          <div style={{ background: me ? t.bubbleMe : t.bubbleThem, color: t.text,
+                        <div style={{ display: "flex", maxWidth: "100%", flexDirection: "column", alignItems: me ? "flex-end" : "flex-start" }}>
+                          <div {...pressProps(m)} style={{ background: me ? t.bubbleMe : t.bubbleThem, color: t.text,
                           border: me ? "none" : `1px solid ${t.border}`, boxShadow: t.shadow,
                           borderRadius: 16, borderBottomRightRadius: me ? 5 : 16, borderBottomLeftRadius: me ? 16 : 5,
                           padding: "8px 12px 6px", fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word",
+                          cursor: m.content !== "🚫 Mensagem apagada" ? "pointer" : "default",
                           opacity: m.status === "sending" ? 0.72 : 1 }}>
                           {m.replyTo && (
                             <div style={{ borderLeft: `3px solid ${me ? "rgba(255,255,255,.55)" : t.accent}`, paddingLeft: 8, marginBottom: 5,
@@ -978,18 +972,18 @@ export default function WhatsAppModule() {
                             </div>
                           )}
                           {nonText && ["image", "sticker"].includes(m.messageType) ? (
-                            <a href={`/api/wa/media/${m.id}`} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: 2 }}>
+                            <a onClick={(e) => e.stopPropagation()} href={`/api/wa/media/${m.id}`} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: 2 }}>
                               <img src={`/api/wa/media/${m.id}`} alt="imagem" loading="lazy"
                                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                                 style={{ maxWidth: "100%", maxHeight: 300, borderRadius: 10, display: "block", cursor: "pointer" }} />
                             </a>
                           ) : nonText && m.messageType === "audio" ? (
-                            <audio controls preload="none" src={`/api/wa/media/${m.id}`} style={{ maxWidth: "100%", width: 248, height: 40 }} />
+                            <audio onClick={(e) => e.stopPropagation()} controls preload="none" src={`/api/wa/media/${m.id}`} style={{ maxWidth: "100%", width: 248, height: 40 }} />
                           ) : nonText && m.messageType === "video" ? (
-                            <video controls preload="none" src={`/api/wa/media/${m.id}`}
+                            <video onClick={(e) => e.stopPropagation()} controls preload="none" src={`/api/wa/media/${m.id}`}
                               style={{ maxWidth: "100%", maxHeight: 300, borderRadius: 10, display: "block" }} />
                           ) : nonText ? (
-                            <a href={`/api/wa/media/${m.id}`} target="_blank" rel="noreferrer"
+                            <a onClick={(e) => e.stopPropagation()} href={`/api/wa/media/${m.id}`} target="_blank" rel="noreferrer"
                               style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontWeight: 600, fontSize: 13,
                                 color: me ? t.accentText : t.accent, background: me ? "rgba(255,255,255,.15)" : t.accentSoft,
                                 padding: "6px 10px", borderRadius: 9 }}>
@@ -1125,6 +1119,84 @@ export default function WhatsAppModule() {
         </>
         )}
       </div>
+
+      {/* Menu de ações da mensagem (abre ao clicar/segurar) */}
+      {actionMsg && (
+        <div onClick={() => setActionMsg(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 60, padding: isMobile ? 0 : 16 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ width: isMobile ? "100%" : 360, maxWidth: "100%", background: t.surface, borderRadius: isMobile ? "18px 18px 0 0" : 16, border: `1px solid ${t.border}`, boxShadow: t.shadow, padding: 8, paddingBottom: isMobile ? 24 : 8 }}>
+            {isMobile && <div style={{ width: 40, height: 4, borderRadius: 4, background: t.border, margin: "6px auto 10px" }} />}
+            <div style={{ padding: "4px 12px 10px", fontSize: 12.5, color: t.textMuted, borderBottom: `1px solid ${t.border}`, marginBottom: 6, maxHeight: 44, overflow: "hidden" }}>
+              {actionMsg.messageType === "text" ? (actionMsg.content || "") : `📎 ${actionMsg.content || "arquivo"}`}
+            </div>
+            {(() => {
+              const m = actionMsg; const own = !!m.fromMe;
+              const A = ({ icon: Ic, label, danger, onClick }: any) => (
+                <button onClick={() => { setActionMsg(null); onClick(); }}
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "13px 14px", borderRadius: 11, border: "none", background: "transparent", color: danger ? t.danger : t.text, cursor: "pointer", fontSize: 15, fontWeight: 500, textAlign: "left" }}>
+                  <Ic size={19} style={{ flex: "none" }} /> {label}
+                </button>
+              );
+              return (<>
+                <A icon={Reply} label="Responder" onClick={() => setReplyingTo(m)} />
+                <A icon={Forward} label="Encaminhar" onClick={() => { setForwardMsg(m); setForwardNumber(""); }} />
+                {m.messageType === "text" && !!m.content && (
+                  <A icon={CheckSquare} label="Criar tarefa" onClick={() => setTaskForm({
+                    title: m.content!.length > 80 ? m.content!.slice(0, 80) + "…" : m.content,
+                    taskType: "OUTROS",
+                    competencia: `${String(new Date().getMonth() + 1).padStart(2, "0")}/${new Date().getFullYear()}`,
+                    dueDate: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
+                    description: `Solicitado pelo cliente via WhatsApp:\n"${m.content}"`,
+                  })} />
+                )}
+                {own && m.messageType === "text" && !!m.content && <A icon={Pencil} label="Editar" onClick={() => editMsg(m)} />}
+                {own && m.messageType === "text" && !!m.content && <A icon={Trash2} label="Apagar" danger onClick={() => deleteMsg(m)} />}
+              </>);
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Encaminhar mensagem para outro número/contato */}
+      {forwardMsg && (
+        <div onClick={() => setForwardMsg(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "grid", placeItems: "center", zIndex: 61, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ width: 400, maxWidth: "100%", maxHeight: "82vh", display: "flex", flexDirection: "column", background: t.surface, borderRadius: 16, border: `1px solid ${t.border}`, boxShadow: t.shadow, overflow: "hidden" }}>
+            <div style={{ padding: "15px 18px", borderBottom: `1px solid ${t.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: t.text }}>Encaminhar mensagem</div>
+              <button onClick={() => setForwardMsg(null)} style={{ background: "none", border: "none", color: t.textMuted, cursor: "pointer", display: "grid", placeItems: "center" }}><XIcon size={18} /></button>
+            </div>
+            <div style={{ padding: "14px 18px", borderBottom: `1px solid ${t.border}` }}>
+              <div style={{ fontSize: 12.5, color: t.textMuted, marginBottom: 7 }}>Enviar para um número (com DDD):</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input value={forwardNumber} onChange={(e) => setForwardNumber(e.target.value)} placeholder="Ex.: 19 99999-9999" inputMode="tel"
+                  style={{ flex: 1, minWidth: 0, padding: "10px 12px", borderRadius: 9, border: `1px solid ${t.border}`, background: t.surfaceHi, color: t.text, fontSize: 14, outline: "none" }} />
+                <button onClick={() => doForward()} disabled={forwarding}
+                  style={{ flex: "none", padding: "10px 16px", borderRadius: 9, border: "none", background: t.accent, color: t.accentText, fontWeight: 700, fontSize: 14, cursor: forwarding ? "default" : "pointer", opacity: forwarding ? 0.7 : 1 }}>
+                  {forwarding ? "..." : "Enviar"}
+                </button>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+              {convs.length > 0 && <div style={{ padding: "11px 18px 4px", fontSize: 11, color: t.textFaint, textTransform: "uppercase", letterSpacing: ".05em" }}>Ou escolha um contato</div>}
+              {convs.map((c) => (
+                <button key={c.id} onClick={() => doForward(contactPhone(c))}
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}>
+                  <div style={{ width: 36, height: 36, borderRadius: "50%", flex: "none", display: "grid", placeItems: "center", background: avaBg(contactName(c), t), color: avaFg(contactName(c), t), fontWeight: 700, fontSize: 14 }}>
+                    {contactName(c).replace(/[^\p{L}\p{N}]/gu, "").slice(0, 1).toUpperCase() || "?"}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, color: t.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{contactName(c)}</div>
+                    <div style={{ fontSize: 12, color: t.textFaint }}>{contactPhone(c)}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de transferência */}
       {transferOpen && (
