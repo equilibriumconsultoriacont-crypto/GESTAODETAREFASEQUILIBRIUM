@@ -163,6 +163,9 @@ export const tasks = mysqlTable("tasks", {
   sendToClient: boolean("sendToClient").default(true).notNull(),
   valor: varchar("valor", { length: 20 }), // valor principal da guia (OCR ou manual), ex "1234.56"
   clientPaid: boolean("clientPaid").default(false), // marca pessoal do cliente ("já paguei"), só informativo
+  movimentaFinanceiro: boolean("movimentaFinanceiro").default(false), // gera conta a receber no Financeiro?
+  finValor: varchar("finValor", { length: 20 }), // valor do serviço a cobrar (honorário avulso), separado da guia
+  finVencimento: timestamp("finVencimento"), // vencimento da cobrança gerada (opcional; senão usa dueDate)
   assignedTo: int("assignedTo"), // FK users.id
   internalDeadline: timestamp("internalDeadline"), // prazo interno (antes do vencimento fiscal)
   waitingSince: timestamp("waitingSince"), // quando entrou em AGUARDANDO_CLIENTE

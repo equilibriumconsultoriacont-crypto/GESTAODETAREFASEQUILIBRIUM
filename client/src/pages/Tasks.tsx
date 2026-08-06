@@ -69,6 +69,7 @@ export default function Tasks() {
     competenciaMm: def.mm, competenciaYyyy: def.yyyy,
     dueDate: "", description: "", notes: "",
     department: "GERAL", priority: "NORMAL", sendToClient: true,
+    movimentaFinanceiro: false, finValor: "", finVencimento: "",
   });
 
   const competenciaFilter = `${compMm}/${compYyyy}`;
@@ -150,6 +151,9 @@ export default function Tasks() {
         department: form.department as any,
         priority: form.priority as any,
         sendToClient: form.sendToClient,
+        movimentaFinanceiro: form.movimentaFinanceiro,
+        finValor: form.movimentaFinanceiro ? (form.finValor || undefined) : undefined,
+        finVencimento: form.movimentaFinanceiro && form.finVencimento ? new Date(form.finVencimento + "T12:00:00").toISOString() : undefined,
       });
       toast.success("Tarefa criada!");
       setDialogOpen(false);
@@ -522,6 +526,43 @@ export default function Tasks() {
                 <div className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all" style={{ left: form.sendToClient ? "22px" : "2px" }} />
               </div>
             </button>
+
+            {/* Movimenta financeiro: gera uma conta a receber no módulo Financeiro */}
+            <button type="button" onClick={() => setForm({ ...form, movimentaFinanceiro: !form.movimentaFinanceiro })}
+              className="w-full flex items-center justify-between rounded-lg border p-3 transition-colors"
+              style={{
+                background: form.movimentaFinanceiro ? "rgba(52,211,153,0.1)" : "rgba(82,82,91,0.08)",
+                borderColor: form.movimentaFinanceiro ? "rgba(52,211,153,0.4)" : "rgba(82,82,91,0.3)",
+              }}>
+              <div className="text-left">
+                <div className="text-sm font-medium" style={{ color: "#e5e5e5" }}>Movimenta financeiro</div>
+                <div className="text-xs mt-0.5" style={{ color: "#71717a" }}>
+                  {form.movimentaFinanceiro
+                    ? "Gera uma conta a receber no Financeiro para este serviço"
+                    : "Ative para cobrar um valor por esta tarefa (honorário avulso)"}
+                </div>
+              </div>
+              <div className="w-11 h-6 rounded-full relative transition-colors shrink-0 ml-3" style={{ background: form.movimentaFinanceiro ? "#34d399" : "#3f3f46" }}>
+                <div className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all" style={{ left: form.movimentaFinanceiro ? "22px" : "2px" }} />
+              </div>
+            </button>
+
+            {form.movimentaFinanceiro && (
+              <div className="grid grid-cols-2 gap-3 rounded-lg border p-3" style={{ borderColor: "rgba(52,211,153,0.3)", background: "rgba(52,211,153,0.05)" }}>
+                <div>
+                  <Label style={{ color: "#a1a1aa" }}>Valor a cobrar (R$)</Label>
+                  <Input value={form.finValor} onChange={(e) => setForm({ ...form, finValor: e.target.value })}
+                    placeholder="150,00" inputMode="decimal"
+                    style={{ background: "#0d0d0d", borderColor: "#1e4f5c", color: "#e5e5e5" }} />
+                </div>
+                <div>
+                  <Label style={{ color: "#a1a1aa" }}>Vencimento (opcional)</Label>
+                  <Input type="date" value={form.finVencimento} onChange={(e) => setForm({ ...form, finVencimento: e.target.value })}
+                    style={{ background: "#0d0d0d", borderColor: "#1e4f5c", color: "#e5e5e5" }} />
+                  <div className="text-xs mt-1" style={{ color: "#71717a" }}>Se vazio, usa o vencimento da tarefa.</div>
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-3 pt-1">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="flex-1"

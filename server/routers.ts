@@ -240,16 +240,27 @@ const tasksRouter = router({
         notes: z.string().optional(),
         department: z.enum(["FISCAL", "CONTABIL", "DP", "SOCIETARIO", "FINANCEIRO", "GERAL"]).optional(),
         priority: z.enum(["BAIXA", "NORMAL", "ALTA", "URGENTE"]).optional(),
+        sendToClient: z.boolean().optional(),
+        movimentaFinanceiro: z.boolean().optional(),
+        finValor: z.string().optional(),
+        finVencimento: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
+      const { finVencimento, ...rest } = input;
       const id = await createTask({
-        ...input,
+        ...rest,
         dueDate: new Date(input.dueDate),
         status: "PENDENTE",
         department: input.department ?? "GERAL",
         priority: input.priority ?? "NORMAL",
+        ...(finVencimento ? { finVencimento: new Date(finVencimento) } : {}),
       });
+      if (input.movimentaFinanceiro) {
+        const { getDb } = await import("./db");
+        const db = await getDb();
+        if (db) { const { sincronizarTituloTarefa } = await import("./financeiroRouter"); await sincronizarTituloTarefa(db, id); }
+      }
       return { id };
     }),
 
@@ -289,20 +300,38 @@ const tasksRouter = router({
         description: z.string().optional(),
         dueDate: z.string().optional(),
         notes: z.string().optional(),
+        movimentaFinanceiro: z.boolean().optional(),
+        finValor: z.string().optional(),
+        finVencimento: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { id, dueDate, ...rest } = input;
+      const { id, dueDate, finVencimento, ...rest } = input;
       await updateTask(id, {
         ...rest,
         ...(dueDate ? { dueDate: new Date(dueDate) } : {}),
+        ...(finVencimento !== undefined ? { finVencimento: finVencimento ? new Date(finVencimento) : null } : {}),
       });
+      const { getDb } = await import("./db");
+      const db = await getDb();
+      if (db) { const { sincronizarTituloTarefa } = await import("./financeiroRouter"); await sincronizarTituloTarefa(db, id); }
       return { success: true };
     }),
 
   delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
+      // Cancela a conta a receber vinculada (Movimenta financeiro), se houver e não estiver paga
+      const { getDb } = await import("./db");
+      const db = await getDb();
+      if (db) {
+        try {
+          const { financialTitulos } = await import("../drizzle/schema");
+          const { and, eq, ne } = await import("drizzle-orm");
+          await db.update(financialTitulos).set({ status: "cancelado", updatedAt: new Date() })
+            .where(and(eq(financialTitulos.taskId, input.id), ne(financialTitulos.status, "pago")));
+        } catch {}
+      }
       await deleteTask(input.id);
       return { success: true };
     }),

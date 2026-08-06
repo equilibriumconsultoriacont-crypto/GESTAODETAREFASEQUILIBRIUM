@@ -8,6 +8,7 @@ import {
   financialConfig,
   financialPayables,
   clients,
+  tasks,
 } from "../drizzle/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { sendEmail } from "./email";
@@ -115,6 +116,39 @@ export async function enviarCobrancaPorId(db: any, tituloId: number, opts?: { re
     await db.update(financialTitulos).set({ status: row.status === "pago" ? "pago" : "enviado", sentAt: new Date(), updatedAt: new Date() }).where(eq(financialTitulos.id, tituloId));
   }
   return { ok: true, to };
+}
+
+// Sincroniza a conta a receber gerada por uma tarefa (Movimenta financeiro).
+// Marcada + com valor -> cria/atualiza o título vinculado (origin='tarefa'). Desmarcada ou sem valor
+// -> cancela o título vinculado que ainda não foi pago.
+export async function sincronizarTituloTarefa(db: any, taskId: number): Promise<void> {
+  try {
+    const task = (await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1))[0];
+    if (!task) return;
+    const existing = (await db.select().from(financialTitulos).where(eq(financialTitulos.taskId, taskId)).limit(1))[0];
+    const valorNum = parseFloat(String(task.finValor ?? "").replace(",", ".")) || 0;
+    const quer = !!task.movimentaFinanceiro && valorNum > 0;
+    if (quer) {
+      const amount = String(task.finValor).replace(",", ".");
+      const due = task.finVencimento ? new Date(task.finVencimento) : new Date(task.dueDate);
+      if (existing) {
+        if (existing.status !== "pago") {
+          await db.update(financialTitulos)
+            .set({ clientId: task.clientId, description: task.title, amount, dueDate: due, competencia: task.competencia, status: existing.status === "cancelado" ? "aberto" : existing.status, updatedAt: new Date() })
+            .where(eq(financialTitulos.id, existing.id));
+        }
+      } else {
+        await db.insert(financialTitulos).values({
+          clientId: task.clientId, kind: "eventual", description: task.title, category: "Serviço avulso",
+          amount, competencia: task.competencia, dueDate: due, status: "aberto", origin: "tarefa", taskId,
+        });
+      }
+    } else if (existing && existing.status !== "pago") {
+      await db.update(financialTitulos).set({ status: "cancelado", updatedAt: new Date() }).where(eq(financialTitulos.id, existing.id));
+    }
+  } catch (e: any) {
+    console.warn("[Financeiro] sincronizarTituloTarefa:", e?.message);
+  }
 }
 
 export const financeiroRouter = router({
