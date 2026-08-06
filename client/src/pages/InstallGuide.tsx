@@ -1,10 +1,10 @@
 import { useState } from "react";
 
 const STEPS_IOS = [
-  { t: "Abra pelo Safari", d: "Só funciona no Safari (o app de bússola azul). Pelo Chrome ou dentro do e-mail a opção não aparece." },
-  { t: "Toque em Compartilhar", d: "O quadradinho com uma seta para cima, na barra de baixo do Safari (no centro)." },
-  { t: 'Role e toque em "Adicionar à Tela de Início"', d: "Deslize a lista para baixo — a opção fica no meio, depois dos apps. Se não achar, vá em \u201cEditar Ações\u201d no fim." },
-  { t: 'Toque em "Adicionar"', d: "No canto superior direito. Pronto! O atalho vira um ícone na sua tela, como um app." },
+  { t: "Abra o site no Safari", d: "Use o Safari (o app de bússola azul). Pelo Chrome ou dentro do e-mail a opção não aparece." },
+  { t: "Toque em Compartilhar", d: "O botão de compartilhar (um quadradinho com uma seta para cima), na parte de baixo da tela." },
+  { t: 'Escolha "Adicionar à Tela de Início"', d: "Role o menu para baixo até achar essa opção e toque nela." },
+  { t: "Mude o nome se quiser e toque em Adicionar", d: "Dá para ajustar o nome do atalho. Depois é só tocar em Adicionar — o ícone aparece na tela como um app." },
 ];
 const STEPS_ANDROID = [
   { t: "Abra pelo Chrome", d: "Use o Chrome. Se abriu pelo e-mail, toque em ⋮ e escolha \u201cAbrir no Chrome\u201d." },
@@ -42,11 +42,11 @@ function IPhoneMockup() {
           <span style={{ color: "#3f3f46", fontSize: 18 }}>›</span>
           {/* botão compartilhar em destaque */}
           <div style={{ position: "relative", width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ position: "relative", width: 13, height: 16, border: "2px solid #0a84ff", borderTop: "none", borderRadius: 2 }}>
-              <div style={{ position: "absolute", left: "50%", top: -10, transform: "translateX(-50%)", width: 2, height: 10, background: "#0a84ff", borderRadius: 2 }} />
-              <div style={{ position: "absolute", left: "50%", top: -10, transform: "translateX(-50%) rotate(-42deg)", transformOrigin: "top", width: 2, height: 6, background: "#0a84ff", borderRadius: 2 }} />
-              <div style={{ position: "absolute", left: "50%", top: -10, transform: "translateX(-50%) rotate(42deg)", transformOrigin: "top", width: 2, height: 6, background: "#0a84ff", borderRadius: 2 }} />
-            </div>
+            <svg width="17" height="19" viewBox="0 0 17 19" fill="none" style={{ display: "block" }}>
+              <path d="M8.5 1.5 L8.5 11.5" stroke="#0a84ff" strokeWidth="1.8" strokeLinecap="round" />
+              <path d="M5 4.5 L8.5 1.2 L12 4.5" stroke="#0a84ff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4.5 7 L3 7 L3 16.5 L14 16.5 L14 7 L12.5 7" stroke="#0a84ff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
             <span className="eq-ring" style={{ borderColor: "#0a84ff" }} />
             <span className="eq-tap" style={{ background: "rgba(10,132,255,0.5)" }} />
           </div>
@@ -179,7 +179,7 @@ export default function InstallGuide() {
         ) : (
           <div style={{ background: "rgba(36,100,108,0.1)", border: "1px solid rgba(36,100,108,0.35)", borderRadius: 12, padding: "10px 14px", marginBottom: 18 }}>
             <p style={{ margin: 0, fontSize: 13, color: "#9fd4dc", lineHeight: 1.5 }}>
-              <strong>Importante:</strong> faça pelo {platform === "ios" ? "Safari (iPhone)" : "Chrome (Android)"}. Se o link abrir dentro do e-mail, toque em {platform === "ios" ? "\u201c⋯\u201d" : "\u201c⋮\u201d"} e escolha \u201cAbrir no navegador\u201d.
+              <strong>Importante:</strong> faça pelo {platform === "ios" ? "Safari (iPhone)" : "Chrome (Android)"}. Se o link abrir dentro do e-mail, toque em {platform === "ios" ? "\u201c⋯\u201d" : "\u201c⋮\u201d"} e escolha “Abrir no navegador”.
             </p>
           </div>
         )}
