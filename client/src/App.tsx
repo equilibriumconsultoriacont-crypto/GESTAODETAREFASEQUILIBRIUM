@@ -31,6 +31,7 @@ import Hub from "./pages/Hub";
 import Proposals from "./pages/Proposals";
 import WhatsAppModule from "./pages/WhatsAppModule";
 import { useInactivityLogout } from "./hooks/useInactivityLogout";
+import InstallBanner from "./components/InstallBanner";
 
 function Router() {
   const { user, loading, logout } = useAuth();
@@ -61,10 +62,13 @@ function Router() {
 
   if (!user) {
     return (
-      <Switch>
-        <Route path="/reset-senha" component={ResetPassword} />
-        <Route component={Login} />
-      </Switch>
+      <>
+        <Switch>
+          <Route path="/reset-senha" component={ResetPassword} />
+          <Route component={Login} />
+        </Switch>
+        <InstallBanner />
+      </>
     );
   }
 
@@ -74,10 +78,13 @@ function Router() {
       return <SetInitialPassword />;
     }
     return (
-      <Switch>
-        <Route path="/" component={ClientPortal} />
-        <Route component={ClientPortal} />
-      </Switch>
+      <>
+        <Switch>
+          <Route path="/" component={ClientPortal} />
+          <Route component={ClientPortal} />
+        </Switch>
+        <InstallBanner />
+      </>
     );
   }
 
