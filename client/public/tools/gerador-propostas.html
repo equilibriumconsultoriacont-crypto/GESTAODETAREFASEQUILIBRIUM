@@ -189,6 +189,7 @@ tr:last-child td{border-bottom:0}
     <div class="modes">
       <button class="mode on" data-mode="propostas">Propostas</button>
       <button class="mode" data-mode="declaracao">Declaração</button>
+      <button class="mode" data-mode="solicitacao">Solicitação</button>
     </div>
   </div>
   <div class="subnav">
@@ -572,6 +573,27 @@ tr:last-child td{border-bottom:0}
           <button class="btn" id="dBaixarHtml">Baixar em HTML</button>
         </div>
         <p class="hint" style="margin-top:12px">O PDF abre em uma nova aba pronto para "Salvar como PDF". Para <b>assinar digitalmente</b>, veja a observação no chat.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SOLICITAÇÃO DE DOCUMENTOS ============ -->
+<section class="tab" id="tab-solic">
+  <div style="max-width:860px;margin:0 auto">
+    <div class="panel">
+      <h3>Solicitação de documentos ao escritório anterior <span class="sp">gera o PDF pronto para enviar</span></h3>
+      <div class="pad">
+        <div class="row r2">
+          <label class="f"><span>Empresa(s)</span><input class="in" id="sEmpresa" placeholder="Razão social da empresa"></label>
+          <label class="f"><span>Data do documento</span><input class="in" id="sData" type="date"></label>
+        </div>
+        <label class="f"><span>E-mail para envio dos documentos</span><input class="in" id="sEmail" placeholder="nome@dominio.com"></label>
+        <p class="hint" style="margin-top:8px">Escolha o e-mail que aparece no documento (empresarial, gmail, ou outro). O texto já informa que os documentos também podem ser enviados pelo WhatsApp.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+          <button class="btn p" id="sBaixar">Gerar solicitação (PDF)</button>
+          <button class="btn" id="sBaixarHtml">Baixar em HTML</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2331,15 +2353,16 @@ function setMode(mode){
   for(var i=0;i<mbs.length;i++) mbs[i].classList.toggle('on', mbs[i].getAttribute('data-mode')===mode);
   var sub=document.querySelector('.subnav');
   var tabs=document.querySelectorAll('.tab');
-  if(mode==='declaracao'){
-    if(sub) sub.style.display='none';
-    for(var j=0;j<tabs.length;j++) tabs[j].classList.toggle('on', tabs[j].id==='tab-decl');
-    declUI();
-  } else {
+  if(mode==='propostas'){
     if(sub) sub.style.display='';
     var active=document.querySelector('#navPropostas button.on');
     var tab=active?active.getAttribute('data-tab'):'prop';
     for(var k=0;k<tabs.length;k++) tabs[k].classList.toggle('on', tabs[k].id==='tab-'+tab);
+  } else {
+    if(sub) sub.style.display='none';
+    var target = mode==='solicitacao' ? 'tab-solic' : 'tab-decl';
+    for(var j=0;j<tabs.length;j++) tabs[j].classList.toggle('on', tabs[j].id===target);
+    if(mode==='solicitacao') solicUI(); else declUI();
   }
 }
 document.addEventListener('input', function(e){ if(!e.target)return; if(e.target.id==='dRend')dRendExt(); if(e.target.id==='dMesIni')dGera12(); });
@@ -2349,7 +2372,121 @@ document.addEventListener('click', function(e){
   var mb=e.target.closest('.mode'); if(mb){ setMode(mb.getAttribute('data-mode')); return; }
   if(e.target.closest('#dBaixar')) dImprimir();
   else if(e.target.closest('#dBaixarHtml')) dBaixarHTML();
+  else if(e.target.closest('#sBaixar')) sImprimir();
+  else if(e.target.closest('#sBaixarHtml')) sBaixarHTML();
 });
+/* ============ SOLICITAÇÃO DE DOCUMENTOS ============ */
+var _solicInit=false;
+function solicUI(){
+  if(_solicInit) return; _solicInit=true;
+  var em=document.getElementById('sEmail'); if(em && !em.value) em.value=(DB.marca && DB.marca.email) || '';
+  var dt=document.getElementById('sData');
+  if(dt && !dt.value){ var h=new Date(); dt.value=h.getFullYear()+'-'+String(h.getMonth()+1).padStart(2,'0')+'-'+String(h.getDate()).padStart(2,'0'); }
+}
+function sDataFmt(){
+  var v=dVal('sData');
+  var meses=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  if(/^\d{4}-\d{2}-\d{2}$/.test(v)){ var p=v.split('-'); return 'Rio Claro, '+(+p[2])+' de '+meses[(+p[1])-1]+' de '+p[0]+'.'; }
+  return 'Rio Claro, ______ de __________________ de 20____.';
+}
+function solicitacaoHTML(){
+  var m=DB.marca;
+  var email=dVal('sEmail') || (m.email||'');
+  var empresa=dVal('sEmpresa');
+  var wa=m.waFmt||'';
+  var deptos=[
+    ['Departamento Pessoal',[
+      'Última folha de pagamento fechada (para já iniciarmos, caso não consiga enviar tudo de uma vez)',
+      'Todas as folhas de pagamento do ano',
+      'Livro ou fichas de registro dos funcionários, com salários, cargos e férias atualizados',
+      'Relatório de férias atualizado',
+      'Relatório de horas extras por funcionário',
+      'Informe de rendimentos',
+      'Senha do eSocial / Empregador Web']],
+    ['Departamento Fiscal',[
+      'Senha do Posto Fiscal Eletrônico (caso possua)',
+      'Código de acesso do Simples Nacional (caso possua)',
+      'Senha para emissão de NFS-e (caso possua)',
+      'Livros de entrada, saída e serviços do ano',
+      'Desvinculação do GISS Online']],
+    ['Departamento Contábil',[
+      'Balanço patrimonial atualizado',
+      'DRE — Demonstração do Resultado do Exercício, atualizada',
+      'Balancete atualizado']],
+    ['Departamento Societário / Legalização',[
+      'Todos os contratos sociais e respectivas alterações',
+      'Alvarás da empresa',
+      'Demais senhas e acessos da empresa']]
+  ];
+  var deptHtml='';
+  for(var i=0;i<deptos.length;i++){
+    var lis=''; for(var j=0;j<deptos[i][1].length;j++) lis+='<li>'+esc(deptos[i][1][j])+'</li>';
+    deptHtml+='<div class="dept"><div class="dept-h">'+esc(deptos[i][0])+'</div><ul>'+lis+'</ul></div>';
+  }
+  var intro='Prezados, a empresa indicada ao final deste documento passou a ser atendida pela <b>Equilibrium Consultoria Contábil</b>. Para darmos continuidade à sua contabilidade com segurança e sem interrupções, solicitamos gentilmente o envio dos documentos e informações relacionados abaixo, organizados por departamento. Pedimos que os arquivos sejam encaminhados para o e-mail <b>'+esc(email)+'</b>'+(wa?' ou pelo WhatsApp <b>'+esc(wa)+'</b>':'')+'. Desde já, agradecemos a atenção e a colaboração.';
+  var empHtml = empresa ? '<span style="margin-left:6px">'+esc(empresa)+'</span>' : '<span class="linha"></span>';
+  var footer = esc(email)+(wa?' &nbsp;·&nbsp; '+esc(wa):'')+' &nbsp;·&nbsp; '+esc(m.cidade||'Rio Claro / SP');
+  var css='@page{size:A4;margin:0}'+
+  '*{margin:0;padding:0;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
+  "body{font-family:'Inter',system-ui,sans-serif;color:#33403c;background:#e9e7e0;font-size:10.5pt;line-height:1.55;-webkit-font-smoothing:antialiased}"+
+  '.pg{position:relative;width:210mm;min-height:297mm;margin:0 auto;background:#fff;overflow:hidden;box-shadow:0 2px 30px rgba(0,0,0,.12)}'+
+  '.wm{position:absolute;top:12%;left:16%;width:132%;opacity:.045;z-index:0;pointer-events:none}'+
+  '.doc{position:relative;z-index:1;display:flex;flex-direction:column;min-height:297mm}'+
+  '.cab{background:#0E2C32;color:#fff;padding:16px 46px;display:flex;align-items:center;justify-content:space-between;gap:20px}'+
+  '.cab img{height:34px;width:auto;display:block}'+
+  '.cab .meta{text-align:right;font-size:8pt;line-height:1.7;color:rgba(255,255,255,.6)}'+
+  '.cab .meta b{display:block;color:#fff;font-size:8.5pt;letter-spacing:.14em;text-transform:uppercase;margin-bottom:3px}'+
+  '.faixa{height:3px;background:linear-gradient(90deg,#24646C,#5E9AA2)}'+
+  '.body{padding:18px 46px 0;flex:1}'+
+  '.tit{text-align:center;margin-bottom:11px}'+
+  '.tit .eyebrow{font-size:8pt;letter-spacing:.28em;text-transform:uppercase;color:#5b7c81;font-weight:600;margin-bottom:9px}'+
+  ".tit h1{font-family:'Fraunces',Georgia,serif;font-size:21pt;font-weight:400;letter-spacing:.16em;color:#1b2b2f}"+
+  '.tit .rule{width:52px;height:2px;background:#24646C;margin:13px auto 0;border-radius:2px}'+
+  '.intro{font-size:10.5pt;color:#3d4a45;text-align:justify;line-height:1.55;margin-bottom:12px}'+
+  '.intro b{color:#16201e;font-weight:600}'+
+  '.dept{margin-bottom:8px;break-inside:avoid}'+
+  '.dept-h{font-size:9.5pt;font-weight:700;letter-spacing:.04em;color:#0E2C32;text-transform:uppercase;padding-bottom:4px;margin-bottom:6px;border-bottom:1.5px solid #24646C}'+
+  '.dept ul{list-style:none;padding:0;margin:0}'+
+  '.dept li{position:relative;padding:1.5px 0 1.5px 18px;font-size:10pt;color:#3d4a45;line-height:1.4}'+
+  ".dept li::before{content:'';position:absolute;left:2px;top:8px;width:5px;height:5px;border-radius:50%;background:#5E9AA2}"+
+  '.campos{margin-top:6px;padding-top:10px;border-top:1px solid #e3dfd5;font-size:10.5pt;color:#33403c}'+
+  '.campos .lbl{font-weight:700;color:#16201e}'+
+  '.campos .linha{display:inline-block;border-bottom:1px solid #9aa6a2;min-width:340px;margin-left:6px;height:14px}'+
+  '.assina{margin-top:13px;font-size:10.5pt;color:#3d4a45;line-height:1.6}'+
+  '.assina b{color:#16201e}'+
+  '.footer{margin-top:auto;padding:9px 0 9px;text-align:center;font-size:8.4pt;color:#5b7c81;line-height:1.7;border-top:1px solid #eee}';
+  return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">'+
+  '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+  '<title>Solicitação de Documentos'+(empresa?' — '+esc(empresa):'')+'</title>'+
+  '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'+
+  '<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">'+
+  '<style>'+css+'</style></head><body><div class="pg">'+
+  '<img class="wm" src="'+CADUCEU+'" alt="">'+
+  '<div class="doc">'+
+  '<div class="cab"><img src="'+LV+'" alt="'+esc(m.nome)+'"><div class="meta"><b>Solicitação</b>'+esc(m.cidade)+'<br>'+esc(wa)+'</div></div>'+
+  '<div class="faixa"></div>'+
+  '<div class="body">'+
+  '<div class="tit"><div class="eyebrow">Transferência de escritório contábil</div><h1>SOLICITAÇÃO DE DOCUMENTOS</h1><div class="rule"></div></div>'+
+  '<p class="intro">'+intro+'</p>'+
+  deptHtml+
+  '<div class="campos"><span class="lbl">Empresa(s):</span>'+empHtml+'</div>'+
+  '<div class="assina">Atenciosamente,<br><b>Equilibrium Consultoria Contábil</b><br>'+sDataFmt()+'</div>'+
+  '</div>'+
+  '<div class="footer">'+footer+'</div>'+
+  '</div></div></body></html>';
+}
+function sImprimir(){
+  var w=window.open('','_blank');
+  if(!w){ toast('Permita pop-ups para gerar o PDF'); return; }
+  w.document.open(); w.document.write(solicitacaoHTML()); w.document.close(); w.focus();
+  setTimeout(function(){ try{ w.print(); }catch(e){} }, 550);
+}
+function sBaixarHTML(){
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([solicitacaoHTML()],{type:'text/html'}));
+  a.download='solicitacao-documentos.html'; a.click(); URL.revokeObjectURL(a.href); toast('Solicitação baixada (HTML)');
+}
+/* ============ FIM SOLICITAÇÃO ============ */
 /* ============ FIM DECLARAÇÃO ============ */
 
 document.addEventListener('click', e=>{
