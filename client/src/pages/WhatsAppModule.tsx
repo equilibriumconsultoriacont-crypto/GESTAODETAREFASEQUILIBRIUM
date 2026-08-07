@@ -359,6 +359,13 @@ export default function WhatsAppModule() {
     if (r?.ok) { setForwardMsg(null); setForwardNumber(""); }
     else alert(r?.error || "Não foi possível encaminhar.");
   };
+  // Fecha o menu de ações ao tocar/clicar fora da barra de ações
+  useEffect(() => {
+    if (!actionMsg) return;
+    const onDown = (e: any) => { if (!e.target?.closest?.(".wa-actions-pop")) setActionMsg(null); };
+    const id = setTimeout(() => document.addEventListener("pointerdown", onDown), 0);
+    return () => { clearTimeout(id); document.removeEventListener("pointerdown", onDown); };
+  }, [actionMsg]);
   const [taskForm, setTaskForm] = useState<any>(null);
   const [scheduleForm, setScheduleForm] = useState<any>(null);
   const [scheduled, setScheduled] = useState<any[]>([]);
@@ -1147,9 +1154,6 @@ export default function WhatsAppModule() {
         </>
         )}
       </div>
-
-      {/* Fecha o menu de ações ao clicar/tocar fora */}
-      {actionMsg && <div onClick={() => setActionMsg(null)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />}
 
       {/* Encaminhar mensagem para outro número/contato */}
       {forwardMsg && (
