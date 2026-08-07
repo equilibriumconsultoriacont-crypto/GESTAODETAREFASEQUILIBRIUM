@@ -339,12 +339,12 @@ export default function WhatsAppModule() {
   const [forwardNumber, setForwardNumber] = useState("");
   const [forwarding, setForwarding] = useState(false);
   const lpTimer = useRef<any>(null);
-  const openActions = (m: Msg) => { if (m.content !== "🚫 Mensagem apagada") setActionMsg(m); };
+  const openActions = (m: Msg) => { if (m.content !== "🚫 Mensagem apagada") setActionMsg((prev) => prev?.id === m.id ? null : m); };
   const pressProps = (m: Msg): any => isMobile ? {
-    onTouchStart: () => { lpTimer.current = setTimeout(() => { openActions(m); lpTimer.current = null; }, 420); },
+    onTouchStart: () => { lpTimer.current = setTimeout(() => { try { (navigator as any).vibrate?.(18); } catch {} openActions(m); lpTimer.current = null; }, 380); },
     onTouchEnd: () => { if (lpTimer.current) { clearTimeout(lpTimer.current); lpTimer.current = null; } },
     onTouchMove: () => { if (lpTimer.current) { clearTimeout(lpTimer.current); lpTimer.current = null; } },
-    onContextMenu: (e: any) => { e.preventDefault(); openActions(m); },
+    onContextMenu: (e: any) => e.preventDefault(),
   } : {
     onClick: () => openActions(m),
     onContextMenu: (e: any) => { e.preventDefault(); openActions(m); },
@@ -585,9 +585,8 @@ export default function WhatsAppModule() {
         @keyframes waPulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
         @keyframes waRecBlink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
         .wa-rec-dot { animation: waRecBlink 1s ease-in-out infinite; }
-        .wa-msg-actions { transition: opacity .12s; }
-        @media (hover: hover) { .wa-msg-actions { opacity: 0; } .wa-msg:hover .wa-msg-actions { opacity: 1; } }
-        @media (hover: none) { .wa-msg-actions { opacity: .45; } }
+        @keyframes waPop { from { opacity: 0; transform: scale(.55) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        .wa-actions-pop { animation: waPop .18s cubic-bezier(.2,.85,.3,1.25); }
       `}</style>
 
       {/* ── Barra superior ── */}
@@ -958,8 +957,37 @@ export default function WhatsAppModule() {
                             {label}
                           </div>
                         )}
-                        <div style={{ display: "flex", maxWidth: "100%", flexDirection: "column", alignItems: me ? "flex-end" : "flex-start" }}>
+                        <div style={{ display: "flex", maxWidth: "100%", flexDirection: "column", alignItems: me ? "flex-end" : "flex-start", position: "relative", zIndex: actionMsg?.id === m.id ? 41 : "auto" }}>
+                          {actionMsg?.id === m.id && (
+                            <div className="wa-actions-pop" style={{ display: "flex", gap: 5, marginBottom: 7, padding: 5, background: t.surface, border: `1px solid ${t.border}`, borderRadius: 14, boxShadow: "0 10px 28px rgba(0,0,0,.32)", transformOrigin: me ? "right bottom" : "left bottom" }}>
+                              {(() => {
+                                const own = !!m.fromMe;
+                                const btns: any[] = [
+                                  { i: Reply, l: "Responder", c: "#38bdf8", f: () => setReplyingTo(m) },
+                                  { i: Forward, l: "Encaminhar", c: "#34d399", f: () => { setForwardMsg(m); setForwardNumber(""); } },
+                                ];
+                                if (m.messageType === "text" && !!m.content) btns.push({ i: CheckSquare, l: "Criar tarefa", c: "#e0a458", f: () => setTaskForm({
+                                  title: m.content!.length > 80 ? m.content!.slice(0, 80) + "…" : m.content,
+                                  taskType: "OUTROS",
+                                  competencia: `${String(new Date().getMonth() + 1).padStart(2, "0")}/${new Date().getFullYear()}`,
+                                  dueDate: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
+                                  description: `Solicitado pelo cliente via WhatsApp:\n"${m.content}"`,
+                                }) });
+                                if (own && m.messageType === "text" && !!m.content) {
+                                  btns.push({ i: Pencil, l: "Editar", c: "#a78bfa", f: () => editMsg(m) });
+                                  btns.push({ i: Trash2, l: "Apagar", c: "#f87171", f: () => deleteMsg(m) });
+                                }
+                                return btns.map((b, idx) => (
+                                  <button key={idx} onClick={() => { setActionMsg(null); b.f(); }} title={b.l} aria-label={b.l}
+                                    style={{ width: 36, height: 36, borderRadius: 11, border: "none", background: b.c + "26", color: b.c, cursor: "pointer", display: "grid", placeItems: "center" }}>
+                                    <b.i size={17} />
+                                  </button>
+                                ));
+                              })()}
+                            </div>
+                          )}
                           <div {...pressProps(m)} style={{ background: me ? t.bubbleMe : t.bubbleThem, color: t.text,
+                          transform: actionMsg?.id === m.id ? "scale(1.04)" : "scale(1)", transition: "transform .16s ease", transformOrigin: me ? "right center" : "left center",
                           border: me ? "none" : `1px solid ${t.border}`, boxShadow: t.shadow,
                           borderRadius: 16, borderBottomRightRadius: me ? 5 : 16, borderBottomLeftRadius: me ? 16 : 5,
                           padding: "8px 12px 6px", fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word",
@@ -1120,43 +1148,8 @@ export default function WhatsAppModule() {
         )}
       </div>
 
-      {/* Menu de ações da mensagem (abre ao clicar/segurar) */}
-      {actionMsg && (
-        <div onClick={() => setActionMsg(null)}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 60, padding: isMobile ? 0 : 16 }}>
-          <div onClick={(e) => e.stopPropagation()}
-            style={{ width: isMobile ? "100%" : 360, maxWidth: "100%", background: t.surface, borderRadius: isMobile ? "18px 18px 0 0" : 16, border: `1px solid ${t.border}`, boxShadow: t.shadow, padding: 8, paddingBottom: isMobile ? 24 : 8 }}>
-            {isMobile && <div style={{ width: 40, height: 4, borderRadius: 4, background: t.border, margin: "6px auto 10px" }} />}
-            <div style={{ padding: "4px 12px 10px", fontSize: 12.5, color: t.textMuted, borderBottom: `1px solid ${t.border}`, marginBottom: 6, maxHeight: 44, overflow: "hidden" }}>
-              {actionMsg.messageType === "text" ? (actionMsg.content || "") : `📎 ${actionMsg.content || "arquivo"}`}
-            </div>
-            {(() => {
-              const m = actionMsg; const own = !!m.fromMe;
-              const A = ({ icon: Ic, label, danger, onClick }: any) => (
-                <button onClick={() => { setActionMsg(null); onClick(); }}
-                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "13px 14px", borderRadius: 11, border: "none", background: "transparent", color: danger ? t.danger : t.text, cursor: "pointer", fontSize: 15, fontWeight: 500, textAlign: "left" }}>
-                  <Ic size={19} style={{ flex: "none" }} /> {label}
-                </button>
-              );
-              return (<>
-                <A icon={Reply} label="Responder" onClick={() => setReplyingTo(m)} />
-                <A icon={Forward} label="Encaminhar" onClick={() => { setForwardMsg(m); setForwardNumber(""); }} />
-                {m.messageType === "text" && !!m.content && (
-                  <A icon={CheckSquare} label="Criar tarefa" onClick={() => setTaskForm({
-                    title: m.content!.length > 80 ? m.content!.slice(0, 80) + "…" : m.content,
-                    taskType: "OUTROS",
-                    competencia: `${String(new Date().getMonth() + 1).padStart(2, "0")}/${new Date().getFullYear()}`,
-                    dueDate: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
-                    description: `Solicitado pelo cliente via WhatsApp:\n"${m.content}"`,
-                  })} />
-                )}
-                {own && m.messageType === "text" && !!m.content && <A icon={Pencil} label="Editar" onClick={() => editMsg(m)} />}
-                {own && m.messageType === "text" && !!m.content && <A icon={Trash2} label="Apagar" danger onClick={() => deleteMsg(m)} />}
-              </>);
-            })()}
-          </div>
-        </div>
-      )}
+      {/* Fecha o menu de ações ao clicar/tocar fora */}
+      {actionMsg && <div onClick={() => setActionMsg(null)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />}
 
       {/* Encaminhar mensagem para outro número/contato */}
       {forwardMsg && (
