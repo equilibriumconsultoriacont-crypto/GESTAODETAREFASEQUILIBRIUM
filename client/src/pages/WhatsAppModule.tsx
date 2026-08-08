@@ -339,6 +339,8 @@ export default function WhatsAppModule() {
   const [forwardNumber, setForwardNumber] = useState("");
   const [forwarding, setForwarding] = useState(false);
   const [highlightMsg, setHighlightMsg] = useState<number | null>(null);
+  const [delTarget, setDelTarget] = useState<Msg | null>(null);
+  const DEL_TODOS_MS = 2 * 24 * 60 * 60 * 1000; // janela aproximada do WhatsApp para "apagar para todos"
   const lpTimer = useRef<any>(null);
   const openActions = (m: Msg) => { if (m.content !== "🚫 Mensagem apagada") setActionMsg((prev) => prev?.id === m.id ? null : m); };
   const pressProps = (m: Msg): any => isMobile ? {
@@ -367,9 +369,9 @@ export default function WhatsAppModule() {
     const id = setTimeout(() => document.addEventListener("pointerdown", onDown), 0);
     return () => { clearTimeout(id); document.removeEventListener("pointerdown", onDown); };
   }, [actionMsg]);
-  // Remove uma mensagem recebida apenas da sua conversa (não apaga para o contato)
+  // Remove uma mensagem apenas da sua conversa (não apaga para o contato)
   const removeMsg = async (m: Msg) => {
-    if (!active || !confirm("Remover esta mensagem da conversa? (ela continua no aparelho do contato)")) return;
+    if (!active) return;
     const r = await api(`/api/wa/conversations/${active.id}/messages/${m.id}/remove`, { method: "POST" }).catch(() => ({ error: "falha" } as any));
     if (r?.ok) loadMsgs(active.id); else alert(r?.error || "Não foi possível remover.");
   };
@@ -546,7 +548,7 @@ export default function WhatsAppModule() {
   };
 
   const deleteMsg = async (m: Msg) => {
-    if (!active || !confirm("Apagar esta mensagem para todos?")) return;
+    if (!active) return;
     const r = await api(`/api/wa/conversations/${active.id}/messages/${m.id}/delete`, { method: "POST" }).catch(() => ({ error: "falha" } as any));
     if (r?.ok) loadMsgs(active.id); else alert(r?.error || "Não foi possível apagar.");
   };
@@ -1008,7 +1010,7 @@ export default function WhatsAppModule() {
                                   description: `Solicitado pelo cliente via WhatsApp:\n"${m.content}"`,
                                 }) });
                                 if (own && m.messageType === "text" && !!m.content) btns.push({ i: Pencil, l: "Editar", c: "#a78bfa", f: () => editMsg(m) });
-                                btns.push({ i: Trash2, l: own ? "Apagar" : "Remover", c: "#f87171", f: () => (own ? deleteMsg(m) : removeMsg(m)) });
+                                btns.push({ i: Trash2, l: "Excluir", c: "#f87171", f: () => setDelTarget(m) });
                                 return btns.map((b, idx) => (
                                   <button key={idx} onClick={() => { setActionMsg(null); b.f(); }} title={b.l} aria-label={b.l}
                                     style={{ width: 36, height: 36, borderRadius: 11, border: "none", background: b.c + "26", color: b.c, cursor: "pointer", display: "grid", placeItems: "center" }}>
@@ -1180,6 +1182,39 @@ export default function WhatsAppModule() {
         </>
         )}
       </div>
+
+      {/* Opções de excluir (para todos / só para mim) */}
+      {delTarget && (() => {
+        const own = !!delTarget.fromMe;
+        const podeTodos = own && (Date.now() - new Date(delTarget.createdAt).getTime() < DEL_TODOS_MS);
+        return (
+          <div onClick={() => setDelTarget(null)}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 62, padding: isMobile ? 0 : 16 }}>
+            <div onClick={(e) => e.stopPropagation()}
+              style={{ width: isMobile ? "100%" : 340, maxWidth: "100%", background: t.surface, borderRadius: isMobile ? "18px 18px 0 0" : 16, border: `1px solid ${t.border}`, boxShadow: t.shadow, padding: 10, paddingBottom: isMobile ? 22 : 10 }}>
+              {isMobile && <div style={{ width: 40, height: 4, borderRadius: 4, background: t.border, margin: "6px auto 12px" }} />}
+              <div style={{ padding: "2px 12px 6px", fontSize: 15, fontWeight: 700, color: t.text }}>Excluir mensagem?</div>
+              {own && !podeTodos && (
+                <div style={{ padding: "0 12px 10px", fontSize: 12, color: t.textMuted }}>Já passou o tempo de apagar para todos.</div>
+              )}
+              {podeTodos && (
+                <button onClick={() => { setDelTarget(null); deleteMsg(delTarget); }}
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 14px", borderRadius: 11, border: "none", background: "transparent", color: t.danger, cursor: "pointer", fontSize: 15, fontWeight: 500, textAlign: "left" }}>
+                  <Trash2 size={18} style={{ flex: "none" }} /> Apagar para todos
+                </button>
+              )}
+              <button onClick={() => { setDelTarget(null); removeMsg(delTarget); }}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 14px", borderRadius: 11, border: "none", background: "transparent", color: t.text, cursor: "pointer", fontSize: 15, fontWeight: 500, textAlign: "left" }}>
+                <Trash2 size={18} style={{ flex: "none" }} /> Apagar só para mim
+              </button>
+              <button onClick={() => setDelTarget(null)}
+                style={{ width: "100%", padding: "12px 14px", borderRadius: 11, border: "none", background: t.surfaceHi, color: t.textMuted, cursor: "pointer", fontSize: 14, fontWeight: 600, marginTop: 4 }}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Encaminhar mensagem para outro número/contato */}
       {forwardMsg && (
