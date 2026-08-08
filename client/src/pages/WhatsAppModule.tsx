@@ -338,6 +338,7 @@ export default function WhatsAppModule() {
   const [forwardMsg, setForwardMsg] = useState<Msg | null>(null);
   const [forwardNumber, setForwardNumber] = useState("");
   const [forwarding, setForwarding] = useState(false);
+  const [highlightMsg, setHighlightMsg] = useState<number | null>(null);
   const lpTimer = useRef<any>(null);
   const openActions = (m: Msg) => { if (m.content !== "🚫 Mensagem apagada") setActionMsg((prev) => prev?.id === m.id ? null : m); };
   const pressProps = (m: Msg): any => isMobile ? {
@@ -366,6 +367,32 @@ export default function WhatsAppModule() {
     const id = setTimeout(() => document.addEventListener("pointerdown", onDown), 0);
     return () => { clearTimeout(id); document.removeEventListener("pointerdown", onDown); };
   }, [actionMsg]);
+  // Remove uma mensagem recebida apenas da sua conversa (não apaga para o contato)
+  const removeMsg = async (m: Msg) => {
+    if (!active || !confirm("Remover esta mensagem da conversa? (ela continua no aparelho do contato)")) return;
+    const r = await api(`/api/wa/conversations/${active.id}/messages/${m.id}/remove`, { method: "POST" }).catch(() => ({ error: "falha" } as any));
+    if (r?.ok) loadMsgs(active.id); else alert(r?.error || "Não foi possível remover.");
+  };
+  // Rola a conversa até a mensagem que foi citada na resposta
+  const jumpToQuoted = (m: Msg) => {
+    if (!m.replyTo) return;
+    const rt = m.replyTo.trim();
+    const idx = msgs.findIndex((x) => x.id === m.id);
+    const matches = (x: Msg) => {
+      const c = (x.content || "").trim();
+      return c === rt || (rt.length >= 12 && (c.startsWith(rt.slice(0, 60)) || rt.startsWith(c.slice(0, 60))));
+    };
+    let target: Msg | undefined;
+    for (let i = idx - 1; i >= 0; i--) { if (matches(msgs[i])) { target = msgs[i]; break; } }
+    if (!target) target = msgs.find(matches);
+    if (!target) return;
+    const el = document.getElementById(`wamsg-${target.id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightMsg(target.id);
+      setTimeout(() => setHighlightMsg((h) => (h === target!.id ? null : h)), 1600);
+    }
+  };
   const [taskForm, setTaskForm] = useState<any>(null);
   const [scheduleForm, setScheduleForm] = useState<any>(null);
   const [scheduled, setScheduled] = useState<any[]>([]);
@@ -958,7 +985,7 @@ export default function WhatsAppModule() {
                     const showLabel = me && label !== prevLabel;
                     const nonText = m.messageType !== "text" && m.messageType !== "template";
                     return (
-                      <div key={m.id} className="wa-msg" style={{ alignSelf: me ? "flex-end" : "flex-start", maxWidth: isMobile ? "90%" : "76%", marginTop: grouped && !showLabel ? 0 : 6, display: "flex", flexDirection: "column", alignItems: me ? "flex-end" : "flex-start" }}>
+                      <div key={m.id} id={`wamsg-${m.id}`} className="wa-msg" style={{ alignSelf: me ? "flex-end" : "flex-start", maxWidth: isMobile ? "90%" : "76%", marginTop: grouped && !showLabel ? 0 : 6, display: "flex", flexDirection: "column", alignItems: me ? "flex-end" : "flex-start", borderRadius: 14, transition: "background .35s ease", background: highlightMsg === m.id ? (me ? "rgba(52,211,153,.16)" : "rgba(56,189,248,.16)") : "transparent" }}>
                         {showLabel && (
                           <div style={{ fontSize: 11, fontWeight: 600, color: t.accent, textAlign: "right", margin: "0 4px 3px 0" }}>
                             {label}
@@ -980,10 +1007,8 @@ export default function WhatsAppModule() {
                                   dueDate: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
                                   description: `Solicitado pelo cliente via WhatsApp:\n"${m.content}"`,
                                 }) });
-                                if (own && m.messageType === "text" && !!m.content) {
-                                  btns.push({ i: Pencil, l: "Editar", c: "#a78bfa", f: () => editMsg(m) });
-                                  btns.push({ i: Trash2, l: "Apagar", c: "#f87171", f: () => deleteMsg(m) });
-                                }
+                                if (own && m.messageType === "text" && !!m.content) btns.push({ i: Pencil, l: "Editar", c: "#a78bfa", f: () => editMsg(m) });
+                                btns.push({ i: Trash2, l: own ? "Apagar" : "Remover", c: "#f87171", f: () => (own ? deleteMsg(m) : removeMsg(m)) });
                                 return btns.map((b, idx) => (
                                   <button key={idx} onClick={() => { setActionMsg(null); b.f(); }} title={b.l} aria-label={b.l}
                                     style={{ width: 36, height: 36, borderRadius: 11, border: "none", background: b.c + "26", color: b.c, cursor: "pointer", display: "grid", placeItems: "center" }}>
@@ -1001,8 +1026,9 @@ export default function WhatsAppModule() {
                           cursor: m.content !== "🚫 Mensagem apagada" ? "pointer" : "default",
                           opacity: m.status === "sending" ? 0.72 : 1 }}>
                           {m.replyTo && (
-                            <div style={{ borderLeft: `3px solid ${me ? "rgba(255,255,255,.55)" : t.accent}`, paddingLeft: 8, marginBottom: 5,
-                              fontSize: 12.5, opacity: 0.78, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                            <div onClick={(e) => { e.stopPropagation(); jumpToQuoted(m); }} title="Ir para a mensagem"
+                              style={{ borderLeft: `3px solid ${me ? "rgba(255,255,255,.55)" : t.accent}`, paddingLeft: 8, marginBottom: 5,
+                              fontSize: 12.5, opacity: 0.78, whiteSpace: "pre-wrap", wordBreak: "break-word", cursor: "pointer" }}>
                               {m.replyTo.length > 120 ? m.replyTo.slice(0, 120) + "…" : m.replyTo}
                             </div>
                           )}

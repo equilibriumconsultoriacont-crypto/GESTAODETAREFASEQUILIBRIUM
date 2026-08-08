@@ -570,6 +570,21 @@ export function registerWaRoutes(app: Express) {
     } catch (e: any) { res.status(502).json({ error: e?.message || "falha ao apagar" }); }
   });
 
+  // Remover mensagem apenas da conversa (para você) — qualquer mensagem
+  app.post("/api/wa/conversations/:id/messages/:msgId/remove", async (req, res) => {
+    const user = await auth(req, res);
+    if (!user) return;
+    const db = await getDb();
+    if (!db) return res.status(500).json({ error: "sem banco" });
+    const msgId = parseInt(req.params.msgId);
+    const m = (await db.select().from(waMessages).where(eq(waMessages.id, msgId)).limit(1))[0];
+    if (!m) return res.status(404).json({ error: "mensagem não encontrada" });
+    try {
+      await db.delete(waMessages).where(eq(waMessages.id, msgId));
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e?.message || "falha ao remover" }); }
+  });
+
   // Editar mensagem — só as que o atendente enviou (texto)
   app.post("/api/wa/conversations/:id/messages/:msgId/edit", async (req, res) => {
     const user = await auth(req, res);
