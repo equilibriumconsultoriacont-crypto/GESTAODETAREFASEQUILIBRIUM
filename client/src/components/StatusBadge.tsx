@@ -1,3 +1,5 @@
+import { normalizeDepartment, departmentColor } from "@shared/departments";
+
 export type TaskStatus =
   | "PENDENTE"
   | "EM_ANDAMENTO"
@@ -161,11 +163,15 @@ export function PriorityBadge({ priority }: { priority: Priority | string }) {
 }
 
 export function DepartmentBadge({ department }: { department: Department | string }) {
-  const cfg = DEPARTMENT_CONFIG[department as Department] ?? DEPARTMENT_CONFIG.GERAL;
+  // Aceita código legado (FISCAL, DP, ...) OU nome (Fiscal, Pessoal, ...) e ainda
+  // departamentos customizados. Antes, tarefas geradas (que guardam o nome) caíam
+  // no default e apareciam sempre como "Geral".
+  const name = normalizeDepartment(department);
+  const color = departmentColor(department);
   return (
     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-      style={{ background: "rgba(255,255,255,0.05)", color: cfg.color, border: "1px solid rgba(255,255,255,0.08)" }}>
-      {cfg.label}
+      style={{ background: "rgba(255,255,255,0.05)", color, border: "1px solid rgba(255,255,255,0.08)" }}>
+      {name}
     </span>
   );
 }

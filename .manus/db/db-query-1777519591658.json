@@ -1,9 +1,0 @@
-{
-  "query": "UPDATE users SET passwordHash = '$2b$10$fASA8EZdmDfVzexH65A2..u9TMCc16iaLopEFd3wC8jLItfIL2GI6' WHERE email = 'equilibriumconsultoria.cont@gmail.com';",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway06.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 41kE3TZTBgpvajt.root --database o3dK6TSSURVRc58h75f5Gy --execute UPDATE users SET passwordHash = '$2b$10$fASA8EZdmDfVzexH65A2..u9TMCc16iaLopEFd3wC8jLItfIL2GI6' WHERE email = 'equilibriumconsultoria.cont@gmail.com';",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 625
-}

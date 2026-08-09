@@ -4,7 +4,8 @@ import { randomUUID } from "crypto"; // Node 18 não tem crypto global
 import { COOKIE_NAME, SESSION_DURATION_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router, staffProcedure } from "./_core/trpc";
+import { normalizeDepartment } from "@shared/departments";
 import {
   addClientTaskTemplate,
   applyCatalogToClient,
@@ -72,7 +73,7 @@ import { financeiroRouter } from "./financeiroRouter";
 
 // ─── Clients Router ───────────────────────────────────────────────────────────
 const clientsRouter = router({
-  list: protectedProcedure
+  list: staffProcedure
     .input(z.object({ includeInactive: z.boolean().optional() }))
     .query(({ input }) => listClients(input.includeInactive)),
 
@@ -133,7 +134,7 @@ const clientsRouter = router({
 
 // ─── Recurring Tasks Router ───────────────────────────────────────────────────
 const recurringTasksRouter = router({
-  list: protectedProcedure
+  list: staffProcedure
     .input(z.object({ clientId: z.number().optional() }))
     .query(({ input }) => listRecurringTasks(input.clientId)),
 
@@ -179,7 +180,7 @@ const recurringTasksRouter = router({
 
 // ─── Tasks Router ─────────────────────────────────────────────────────────────
 const tasksRouter = router({
-  list: protectedProcedure
+  list: staffProcedure
     .input(
       z.object({
         clientId: z.number().optional(),
@@ -199,20 +200,21 @@ const tasksRouter = router({
       const allowedClientIds = new Set(await getUserClients(userId));
       const userDeptIds = await getUserDepartments(userId);
 
-      // Converter IDs de departamento para NOMES (a tarefa guarda o nome)
+      // Converter IDs de departamento para NOMES canônicos (a tarefa pode ter
+      // gravado o código legado OU o nome — normalizamos os dois lados).
       const allDepts = await listDepartments(true);
       const allowedDeptNames = new Set(
-        allDepts.filter((d) => userDeptIds.includes(d.id)).map((d) => d.name)
+        allDepts.filter((d) => userDeptIds.includes(d.id)).map((d) => normalizeDepartment(d.name))
       );
 
       return tasks.filter((t) => {
         const clientOk = allowedClientIds.has(t.clientId);
-        const deptOk = allowedDeptNames.has((t as any).department ?? "Geral");
+        const deptOk = allowedDeptNames.has(normalizeDepartment((t as any).department));
         return clientOk && deptOk;
       });
     }),
 
-  getById: protectedProcedure
+  getById: staffProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       const task = await getTaskById(input.id);
@@ -220,7 +222,7 @@ const tasksRouter = router({
       return task;
     }),
 
-  history: protectedProcedure
+  history: staffProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       const { getTaskHistory } = await import("./db");
@@ -238,7 +240,9 @@ const tasksRouter = router({
         competencia: z.string().regex(/^\d{2}\/\d{4}$/),
         dueDate: z.string(),
         notes: z.string().optional(),
-        department: z.enum(["FISCAL", "CONTABIL", "DP", "SOCIETARIO", "FINANCEIRO", "GERAL"]).optional(),
+        // Aceita nome do departamento (Fiscal, Pessoal, ...) ou código legado
+        // (FISCAL, DP, ...); normalizado para o nome canônico ao gravar.
+        department: z.string().optional(),
         priority: z.enum(["BAIXA", "NORMAL", "ALTA", "URGENTE"]).optional(),
         sendToClient: z.boolean().optional(),
         movimentaFinanceiro: z.boolean().optional(),
@@ -252,7 +256,7 @@ const tasksRouter = router({
         ...rest,
         dueDate: new Date(input.dueDate),
         status: "PENDENTE",
-        department: input.department ?? "GERAL",
+        department: normalizeDepartment(input.department),
         priority: input.priority ?? "NORMAL",
         ...(finVencimento ? { finVencimento: new Date(finVencimento) } : {}),
       });
@@ -264,7 +268,7 @@ const tasksRouter = router({
       return { id };
     }),
 
-  updateStatus: protectedProcedure
+  updateStatus: staffProcedure
     .input(
       z.object({
         id: z.number().positive(),
@@ -292,7 +296,7 @@ const tasksRouter = router({
       return { success: true };
     }),
 
-  update: protectedProcedure
+  update: staffProcedure
     .input(
       z.object({
         id: z.number(),
@@ -336,19 +340,19 @@ const tasksRouter = router({
       return { success: true };
     }),
 
-  markOverdue: protectedProcedure.mutation(async () => {
+  markOverdue: staffProcedure.mutation(async () => {
     const count = await markOverdueTasks();
     return { updated: count };
   }),
 
-  dueSoon: protectedProcedure
+  dueSoon: staffProcedure
     .input(z.object({ days: z.number().default(3) }))
     .query(({ input }) => getTasksDueSoon(input.days)),
 
-  dashboard: protectedProcedure.query(() => getDashboardStats()),
+  dashboard: staffProcedure.query(() => getDashboardStats()),
 
   // Dashboard gerencial: admin vê visão do escritório + equipe; colaborador vê o dele
-  managerialDashboard: protectedProcedure
+  managerialDashboard: staffProcedure
     .input(z.object({ competencia: z.string().optional() }).optional())
     .query(async ({ input, ctx }) => {
       const { getAdminDashboard, getCollaboratorDashboard } = await import("./db");
@@ -376,11 +380,11 @@ const tasksRouter = router({
 
 // ─── Files Router ─────────────────────────────────────────────────────────────
 const filesRouter = router({
-  listByTask: protectedProcedure
+  listByTask: staffProcedure
     .input(z.object({ taskId: z.number() }))
     .query(({ input }) => listTaskFiles(input.taskId)),
 
-  delete: protectedProcedure
+  delete: staffProcedure
     .input(z.object({ fileId: z.number() }))
     .mutation(async ({ input }) => {
       const file = await deleteTaskFile(input.fileId);
@@ -394,7 +398,7 @@ const filesRouter = router({
       return { success: true };
     }),
 
-  upload: protectedProcedure
+  upload: staffProcedure
     .input(
       z.object({
         taskId: z.number(),
@@ -429,7 +433,7 @@ const filesRouter = router({
 
 // ─── Email Router ─────────────────────────────────────────────────────────────
 const emailRouter = router({
-  sendGuia: protectedProcedure
+  sendGuia: staffProcedure
     .input(
       z.object({
         taskId: z.number(),
@@ -546,7 +550,7 @@ const emailRouter = router({
       };
     }),
 
-  sendAlerts: protectedProcedure.mutation(async () => {
+  sendAlerts: staffProcedure.mutation(async () => {
     const dueSoon = await getTasksDueSoon(3);
     const overdue = await listTasks({ status: "VENCIDA" });
 
@@ -609,7 +613,7 @@ const emailRouter = router({
     return { sent, dueSoon: dueSoon.length, overdue: overdue.length };
   }),
 
-  logs: protectedProcedure
+  logs: staffProcedure
     .input(z.object({ taskId: z.number().optional(), clientId: z.number().optional() }))
     .query(({ input }) => listEmailLogs(input.taskId, input.clientId)),
 });
@@ -619,7 +623,7 @@ const emailRouter = router({
 // ─── Auto-Send Router (para tarefa agendada) ───────────────────────────────────
 const autoSendRouter = router({
   // Disparo manual do auto-envio
-  sendGuias: protectedProcedure.mutation(async () => {
+  sendGuias: staffProcedure.mutation(async () => {
     const { autoSendPendingGuias, sendDueSoonAlerts } = await import("./autoSend");
     const sendResult = await autoSendPendingGuias();
     const alertResult = await sendDueSoonAlerts();
@@ -630,7 +634,7 @@ const autoSendRouter = router({
   // Lógica: cada arquivo (taskFile) individualmente — se não há email_log
   // ENVIADO com aquele taskFileId específico, o arquivo é pendente de envio.
   // Isso garante que um envio de teste sem arquivo não "oculte" a guia real.
-  pendingGuias: protectedProcedure.query(async () => {
+  pendingGuias: staffProcedure.query(async () => {
     const pool = getPool();
     const [rows] = await pool.query(`
       SELECT 
@@ -659,7 +663,7 @@ const autoSendRouter = router({
 
   // Cancelar o envio de uma guia pendente (remove o arquivo anexado). Útil quando
   // o reconhecimento veio errado ou a guia está incorreta.
-  cancelSend: protectedProcedure
+  cancelSend: staffProcedure
     .input(z.object({ fileId: z.number() }))
     .mutation(async ({ input }) => {
       const { deleteTaskFile } = await import("./db");
@@ -681,7 +685,7 @@ const autoSendRouter = router({
 // ─── Smart Upload Router ──────────────────────────────────────────────────────
 // Reconhece PDF de guia DAS/DAS MEI, aloca na tarefa certa e notifica cliente
 const smartUploadRouter = router({
-  process: protectedProcedure
+  process: staffProcedure
     .input(z.object({
       filename: z.string(),
       mimeType: z.string().optional(),
@@ -939,7 +943,7 @@ const smartUploadRouter = router({
 
 // ─── Task Catalogs Router ─────────────────────────────────────────────────────
 const taskCatalogsRouter = router({
-  list: protectedProcedure
+  list: staffProcedure
     .input(z.object({ activeOnly: z.boolean().default(true) }))
     .query(({ input }) => listTaskCatalogs(input.activeOnly)),
 
@@ -966,18 +970,18 @@ const taskCatalogsRouter = router({
       return { success: true };
     }),
 
-  getTemplates: protectedProcedure
+  getTemplates: staffProcedure
     .input(z.object({ catalogId: z.number() }))
     .query(({ input }) => getCatalogTemplates(input.catalogId)),
 
-  addTemplate: protectedProcedure
+  addTemplate: staffProcedure
     .input(z.object({ catalogId: z.number(), taskTemplateId: z.number() }))
     .mutation(async ({ input }) => {
       await addCatalogTemplate(input);
       return { success: true };
     }),
 
-  removeTemplate: protectedProcedure
+  removeTemplate: staffProcedure
     .input(z.object({ catalogId: z.number(), taskTemplateId: z.number() }))
     .mutation(async ({ input }) => {
       await removeCatalogTemplate(input.catalogId, input.taskTemplateId);
@@ -995,7 +999,7 @@ const taskCatalogsRouter = router({
 
 // ─── Operational Queue Router ──────────────────────────────────────────────────
 const operationalRouter = router({
-  queue: protectedProcedure
+  queue: staffProcedure
     .input(z.object({
       department: z.enum(["FISCAL","CONTABIL","DP","SOCIETARIO","FINANCEIRO","GERAL"]).optional(),
       status: z.enum(["PENDENTE","EM_ANDAMENTO","AGUARDANDO_CLIENTE","EM_REVISAO","CONCLUIDA","CANCELADA","VENCIDA"]).optional(),
@@ -1006,13 +1010,13 @@ const operationalRouter = router({
       return getOperationalQueue(input ?? {});
     }),
 
-  activityLog: protectedProcedure
+  activityLog: staffProcedure
     .input(z.object({ entityType: z.string(), entityId: z.number() }))
     .query(async ({ input }) => {
       return getActivityLogs(input.entityType, input.entityId);
     }),
 
-  stats: protectedProcedure.query(async () => {
+  stats: staffProcedure.query(async () => {
     const all = await listTasks();
     const today = new Date();
     const todayStr = today.toDateString();
@@ -1032,7 +1036,7 @@ const operationalRouter = router({
 
 // ─── Task Templates Router ────────────────────────────────────────────────────
 const taskTemplatesRouter = router({
-  list: protectedProcedure
+  list: staffProcedure
     .input(z.object({ activeOnly: z.boolean().default(true) }))
     .query(({ input }) => listTaskTemplates(input.activeOnly)),
 
@@ -1087,7 +1091,7 @@ const taskTemplatesRouter = router({
 
 // ─── Client Task Templates Router ─────────────────────────────────────────────
 const clientTemplatesRouter = router({
-  listByClient: protectedProcedure
+  listByClient: staffProcedure
     .input(z.object({ clientId: z.number() }))
     .query(({ input }) => listClientTaskTemplates(input.clientId)),
 
@@ -1141,7 +1145,7 @@ const clientTemplatesRouter = router({
 
 // ─── Monthly Panel Router ─────────────────────────────────────────────────────
 const monthlyPanelRouter = router({
-  get: protectedProcedure
+  get: staffProcedure
     .input(z.object({ month: z.number().min(1).max(12), year: z.number().min(2020) }))
     .query(({ input }) => getMonthlyPanel(input.month, input.year)),
 });
@@ -1415,7 +1419,7 @@ const clientPortalRouter = router({
 // ─── Client Management Router (admin only) ────────────────────────────────────
 const clientAccessRouter = router({
   // Criar/redefinir login de acesso para um cliente
-  createLogin: protectedProcedure
+  createLogin: staffProcedure
     .input(z.object({
       clientId: z.number(),
       email: z.string().email(),
@@ -1444,7 +1448,7 @@ const clientAccessRouter = router({
     }),
 
   // Listar acessos de clientes existentes
-  listLogins: protectedProcedure.query(async () => {
+  listLogins: staffProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
     const { users: usersTable } = await import("../drizzle/schema");
@@ -1468,7 +1472,7 @@ const clientAccessRouter = router({
     }
   }),
 
-  deleteLogin: protectedProcedure
+  deleteLogin: staffProcedure
     .input(z.object({ id: z.number().positive() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -1479,7 +1483,7 @@ const clientAccessRouter = router({
       return { success: true };
     }),
 
-  resetClientPassword: protectedProcedure
+  resetClientPassword: staffProcedure
     .input(z.object({
       id: z.number().positive(),
       newPassword: z.string().min(6).max(100),
@@ -1496,7 +1500,7 @@ const clientAccessRouter = router({
 
   // Reenvia o acesso ao cliente: gera nova senha aleatória de 1º acesso, força a
   // troca no próximo login e manda o e-mail de boas-vindas (senha + tutorial).
-  resendClientAccess: protectedProcedure
+  resendClientAccess: staffProcedure
     .input(z.object({ email: z.string().email(), clientId: z.number().optional() }))
     .mutation(async ({ input }) => {
       // Usa o e-mail DO ACESSO (login), nunca o e-mail da empresa — eles podem diferir.
@@ -1531,7 +1535,7 @@ const clientAccessRouter = router({
     }),
 
   // Diagnóstico de e-mail: mostra a config e tenta um envio de teste real.
-  emailTest: protectedProcedure
+  emailTest: staffProcedure
     .input(z.object({ to: z.string().email() }))
     .mutation(async ({ input, ctx }) => {
       if (ctx.user.role !== "admin" && ctx.user.role !== "user") {
@@ -1576,7 +1580,7 @@ const healthRouter = router({
 
 // ─── Departments Router ───────────────────────────────────────────────────────
 const departmentsRouter = router({
-  list: protectedProcedure.query(async () => {
+  list: staffProcedure.query(async () => {
     const { listDepartments } = await import("./db");
     return listDepartments(false);
   }),
@@ -1699,7 +1703,7 @@ const usersRouter = router({
 // ─── Calendar Router ──────────────────────────────────────────────────────────
 const calendarRouter = router({
   // Lista eventos num intervalo (mês) + vencimentos do financeiro (só admin, read-only)
-  events: protectedProcedure
+  events: staffProcedure
     .input(z.object({ startISO: z.string(), endISO: z.string() }))
     .query(async ({ input, ctx }) => {
       const { getCalendarEvents } = await import("./db");
@@ -1731,7 +1735,7 @@ const calendarRouter = router({
       return eventos;
     }),
 
-  create: protectedProcedure
+  create: staffProcedure
     .input(z.object({
       title: z.string().min(1),
       description: z.string().optional(),
@@ -1758,7 +1762,7 @@ const calendarRouter = router({
       return { id };
     }),
 
-  update: protectedProcedure
+  update: staffProcedure
     .input(z.object({
       id: z.number(),
       title: z.string().optional(),
@@ -1780,7 +1784,7 @@ const calendarRouter = router({
       return { success: true };
     }),
 
-  delete: protectedProcedure
+  delete: staffProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
       const { deleteCalendarEvent } = await import("./db");
@@ -1788,7 +1792,7 @@ const calendarRouter = router({
       return { success: true };
     }),
 
-  respondInvite: protectedProcedure
+  respondInvite: staffProcedure
     .input(z.object({ eventId: z.number(), status: z.enum(["ACEITO", "RECUSADO"]) }))
     .mutation(async ({ input, ctx }) => {
       const { respondToCalendarInvite } = await import("./db");
@@ -1796,13 +1800,13 @@ const calendarRouter = router({
       return { success: true };
     }),
 
-  pendingInvites: protectedProcedure.query(async ({ ctx }) => {
+  pendingInvites: staffProcedure.query(async ({ ctx }) => {
     const { getPendingInvites } = await import("./db");
     return getPendingInvites(ctx.user!.id);
   }),
 
   // Lista usuários que podem ser convidados (equipe, exceto o próprio)
-  invitableUsers: protectedProcedure.query(async ({ ctx }) => {
+  invitableUsers: staffProcedure.query(async ({ ctx }) => {
     const { listUsers } = await import("./db");
     const users = await listUsers();
     return users
@@ -1811,7 +1815,7 @@ const calendarRouter = router({
   }),
 
   // Status da integração Google (gancho — sempre desconectado por enquanto)
-  googleStatus: protectedProcedure.query(async () => {
+  googleStatus: staffProcedure.query(async () => {
     // Quando a integração for ativada, consultar google_calendar_tokens
     return { connected: false, available: false };
   }),
@@ -1828,7 +1832,7 @@ const modulesRouter = router({
 
 // ─── Proposals Router (módulo propostas) ──────────────────────────────────────
 const proposalsRouter = router({
-  list: protectedProcedure.query(async ({ ctx }) => {
+  list: staffProcedure.query(async ({ ctx }) => {
     const { getUserModules, listProposals } = await import("./db");
     const mods = await getUserModules(ctx.user!.id);
     const propMod = mods.find((m) => m.module === "propostas");
@@ -1837,7 +1841,7 @@ const proposalsRouter = router({
     return listProposals(ctx.user!.id, isAdmin);
   }),
 
-  get: protectedProcedure
+  get: staffProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input, ctx }) => {
       const { getProposal, getUserModules } = await import("./db");
@@ -1853,7 +1857,7 @@ const proposalsRouter = router({
       return p;
     }),
 
-  create: protectedProcedure
+  create: staffProcedure
     .input(z.object({
       title: z.string().min(1),
       clientName: z.string().optional(),
@@ -1871,7 +1875,7 @@ const proposalsRouter = router({
       return { id };
     }),
 
-  update: protectedProcedure
+  update: staffProcedure
     .input(z.object({
       id: z.number(),
       title: z.string().optional(),
@@ -1892,7 +1896,7 @@ const proposalsRouter = router({
       return { success: true };
     }),
 
-  delete: protectedProcedure
+  delete: staffProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
       const { getUserModules, getProposal, deleteProposal } = await import("./db");

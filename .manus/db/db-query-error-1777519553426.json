@@ -1,8 +1,0 @@
-{
-  "query": "INSERT INTO users (email, passwordHash, loginMethod, role, createdAt, updatedAt, lastSignedIn) \nVALUES ('equilibriumconsultoria.cont@gmail.com', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcg7b3XeKeUxWdeS86E36P4/TVm2', 'local', 'admin', NOW(), NOW(), NOW());",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway06.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 41kE3TZTBgpvajt.root --database o3dK6TSSURVRc58h75f5Gy --execute INSERT INTO users (email, passwordHash, loginMethod, role, createdAt, updatedAt, lastSignedIn) \nVALUES ('equilibriumconsultoria.cont@gmail.com', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcg7b3XeKeUxWdeS86E36P4/TVm2', 'local', 'admin', NOW(), NOW(), NOW());",
-  "returncode": 1,
-  "logs": [
-    "ERROR 1062 (23000) at line 1: Duplicate entry '?' for key 'users.users_email_unique'"
-  ]
-}

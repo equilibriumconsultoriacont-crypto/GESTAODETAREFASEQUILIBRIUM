@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
+import { normalizeDepartment } from "@shared/departments";
 import { AlertCircle, CheckSquare, ChevronDown, ChevronRight, ChevronUp, Eye, EyeOff, Filter, PlusCircle, Users } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import { Link } from "wouter";
@@ -109,7 +110,10 @@ export default function Tasks() {
     }
 
     if (deptFilter !== "ALL") {
-      tasks = tasks.filter((t) => (t as any).department === deptFilter);
+      // Normaliza os dois lados: a tarefa pode ter gravado o código legado
+      // (FISCAL) ou o nome (Fiscal); o filtro guarda o código.
+      const wanted = normalizeDepartment(deptFilter);
+      tasks = tasks.filter((t) => normalizeDepartment((t as any).department) === wanted);
     }
 
     return tasks;

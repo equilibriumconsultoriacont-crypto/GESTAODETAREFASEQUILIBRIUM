@@ -22,6 +22,18 @@ process.on("uncaughtException", (err: any) => {
 });
 
 async function startServer() {
+  // ── Aviso de segurança: segredos padrão em produção ───────────────────────
+  // Se JWT_SECRET/MIGRATE_SECRET não estiverem setados, o código cai para valores
+  // padrão que estão no repositório — qualquer um poderia forjar sessão ou chamar
+  // os endpoints /admin/*. Em produção isso é crítico; avisa alto (sem derrubar o
+  // serviço, para não quebrar um ambiente que já dependa do fallback).
+  if (process.env.NODE_ENV === "production") {
+    const semJwt = !process.env.JWT_SECRET && !process.env.SESSION_SECRET;
+    const semMigrate = !process.env.MIGRATE_SECRET;
+    if (semJwt) console.error("[SEGURANÇA] JWT_SECRET/SESSION_SECRET não definido — usando segredo padrão PÚBLICO. Configure no Render AGORA (risco de forja de sessão).");
+    if (semMigrate) console.error("[SEGURANÇA] MIGRATE_SECRET não definido — endpoints /admin/* usam segredo padrão PÚBLICO. Configure no Render AGORA.");
+  }
+
   const app = express();
 
   app.set("trust proxy", 1);
