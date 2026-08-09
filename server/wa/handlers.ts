@@ -126,7 +126,7 @@ export async function handleIncomingMessages(_sock: WASocket, ev: any) {
       await db
         .select()
         .from(waConversations)
-        .where(and(eq(waConversations.contactId, contact.id), sql`${waConversations.status} in ('queue','active','open','pending')`))
+        .where(and(eq(waConversations.contactId, contact.id), sql`${waConversations.status} in ('queue','active')`))
         .orderBy(desc(waConversations.lastMessageAt))
         .limit(1)
     )[0];

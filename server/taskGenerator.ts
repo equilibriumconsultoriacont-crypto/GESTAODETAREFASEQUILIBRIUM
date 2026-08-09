@@ -50,8 +50,10 @@ function shouldGenerateForCompetencia(rt: any, month: number): boolean {
  */
 function calcDueDate(compMonth: number, compYear: number, rt: any): Date {
   // offset: 0 = vence no mesmo mês da competência, 1 = mês seguinte (padrão DAS)
-  // Para parcelamentos e guias avulsas, o vencimento é no mesmo mês (offset=0)
-  const offset = rt.competenciaOffset ?? 0;
+  // Para parcelamentos e guias avulsas, o vencimento é no mesmo mês (offset=0).
+  // Fallback = 1 para bater com o default do schema (NOT NULL DEFAULT 1); antes
+  // era 0, o que daria vencimento no mês errado se o valor viesse nulo.
+  const offset = rt.competenciaOffset ?? 1;
 
   // Soma a defasagem ao mês de competência (0-based para Date)
   const dueDateBase = new Date(compYear, (compMonth - 1) + offset, 1);
@@ -131,17 +133,21 @@ export async function generateTasksForCompetencia(
 }
 
 /**
- * Geração automática: garante que existam tarefas geradas para os próximos
- * N meses de competência (a partir do mês atual). Roda no scheduler.
- * Assim, quando vira o mês, o próximo mês de competência é gerado sozinho.
+ * Geração automática: garante que existam tarefas geradas para uma janela de
+ * competências — de `monthsBack` meses atrás até `monthsAhead` à frente. Roda no
+ * scheduler. A janela retroativa é uma rede de segurança: se o serviço ficou sem
+ * rodar (Render free dormindo) ou um cliente/recorrente foi cadastrado com atraso,
+ * as competências recentes que faltaram são geradas. A geração é idempotente
+ * (guardas de duplicidade em generateTasksForCompetencia), então re-rodar é seguro
+ * e não recria o que já existe.
  */
-export async function ensureUpcomingTasksGenerated(monthsAhead = 3): Promise<GenResult> {
+export async function ensureUpcomingTasksGenerated(monthsAhead = 3, monthsBack = 2): Promise<GenResult> {
   const now = new Date();
   let totalCreated = 0;
   let totalSkipped = 0;
 
-  // Gera da competência do mês atual até monthsAhead à frente
-  for (let i = 0; i <= monthsAhead; i++) {
+  // Gera de `monthsBack` meses atrás até `monthsAhead` à frente
+  for (let i = -monthsBack; i <= monthsAhead; i++) {
     const target = new Date(now.getFullYear(), now.getMonth() + i, 1);
     const month = target.getMonth() + 1; // 1-based
     const year = target.getFullYear();
@@ -151,7 +157,7 @@ export async function ensureUpcomingTasksGenerated(monthsAhead = 3): Promise<Gen
   }
 
   if (totalCreated > 0) {
-    console.log(`[AutoGen] ${totalCreated} tarefa(s) gerada(s) automaticamente (${monthsAhead} meses à frente)`);
+    console.log(`[AutoGen] ${totalCreated} tarefa(s) gerada(s) automaticamente (${monthsBack} atrás → ${monthsAhead} à frente)`);
   }
   return { created: totalCreated, skipped: totalSkipped };
 }

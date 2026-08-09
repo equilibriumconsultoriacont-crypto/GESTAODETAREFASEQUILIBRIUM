@@ -278,7 +278,7 @@ async function startServer() {
         "ALTER TABLE `recurring_tasks` ADD COLUMN `dueDateAdjust` enum('PROXIMO_DIA_UTIL','DIA_UTIL_ANTERIOR','NENHUM') NOT NULL DEFAULT 'PROXIMO_DIA_UTIL'",
         // WhatsApp — Atendimento
         "CREATE TABLE IF NOT EXISTS `wa_contacts` (`id` int AUTO_INCREMENT NOT NULL, `waNumber` varchar(32) NOT NULL, `jid` varchar(128), `lid` varchar(128), `clientId` int, `name` varchar(255), `avatarUrl` mediumtext, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `wa_contacts_id` PRIMARY KEY(`id`), CONSTRAINT `wa_contacts_waNumber_unique` UNIQUE(`waNumber`))",
-        "CREATE TABLE IF NOT EXISTS `wa_conversations` (`id` int AUTO_INCREMENT NOT NULL, `contactId` int NOT NULL, `status` enum('queue','active','concluded','dismissed','open','pending','closed') NOT NULL DEFAULT 'queue', `assignedAgentId` int, `unreadCount` int NOT NULL DEFAULT 0, `lastMessageAt` timestamp NOT NULL DEFAULT (now()), `concludedAt` timestamp NULL, `queuedAt` timestamp NULL, `assignedAt` timestamp NULL, `lastAutoReplyAt` timestamp NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_conversations_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `wa_conversations` (`id` int AUTO_INCREMENT NOT NULL, `contactId` int NOT NULL, `status` enum('queue','active','concluded','dismissed') NOT NULL DEFAULT 'queue', `assignedAgentId` int, `unreadCount` int NOT NULL DEFAULT 0, `lastMessageAt` timestamp NOT NULL DEFAULT (now()), `concludedAt` timestamp NULL, `queuedAt` timestamp NULL, `assignedAt` timestamp NULL, `lastAutoReplyAt` timestamp NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_conversations_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `wa_messages` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `senderType` enum('contact','agent','system') NOT NULL, `fromMe` boolean NOT NULL DEFAULT false, `content` text, `messageType` enum('text','image','audio','video','document','sticker','location','template','other') NOT NULL DEFAULT 'text', `mediaUrl` mediumtext, `replyTo` text, `waMessageId` varchar(128), `status` enum('received','sent','delivered','read','failed') NOT NULL DEFAULT 'sent', `agentId` int, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_messages_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `wa_tags` (`id` int AUTO_INCREMENT NOT NULL, `name` varchar(64) NOT NULL, `color` varchar(20) NOT NULL DEFAULT '#3E9AA6', CONSTRAINT `wa_tags_id` PRIMARY KEY(`id`), CONSTRAINT `wa_tags_name_unique` UNIQUE(`name`))",
         "CREATE TABLE IF NOT EXISTS `wa_conversation_tags` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `tagId` int NOT NULL, CONSTRAINT `wa_conversation_tags_id` PRIMARY KEY(`id`))",
@@ -670,7 +670,7 @@ async function ensureSchema() {
       // Tabelas do WhatsApp — criadas no boot (idempotente), sem depender do /admin/setup
       const waTables = [
         "CREATE TABLE IF NOT EXISTS `wa_contacts` (`id` int AUTO_INCREMENT NOT NULL, `waNumber` varchar(32) NOT NULL, `jid` varchar(128), `lid` varchar(128), `clientId` int, `name` varchar(255), `avatarUrl` mediumtext, `createdAt` timestamp NOT NULL DEFAULT (now()), `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT `wa_contacts_id` PRIMARY KEY(`id`), CONSTRAINT `wa_contacts_waNumber_unique` UNIQUE(`waNumber`))",
-        "CREATE TABLE IF NOT EXISTS `wa_conversations` (`id` int AUTO_INCREMENT NOT NULL, `contactId` int NOT NULL, `status` enum('queue','active','concluded','dismissed','open','pending','closed') NOT NULL DEFAULT 'queue', `assignedAgentId` int, `unreadCount` int NOT NULL DEFAULT 0, `lastMessageAt` timestamp NOT NULL DEFAULT (now()), `concludedAt` timestamp NULL, `queuedAt` timestamp NULL, `assignedAt` timestamp NULL, `lastAutoReplyAt` timestamp NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_conversations_id` PRIMARY KEY(`id`))",
+        "CREATE TABLE IF NOT EXISTS `wa_conversations` (`id` int AUTO_INCREMENT NOT NULL, `contactId` int NOT NULL, `status` enum('queue','active','concluded','dismissed') NOT NULL DEFAULT 'queue', `assignedAgentId` int, `unreadCount` int NOT NULL DEFAULT 0, `lastMessageAt` timestamp NOT NULL DEFAULT (now()), `concludedAt` timestamp NULL, `queuedAt` timestamp NULL, `assignedAt` timestamp NULL, `lastAutoReplyAt` timestamp NULL, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_conversations_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `wa_messages` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `senderType` enum('contact','agent','system') NOT NULL, `fromMe` boolean NOT NULL DEFAULT false, `content` text, `messageType` enum('text','image','audio','video','document','sticker','location','template','other') NOT NULL DEFAULT 'text', `mediaUrl` mediumtext, `replyTo` text, `waMessageId` varchar(128), `status` enum('received','sent','delivered','read','failed') NOT NULL DEFAULT 'sent', `agentId` int, `createdAt` timestamp NOT NULL DEFAULT (now()), CONSTRAINT `wa_messages_id` PRIMARY KEY(`id`))",
         "CREATE TABLE IF NOT EXISTS `wa_tags` (`id` int AUTO_INCREMENT NOT NULL, `name` varchar(64) NOT NULL, `color` varchar(20) NOT NULL DEFAULT '#3E9AA6', CONSTRAINT `wa_tags_id` PRIMARY KEY(`id`), CONSTRAINT `wa_tags_name_unique` UNIQUE(`name`))",
         "CREATE TABLE IF NOT EXISTS `wa_conversation_tags` (`id` int AUTO_INCREMENT NOT NULL, `conversationId` int NOT NULL, `tagId` int NOT NULL, CONSTRAINT `wa_conversation_tags_id` PRIMARY KEY(`id`))",
@@ -722,6 +722,23 @@ async function ensureSchema() {
         const [rtc]: any = await conn.query("SELECT COUNT(*) cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wa_messages' AND COLUMN_NAME = 'replyTo'");
         if (Number(rtc?.[0]?.cnt ?? 0) === 0) await conn.query("ALTER TABLE `wa_messages` ADD COLUMN `replyTo` text");
       } catch (e: any) { console.warn("[Migração WA] fluxo atendimento:", e?.message?.slice(0, 140)); }
+
+      // Limpeza do enum legado de wa_conversations.status (open/pending/closed).
+      // Esses valores foram substituídos por queue/active/concluded/dismissed. Aqui:
+      //  1) normaliza qualquer conversa que ainda esteja num status legado (idempotente);
+      //  2) estreita o enum removendo os 3 valores mortos (guardado: se falhar, não afeta nada).
+      try {
+        await conn.query("UPDATE `wa_conversations` SET `status` = 'active' WHERE `status` IN ('open','pending') AND `assignedAgentId` IS NOT NULL");
+        await conn.query("UPDATE `wa_conversations` SET `status` = 'queue' WHERE `status` IN ('open','pending') AND `assignedAgentId` IS NULL");
+        await conn.query("UPDATE `wa_conversations` SET `status` = 'concluded' WHERE `status` = 'closed'");
+        const [ct2]: any = await conn.query("SELECT COLUMN_TYPE ct FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wa_conversations' AND COLUMN_NAME = 'status'");
+        const tipo = String(ct2?.[0]?.ct || "");
+        // Só estreita se ainda tiver 'queue' (enum novo já aplicado) E algum valor legado.
+        if (tipo.includes("'queue'") && (tipo.includes("'open'") || tipo.includes("'pending'") || tipo.includes("'closed'"))) {
+          await conn.query("ALTER TABLE `wa_conversations` MODIFY COLUMN `status` enum('queue','active','concluded','dismissed') NOT NULL DEFAULT 'queue'");
+          console.log("[Migração WA] enum de status estreitado (removidos open/pending/closed).");
+        }
+      } catch (e: any) { console.warn("[Migração WA] limpeza enum status:", e?.message?.slice(0, 140)); }
 
       // Migração Financeiro: novas colunas de recorrência no fin_client_config (bancos já criados)
       try {

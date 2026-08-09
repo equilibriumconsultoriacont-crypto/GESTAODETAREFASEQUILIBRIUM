@@ -386,7 +386,9 @@ export const waConversations = mysqlTable("wa_conversations", {
   id: int("id").autoincrement().primaryKey(),
   contactId: int("contactId").notNull(),
   // fila (sem dono) → active (em atendimento) → concluded/dismissed
-  status: mysqlEnum("status", ["queue", "active", "concluded", "dismissed", "open", "pending", "closed"]).default("queue").notNull(),
+  // (os valores legados open/pending/closed foram removidos; a migração em
+  // ensureSchema normaliza qualquer conversa antiga antes de estreitar o enum)
+  status: mysqlEnum("status", ["queue", "active", "concluded", "dismissed"]).default("queue").notNull(),
   assignedAgentId: int("assignedAgentId"), // users.id — quem está atendendo
   unreadCount: int("unreadCount").default(0).notNull(),
   lastMessageAt: timestamp("lastMessageAt").defaultNow().notNull(),
