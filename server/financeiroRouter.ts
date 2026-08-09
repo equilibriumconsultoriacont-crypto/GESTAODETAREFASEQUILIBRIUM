@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { adminProcedure, router } from "./_core/trpc";
 import { getDb } from "./db";
+import { signCobranca } from "./cobrancaToken";
 import {
   financialClientConfig,
   financialTitulos,
@@ -36,7 +37,8 @@ function adjustWeekend(d: Date, rule: string | null): Date {
 // HTML do e-mail de cobrança: valor, vencimento, PIX (QR + copia e cola) e botão de comprovante.
 function buildCobrancaEmail(opts: { tituloId: number; baseUrl: string; clientName: string; description: string; amount: string; dueDate: Date; competencia?: string | null; pix?: any; reminder?: boolean }): string {
   const venc = opts.dueDate.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
-  const compUrl = `${opts.baseUrl}/cobranca/${opts.tituloId}`;
+  const tok = signCobranca(opts.tituloId);
+  const compUrl = `${opts.baseUrl}/cobranca/${opts.tituloId}?t=${tok}`;
   const reminderBanner = opts.reminder
     ? `<div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px"><strong>Lembrete:</strong> identificamos que a cobrança abaixo continua em aberto. Se já pagou, é só enviar o comprovante.</div>`
     : "";
@@ -49,7 +51,7 @@ function buildCobrancaEmail(opts: { tituloId: number; baseUrl: string; clientNam
     pixBlock = `<tr><td style="padding:16px 0;border-top:1px solid #eee">
       <strong>Pague com PIX</strong><br/>
       <div style="text-align:center;margin:10px 0">
-        <img src="${opts.baseUrl}/api/financeiro/pix-qr/${opts.tituloId}.png" alt="QR Code PIX" width="200" height="200" style="border:1px solid #eee;border-radius:8px"/>
+        <img src="${opts.baseUrl}/api/financeiro/pix-qr/${opts.tituloId}.png?t=${tok}" alt="QR Code PIX" width="200" height="200" style="border:1px solid #eee;border-radius:8px"/>
       </div>
       ${copiaCola ? `<div style="font-size:12px;color:#555;margin-bottom:4px">PIX copia e cola:</div>
       <div style="word-break:break-all;background:#f3f4f6;padding:10px;border-radius:6px;font-family:monospace;font-size:11px">${copiaCola}</div>` : ""}
@@ -512,7 +514,7 @@ export const financeiroRouter = router({
     if (!phone || phone.length < 10) throw new Error("Cliente sem telefone válido cadastrado");
     const pix = (await db.select().from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
     const venc = new Date(row.dueDate as any).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
-    const link = `${APP_URL}/cobranca/${row.id}`;
+    const link = `${APP_URL}/cobranca/${row.id}?t=${signCobranca(row.id)}`;
     let msg = `*Equilibrium Consultoria Contábil*\n\nOlá, ${row.clientName || "cliente"}! Segue sua cobrança referente a *${row.description}*${row.competencia ? ` (${row.competencia})` : ""}.\n\n💰 Valor: *${brl(row.amount)}*\n📅 Vencimento: ${venc}`;
     if (pix?.active && pix?.pixKey) {
       let copiaCola = "";

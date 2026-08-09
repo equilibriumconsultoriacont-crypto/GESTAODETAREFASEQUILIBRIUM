@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { financialTitulos, financialPayments, financialConfig, clients } from "../drizzle/schema";
 import { buildPixBRCode, pixQrPngBuffer } from "./pix";
+import { verifyCobranca } from "./cobrancaToken";
 
 // Rotas PÚBLICAS do financeiro (o cliente acessa pelo link do e-mail de cobrança, sem login).
 // Observação: identificam a cobrança pelo id do título. Numa evolução, dá para usar um token
@@ -25,6 +26,7 @@ export function registerFinanceiroRoutes(app: Express) {
     const db = await getDb();
     if (!db) return res.status(500).json({ error: "sem banco" });
     const id = parseInt(req.params.id);
+    if (!verifyCobranca(id, req.query.t as string)) return res.status(403).json({ error: "link inválido" });
     const row = (await db
       .select({ id: financialTitulos.id, description: financialTitulos.description, amount: financialTitulos.amount, competencia: financialTitulos.competencia, dueDate: financialTitulos.dueDate, status: financialTitulos.status, clientName: clients.name })
       .from(financialTitulos).leftJoin(clients, eq(clients.id, financialTitulos.clientId)).where(eq(financialTitulos.id, id)).limit(1))[0];
@@ -44,6 +46,7 @@ export function registerFinanceiroRoutes(app: Express) {
     const db = await getDb();
     if (!db) return res.status(500).end();
     const id = parseInt((req.params as any).id);
+    if (!verifyCobranca(id, req.query.t as string)) return res.status(403).end();
     const row = (await db.select({ amount: financialTitulos.amount }).from(financialTitulos).where(eq(financialTitulos.id, id)).limit(1))[0];
     const cfg = (await db.select().from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
     if (!row || !cfg?.active || !cfg?.pixKey) return res.status(404).end();
@@ -64,6 +67,7 @@ export function registerFinanceiroRoutes(app: Express) {
     const db = await getDb();
     if (!db) return res.status(500).json({ error: "sem banco" });
     const id = parseInt(req.params.id);
+    if (!verifyCobranca(id, (req.query.t as string) || req.body?.t)) return res.status(403).json({ error: "link inválido" });
     const dataBase64 = (req.body?.dataBase64 || "").toString();
     const amount = (req.body?.amount || "").toString().trim();
     const note = (req.body?.note || "").toString().slice(0, 500);

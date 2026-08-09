@@ -11,6 +11,10 @@ const brl = (v: any) => "R$ " + Number(String(v ?? 0).replace(",", ".")).toLocal
 export default function CobrancaPublicaPage() {
   const params = useParams();
   const id = (params as any).id;
+  // Token assinado que vem no link do e-mail (?t=...). Sem ele o backend recusa
+  // (evita adivinhação de ids de cobrança). Repassado em todas as chamadas.
+  const t = new URLSearchParams(window.location.search).get("t") || "";
+  const q = `?t=${encodeURIComponent(t)}`;
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -20,7 +24,7 @@ export default function CobrancaPublicaPage() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/financeiro/cobranca/${id}`)
+    fetch(`/api/financeiro/cobranca/${id}${q}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(r)))
       .then(setData)
       .catch(() => setErr("Cobrança não encontrada."))
@@ -34,7 +38,7 @@ export default function CobrancaPublicaPage() {
     setSending(true);
     try {
       const dataBase64: string = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(file); });
-      const resp = await fetch(`/api/financeiro/cobranca/${id}/comprovante`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataBase64 }) });
+      const resp = await fetch(`/api/financeiro/cobranca/${id}/comprovante${q}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataBase64, t }) });
       const j = await resp.json();
       if (j?.ok) setDone(true); else alert(j?.error || "Não foi possível enviar.");
     } catch { alert("Não foi possível ler o arquivo."); }
@@ -68,7 +72,7 @@ export default function CobrancaPublicaPage() {
         {!pago && data.pixCopiaCola && (
           <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, marginTop: 14, textAlign: "center" }}>
             <div style={{ fontSize: 14, fontWeight: 650, marginBottom: 12 }}>Pague com PIX</div>
-            <img src={`/api/financeiro/pix-qr/${id}.png`} alt="QR Code PIX" width={220} height={220} style={{ borderRadius: 10, background: "#fff", padding: 6 }} />
+            <img src={`/api/financeiro/pix-qr/${id}.png${q}`} alt="QR Code PIX" width={220} height={220} style={{ borderRadius: 10, background: "#fff", padding: 6 }} />
             <button onClick={copy} style={{ display: "block", width: "100%", marginTop: 14, background: C.panelHi, border: `1px solid ${C.border}`, color: copied ? C.green : C.brandText, borderRadius: 10, padding: "11px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
               {copied ? "✓ Copiado!" : "Copiar PIX copia e cola"}
             </button>
