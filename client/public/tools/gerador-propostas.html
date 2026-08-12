@@ -190,6 +190,7 @@ tr:last-child td{border-bottom:0}
       <button class="mode on" data-mode="propostas">Propostas</button>
       <button class="mode" data-mode="declaracao">Declaração</button>
       <button class="mode" data-mode="solicitacao">Solicitação</button>
+      <button class="mode" data-mode="cjucesp">Contrato JUCESP</button>
     </div>
   </div>
   <div class="subnav">
@@ -204,6 +205,12 @@ tr:last-child td{border-bottom:0}
 </header>
 
 <main>
+
+<!-- ============ CONTRATO JUCESP (iframe — ferramenta própria) ============ -->
+<section class="tab" id="tab-cjucesp">
+  <iframe id="cjFrame" data-src="gerador-contratos-jucesp.html" title="Gerador de Contratos JUCESP"
+    style="width:100%;height:calc(100vh - 108px);min-height:520px;border:0;border-radius:12px;background:#0c1615;display:block"></iframe>
+</section>
 
 <!-- ============ PROPOSTA ============ -->
 <section class="tab on" id="tab-prop">
@@ -2360,9 +2367,10 @@ function setMode(mode){
     for(var k=0;k<tabs.length;k++) tabs[k].classList.toggle('on', tabs[k].id==='tab-'+tab);
   } else {
     if(sub) sub.style.display='none';
-    var target = mode==='solicitacao' ? 'tab-solic' : 'tab-decl';
+    var target = mode==='solicitacao' ? 'tab-solic' : mode==='cjucesp' ? 'tab-cjucesp' : 'tab-decl';
     for(var j=0;j<tabs.length;j++) tabs[j].classList.toggle('on', tabs[j].id===target);
-    if(mode==='solicitacao') solicUI(); else declUI();
+    if(mode==='cjucesp'){ var fr=document.getElementById('cjFrame'); if(fr && !fr.src && fr.getAttribute('data-src')) fr.src=fr.getAttribute('data-src'); }
+    else if(mode==='solicitacao') solicUI(); else declUI();
   }
 }
 document.addEventListener('input', function(e){ if(!e.target)return; if(e.target.id==='dRend')dRendExt(); if(e.target.id==='dMesIni')dGera12(); });
