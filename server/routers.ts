@@ -5,6 +5,7 @@ import { COOKIE_NAME, SESSION_DURATION_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router, staffProcedure } from "./_core/trpc";
+import { isFullAdmin, isLimitedAdmin, assertClientInScope, getScopeClientIds } from "./_core/scope";
 import { normalizeDepartment } from "@shared/departments";
 import {
   addClientTaskTemplate,
@@ -19,6 +20,9 @@ import {
   listTaskCatalogs,
   updateTaskCatalog,
   createClient,
+  listPendingClients,
+  setClientApproval,
+  linkUserClient,
   createPendingClientUser,
   getClientRevenue,
   getClientRevenueYear,
@@ -73,9 +77,23 @@ import { financeiroRouter } from "./financeiroRouter";
 
 // ─── Clients Router ───────────────────────────────────────────────────────────
 const clientsRouter = router({
+  // Lista conforme o ESCOPO do usuário: ADM total vê todas; funcionário/ADM Limitado veem
+  // só as empresas vinculadas a eles. É o que fecha o vazamento do dropdown de clientes nas
+  // Tarefas — e em qualquer outra tela que usa esta mesma lista.
   list: staffProcedure
     .input(z.object({ includeInactive: z.boolean().optional() }))
-    .query(({ input }) => listClients(input.includeInactive)),
+    .query(async ({ input, ctx }) => {
+      const all = await listClients(input.includeInactive);
+      if (isFullAdmin(ctx.user)) return all;
+      const allowed = await getScopeClientIds(ctx.user!.id);
+      return all.filter((c) => allowed.has(c.id));
+    }),
+
+  // Fila de empresas pendentes (cadastradas por um ADM Limitado). Só o ADM total enxerga.
+  pendingApprovals: adminProcedure.query(async ({ ctx }) => {
+    if (!isFullAdmin(ctx.user)) return [];
+    return listPendingClients();
+  }),
 
   create: adminProcedure
     .input(
@@ -89,8 +107,18 @@ const clientsRouter = router({
         notes: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
-      const id = await createClient({ ...input, email: input.email.trim().toLowerCase(), active: true });
+    .mutation(async ({ input, ctx }) => {
+      // ADM Limitado pode cadastrar, mas a empresa entra PENDENTE de aprovação do ADM total —
+      // e já no escopo do criador, para ele poder trabalhar. ADM total já cadastra aprovada.
+      const limited = isLimitedAdmin(ctx.user);
+      const id = await createClient({
+        ...input,
+        email: input.email.trim().toLowerCase(),
+        active: true,
+        approvalStatus: limited ? "pending" : "approved",
+        createdByUserId: ctx.user!.id,
+      });
+      if (limited) await linkUserClient(ctx.user!.id, id);
       // Cria automaticamente o acesso do cliente (senha inicial 123456, troca no 1º login).
       try {
         const email = input.email.trim().toLowerCase();
@@ -99,7 +127,7 @@ const clientsRouter = router({
           await provisionClientAccess(email, id, input.name);
         }
       } catch { /* não bloqueia a criação do cliente */ }
-      return { id };
+      return { id, pending: limited };
     }),
 
   update: adminProcedure
@@ -116,7 +144,8 @@ const clientsRouter = router({
         active: z.boolean().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await assertClientInScope(ctx.user, input.id); // ADM Limitado só mexe nas empresas dele
       const { id, ...data } = input;
       if (data.email) data.email = data.email.trim().toLowerCase();
       await updateClient(id, data);
@@ -128,6 +157,15 @@ const clientsRouter = router({
           }
         } catch { /* ignore */ }
       }
+      return { success: true };
+    }),
+
+  // Aprovar / rejeitar uma empresa pendente — exclusivo do ADM total.
+  approve: adminProcedure
+    .input(z.object({ id: z.number(), decision: z.enum(["approve", "reject"]) }))
+    .mutation(async ({ input, ctx }) => {
+      if (!isFullAdmin(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Apenas o administrador geral aprova empresas." });
+      await setClientApproval(input.id, input.decision === "approve" ? "approved" : "rejected");
       return { success: true };
     }),
 });
@@ -179,6 +217,12 @@ const recurringTasksRouter = router({
 });
 
 // ─── Tasks Router ─────────────────────────────────────────────────────────────
+// Garante que o usuário pode agir sobre a tarefa, pela empresa dela. ADM total passa sempre;
+// ADM Limitado / funcionário só nas empresas vinculadas a eles.
+async function assertTaskScope(user: any, taskId: number) {
+  const t = await getTaskById(taskId);
+  if (t) await assertClientInScope(user, t.clientId);
+}
 const tasksRouter = router({
   list: staffProcedure
     .input(
@@ -191,15 +235,21 @@ const tasksRouter = router({
     .query(async ({ input, ctx }) => {
       const tasks = await listTasks(input);
 
-      // Admin vê tudo. Colaborador vê só tarefas das empresas vinculadas
-      // E dos departamentos que ele faz parte.
-      if (ctx.user?.role === "admin") return tasks;
+      // ADM total vê tudo.
+      if (isFullAdmin(ctx.user)) return tasks;
 
-      const { getUserClients, getUserDepartments, listDepartments } = await import("./db");
       const userId = ctx.user!.id;
-      const allowedClientIds = new Set(await getUserClients(userId));
-      const userDeptIds = await getUserDepartments(userId);
+      const allowedClientIds = await getScopeClientIds(userId);
 
+      // ADM Limitado é admin das empresas dele → vê TODAS as tarefas dessas empresas,
+      // sem recorte por departamento.
+      if (isLimitedAdmin(ctx.user)) {
+        return tasks.filter((t) => allowedClientIds.has(t.clientId));
+      }
+
+      // Funcionário: recorte por empresa E pelos departamentos que ele faz parte.
+      const { getUserDepartments, listDepartments } = await import("./db");
+      const userDeptIds = await getUserDepartments(userId);
       // Converter IDs de departamento para NOMES canônicos (a tarefa pode ter
       // gravado o código legado OU o nome — normalizamos os dois lados).
       const allDepts = await listDepartments(true);
@@ -216,9 +266,10 @@ const tasksRouter = router({
 
   getById: staffProcedure
     .input(z.object({ id: z.number() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const task = await getTaskById(input.id);
       if (!task) throw new TRPCError({ code: "NOT_FOUND" });
+      await assertClientInScope(ctx.user, task.clientId);
       return task;
     }),
 
@@ -250,7 +301,8 @@ const tasksRouter = router({
         finVencimento: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await assertClientInScope(ctx.user, input.clientId); // ADM Limitado só cria em empresa dele
       const { finVencimento, ...rest } = input;
       const id = await createTask({
         ...rest,
@@ -279,6 +331,7 @@ const tasksRouter = router({
     .mutation(async ({ input, ctx }) => {
       const { logActivity } = await import("./db");
       const before = await getTaskById(input.id);
+      if (before) await assertClientInScope(ctx.user, before.clientId);
       const now = new Date();
       const extra: Record<string, any> = {};
       if (input.status === "CONCLUIDA") extra.completedAt = now;
@@ -309,7 +362,8 @@ const tasksRouter = router({
         finVencimento: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await assertTaskScope(ctx.user, input.id);
       const { id, dueDate, finVencimento, ...rest } = input;
       await updateTask(id, {
         ...rest,
@@ -324,7 +378,8 @@ const tasksRouter = router({
 
   delete: adminProcedure
     .input(z.object({ id: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await assertTaskScope(ctx.user, input.id);
       // Cancela a conta a receber vinculada (Movimenta financeiro), se houver e não estiver paga
       const { getDb } = await import("./db");
       const db = await getDb();
@@ -1618,9 +1673,14 @@ const departmentsRouter = router({
 
 // ─── Users Management Router (admin only) ─────────────────────────────────────
 const usersRouter = router({
-  list: adminProcedure.query(async () => {
+  list: adminProcedure.query(async ({ ctx }) => {
     const { listUsers, getUserDepartments, getUserClients, getUserModules } = await import("./db");
-    const users = await listUsers();
+    let users = await listUsers();
+    // ADM Limitado só enxerga a si mesmo + os funcionários que ele cadastrou.
+    if (isLimitedAdmin(ctx.user)) {
+      const meId = ctx.user!.id;
+      users = users.filter((u) => u.id === meId || (u as any).createdByUserId === meId);
+    }
     // Enriquecer com departamentos, empresas e módulos de cada usuário
     const enriched = await Promise.all(users.map(async (u) => ({
       ...u,
@@ -1638,26 +1698,40 @@ const usersRouter = router({
       email: z.string().email(),
       password: z.string().min(6),
       role: z.enum(["admin", "user"]).default("user"),
+      limitedAccess: z.boolean().default(false), // ADM/Funcionário Limitado (restrito às empresas)
       departmentIds: z.array(z.number()).default([]),
       clientIds: z.array(z.number()).default([]),
       modules: z.array(z.object({ module: z.string(), level: z.string() })).default([]),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const { createLocalUser, setUserDepartments, setUserClients, setUserModules, getUserByEmailAndRole } = await import("./db");
       const bcryptjs = (await import("bcryptjs")).default;
+
+      // Papel e escopo dependem de QUEM está criando.
+      let role: "admin" | "user" = input.role;
+      let limitedAccess = input.limitedAccess;
+      let clientIds = input.clientIds;
+      if (isLimitedAdmin(ctx.user)) {
+        // ADM Limitado só cria Funcionário Limitado (nunca outro admin) e só nas empresas dele.
+        role = "user";
+        limitedAccess = true;
+        const allowed = await getScopeClientIds(ctx.user!.id);
+        clientIds = clientIds.filter((id) => allowed.has(id));
+      }
 
       // Mesmo e-mail pode ter contas em papéis diferentes (ex.: já é "cliente" e agora vira
       // também "administrador"), com senhas diferentes. Só bloqueia duplicidade DENTRO do
       // mesmo papel.
-      const existing = await getUserByEmailAndRole(input.email, input.role);
+      const existing = await getUserByEmailAndRole(input.email, role);
       if (existing) throw new TRPCError({ code: "CONFLICT", message: "Já existe um usuário com esse e-mail nesse mesmo perfil" });
 
       const passwordHash = await bcryptjs.hash(input.password, 10);
       const userId = await createLocalUser({
-        name: input.name, email: input.email, passwordHash, role: input.role,
+        name: input.name, email: input.email, passwordHash, role,
+        limitedAccess, createdByUserId: ctx.user!.id,
       });
       await setUserDepartments(userId, input.departmentIds);
-      await setUserClients(userId, input.clientIds);
+      await setUserClients(userId, clientIds);
       await setUserModules(userId, input.modules);
       return { id: userId };
     }),
@@ -1669,23 +1743,47 @@ const usersRouter = router({
       email: z.string().email().optional(),
       password: z.string().min(6).optional(),
       role: z.enum(["admin", "user"]).optional(),
+      limitedAccess: z.boolean().optional(),
       departmentIds: z.array(z.number()).optional(),
       clientIds: z.array(z.number()).optional(),
       modules: z.array(z.object({ module: z.string(), level: z.string() })).optional(),
     }))
-    .mutation(async ({ input }) => {
-      const { updateUserBasic, setUserDepartments, setUserClients, setUserModules } = await import("./db");
+    .mutation(async ({ input, ctx }) => {
+      const { updateUserBasic, setUserDepartments, setUserClients, setUserModules, getUserById } = await import("./db");
       const bcryptjs = (await import("bcryptjs")).default;
+
+      const target = await getUserById(input.id);
+      if (!target) throw new TRPCError({ code: "NOT_FOUND" });
+
+      // ADM Limitado só edita a si mesmo ou os funcionários que cadastrou — e não escala poder.
+      const limitedActor = isLimitedAdmin(ctx.user);
+      if (limitedActor) {
+        const meId = ctx.user!.id;
+        const inLineage = target.id === meId || (target as any).createdByUserId === meId;
+        if (!inLineage) throw new TRPCError({ code: "FORBIDDEN", message: "Você só pode editar os usuários que cadastrou." });
+      }
 
       const basic: any = {};
       if (input.name !== undefined) basic.name = input.name;
       if (input.email !== undefined) basic.email = input.email;
-      if (input.role !== undefined) basic.role = input.role;
       if (input.password) basic.passwordHash = await bcryptjs.hash(input.password, 10);
+      // role e limitedAccess só o ADM total altera.
+      if (!limitedActor) {
+        if (input.role !== undefined) basic.role = input.role;
+        if (input.limitedAccess !== undefined) basic.limitedAccess = input.limitedAccess;
+      }
       if (Object.keys(basic).length > 0) await updateUserBasic(input.id, basic);
 
       if (input.departmentIds !== undefined) await setUserDepartments(input.id, input.departmentIds);
-      if (input.clientIds !== undefined) await setUserClients(input.id, input.clientIds);
+      if (input.clientIds !== undefined) {
+        let cids = input.clientIds;
+        if (limitedActor) {
+          const allowed = await getScopeClientIds(ctx.user!.id);
+          cids = cids.filter((id) => allowed.has(id));
+        }
+        // ADM Limitado não mexe no PRÓPRIO escopo de empresas (isso é do ADM total).
+        if (!(limitedActor && target.id === ctx.user!.id)) await setUserClients(input.id, cids);
+      }
       if (input.modules !== undefined) await setUserModules(input.id, input.modules);
       return { success: true };
     }),
@@ -1694,7 +1792,14 @@ const usersRouter = router({
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
       if (input.id === ctx.user?.id) throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível excluir a si mesmo" });
-      const { deleteUser } = await import("./db");
+      const { deleteUser, getUserById } = await import("./db");
+      // ADM Limitado só exclui os funcionários que ele cadastrou.
+      if (isLimitedAdmin(ctx.user)) {
+        const target = await getUserById(input.id);
+        if (!target || (target as any).createdByUserId !== ctx.user!.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você só pode excluir os usuários que cadastrou." });
+        }
+      }
       await deleteUser(input.id);
       return { success: true };
     }),

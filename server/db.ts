@@ -241,6 +241,22 @@ export async function updateClient(id: number, data: Partial<InsertClient>): Pro
   await db.update(clients).set(normalized).where(eq(clients.id, id));
 }
 
+// Empresas aguardando aprovação de um ADM total (cadastradas por um ADM Limitado).
+export async function listPendingClients(): Promise<Client[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(clients).where(eq(clients.approvalStatus, "pending")).orderBy(clients.createdAt);
+}
+
+// Aprova (vira empresa normal) ou rejeita (fica inativa e some das listagens) uma empresa pendente.
+export async function setClientApproval(clientId: number, status: "approved" | "rejected"): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const patch: any = { approvalStatus: status };
+  if (status === "rejected") patch.active = false;
+  await db.update(clients).set(patch).where(eq(clients.id, clientId));
+}
+
 // ─── Recurring Tasks ──────────────────────────────────────────────────────────
 // Fallback: se a coluna dueDateAdjust ainda nao existir no banco (migracao
 // pendente ou falha), seleciona apenas as colunas seguras e aplica o padrao —
@@ -356,8 +372,29 @@ export async function getTaskById(id: number): Promise<Task | undefined> {
   try {
     const result = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
     return result[0];
-  } catch {
-    return undefined;
+  } catch (err: any) {
+    // Mesma resiliência do listTasks: se o schema Drizzle tiver uma coluna que o banco
+    // ainda não tem, o SELECT * quebra. Antes isso devolvia undefined → a tela mostrava
+    // "tarefa não encontrada" para uma tarefa que EXISTE (aparecia na lista, que já tinha
+    // esse fallback). Aqui buscamos por colunas explícitas garantidas.
+    console.error("[DB] getTaskById drizzle failed, using raw SQL:", err?.message);
+    try {
+      const pool = getPool();
+      const [rows] = await pool.query(
+        `SELECT id, clientId, recurringTaskId, title, description, taskType,
+          competencia, dueDate, status, notes, completedAt, createdAt, updatedAt,
+          COALESCE(priority, 'NORMAL') as priority,
+          COALESCE(department, 'GERAL') as department,
+          COALESCE(sendToClient, 1) as sendToClient,
+          assignedTo, internalDeadline, waitingSince, startedAt
+          FROM tasks WHERE id = ? LIMIT 1`,
+        [id]
+      ) as [any[], any];
+      return rows[0] as Task | undefined;
+    } catch (fallbackErr: any) {
+      console.error("[DB] getTaskById raw SQL also failed:", fallbackErr?.message);
+      return undefined;
+    }
   }
 }
 
@@ -371,7 +408,7 @@ export async function createTask(data: InsertTask): Promise<number> {
     // Se falhar por coluna nova não existente, tenta sem os campos opcionais
     if (err?.code === "ER_BAD_FIELD_ERROR") {
       console.warn("[DB] createTask: column missing, retrying without new fields:", err.message);
-      const { priority, department, assignedTo, internalDeadline, waitingSince, startedAt, ...baseData } = data as any;
+      const { priority, department, assignedTo, internalDeadline, waitingSince, startedAt, valor, clientPaid, movimentaFinanceiro, finValor, finVencimento, ...baseData } = data as any;
       const result = await db.insert(tasks).values(baseData);
       return result[0].insertId;
     }
@@ -388,7 +425,7 @@ export async function updateTask(id: number, data: Partial<InsertTask>): Promise
     // Se falhar por coluna nova, tenta sem campos opcionais
     if (err?.code === "ER_BAD_FIELD_ERROR") {
       console.warn("[DB] updateTask: column missing, retrying without new fields:", err.message);
-      const { priority, department, assignedTo, internalDeadline, waitingSince, startedAt, ...baseData } = data as any;
+      const { priority, department, assignedTo, internalDeadline, waitingSince, startedAt, valor, clientPaid, movimentaFinanceiro, finValor, finVencimento, ...baseData } = data as any;
       if (Object.keys(baseData).length > 0) {
         await db.update(tasks).set(baseData).where(eq(tasks.id, id));
       }
@@ -866,12 +903,24 @@ export async function setUserClients(userId: number, clientIds: number[]) {
   }
 }
 
-export async function createLocalUser(data: { name: string; email: string; passwordHash: string; role: "admin" | "user" }): Promise<number> {
+// Vincula UMA empresa a um usuário sem apagar as demais (idempotente). Usado quando um
+// ADM Limitado cadastra uma empresa nova — ela já entra no escopo dele.
+export async function linkUserClient(userId: number, clientId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await db.select().from(userClients)
+    .where(and(eq(userClients.userId, userId), eq(userClients.clientId, clientId))).limit(1);
+  if (existing.length === 0) await db.insert(userClients).values({ userId, clientId });
+}
+
+export async function createLocalUser(data: { name: string; email: string; passwordHash: string; role: "admin" | "user"; limitedAccess?: boolean; createdByUserId?: number | null }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB indisponível");
   const result = await db.insert(users).values({
     name: data.name, email: data.email, passwordHash: data.passwordHash,
     role: data.role, loginMethod: "local",
+    limitedAccess: data.limitedAccess ?? false,
+    createdByUserId: data.createdByUserId ?? null,
   });
   return result[0].insertId;
 }
@@ -884,7 +933,7 @@ export async function deleteUser(userId: number) {
   await db.delete(users).where(eq(users.id, userId));
 }
 
-export async function updateUserBasic(userId: number, data: { name?: string; email?: string; role?: "admin" | "user"; passwordHash?: string }) {
+export async function updateUserBasic(userId: number, data: { name?: string; email?: string; role?: "admin" | "user"; passwordHash?: string; limitedAccess?: boolean }) {
   const db = await getDb();
   if (!db) return;
   await db.update(users).set(data).where(eq(users.id, userId));

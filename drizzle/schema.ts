@@ -19,6 +19,14 @@ export const users = mysqlTable("users", {
   loginMethod: varchar("loginMethod", { length: 64 }).default("local").notNull(),
   role: mysqlEnum("role", ["user", "admin", "client"]).default("user").notNull(),
   clientId: int("clientId"), // preenchido quando role = "client"
+  // ADM Limitado (role=admin) / Funcionário Limitado (role=user): quando true, o usuário só
+  // enxerga e mexe nas EMPRESAS vinculadas a ele (userClients), em TODOS os módulos —
+  // inclusive Atendimento e Financeiro. O `role` continua definindo o PODER (admin vs
+  // funcionário); esta flag define a RESTRIÇÃO por empresa.
+  limitedAccess: boolean("limitedAccess").default(false).notNull(),
+  // Quem cadastrou este usuário. Um ADM Limitado só enxerga, no gerenciamento de usuários,
+  // a si mesmo + os funcionários que ele registrou (createdByUserId = id dele).
+  createdByUserId: int("createdByUserId"),
   // Acesso do cliente criado automaticamente com senha padrão; obriga a definir
   // a própria senha no primeiro login.
   mustChangePassword: boolean("mustChangePassword").default(false).notNull(),
@@ -41,6 +49,11 @@ export const clients = mysqlTable("clients", {
   phone: varchar("phone", { length: 20 }),
   notes: text("notes"),
   active: boolean("active").default(true).notNull(),
+  // Empresas cadastradas por um ADM Limitado entram como "pending" e precisam da aprovação
+  // de um ADM total para virar "approved". 'rejected' = recusada (fica inativa). Empresas
+  // criadas por ADM total já nascem "approved".
+  approvalStatus: varchar("approvalStatus", { length: 20 }).default("approved").notNull(),
+  createdByUserId: int("createdByUserId"), // quem cadastrou (para a fila de aprovação)
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -481,7 +494,10 @@ export const financialClientConfig = mysqlTable("fin_client_config", {
   weekendRule: mysqlEnum("weekendRule", ["mantem", "antecipa", "posterga"]).default("mantem").notNull(),
   billingEmail: varchar("billingEmail", { length: 320 }), // opcional; vazio = usa o e-mail do cadastro
   recurring: boolean("recurring").default(true).notNull(), // recorrente (todo mês) ou mês único
-  activated: boolean("activated").default(false).notNull(), // "play" dado — gera cobrança
+  activated: boolean("activated").default(false).notNull(), // "play" dado — gera o título (a receber)
+  // Se a cobrança é ENVIADA automaticamente. Desligado = o honorário entra no "a receber"
+  // (para ter noção), mas nenhuma cobrança é disparada pela régua. Independe do play.
+  autoSend: boolean("autoSend").default(true).notNull(),
   lastGenComp: varchar("lastGenComp", { length: 7 }), // última competência (MM/AAAA) já gerada
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -557,6 +573,9 @@ export const financialPayables = mysqlTable("fin_payables", {
   id: int("id").autoincrement().primaryKey(),
   description: varchar("description", { length: 255 }).notNull(),
   supplier: varchar("supplier", { length: 200 }), // fornecedor/credor
+  // Empresa vinculada. Nulo = despesa geral do escritório (visível só ao ADM total).
+  // Preenchido = despesa daquela empresa (o ADM Limitado só vê/lança as das empresas dele).
+  clientId: int("clientId"),
   category: varchar("category", { length: 80 }), // ex: Aluguel, Salários, Impostos, Software
   amount: varchar("amount", { length: 20 }).notNull(),
   dueDate: timestamp("dueDate").notNull(),

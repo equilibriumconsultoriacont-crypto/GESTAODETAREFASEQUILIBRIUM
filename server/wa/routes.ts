@@ -1,7 +1,7 @@
 // Endpoints REST do painel de atendimento.
 
 import type { Express } from "express";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import {
   waContacts,
@@ -98,6 +98,36 @@ async function auth(req: any, res: any, adminOnly = false) {
   return user;
 }
 
+// ── Recorte por empresa no Atendimento (usuários "limitados") ─────────────────
+// Só ADM Limitado e Funcionário Limitado (limitedAccess=true) ficam restritos às conversas
+// das empresas vinculadas a eles. Retorna null = sem restrição (ADM total / funcionário comum).
+async function waScopeIds(user: any): Promise<number[] | null> {
+  if (!user?.limitedAccess) return null;
+  const { getUserClients } = await import("../db");
+  return getUserClients(user.id);
+}
+// Empresa (clientId) da conversa, via contato. null se não vinculada.
+async function convClientId(db: any, convId: number): Promise<number | null> {
+  const r = (await db
+    .select({ c: waContacts.clientId })
+    .from(waConversations)
+    .innerJoin(waContacts, eq(waConversations.contactId, waContacts.id))
+    .where(eq(waConversations.id, convId)).limit(1))[0];
+  return r?.c ?? null;
+}
+// Bloqueia usuário limitado de acessar uma conversa fora das empresas dele. Responde 403 e
+// retorna false quando barra; true quando pode seguir.
+async function guardConvScope(db: any, user: any, convId: number, res: any): Promise<boolean> {
+  const scope = await waScopeIds(user);
+  if (!scope) return true;
+  const cid = await convClientId(db, convId);
+  if (cid == null || !scope.includes(cid)) {
+    res.status(403).json({ error: "conversa fora do seu acesso" });
+    return false;
+  }
+  return true;
+}
+
 export function registerWaRoutes(app: Express) {
   // Porteiro de segurança: garante que toda rota /api/wa responda em até 20s. Se um
   // endpoint travar (estourar erro sem responder), isto devolve um 500 legível em vez de
@@ -131,7 +161,11 @@ export function registerWaRoutes(app: Express) {
     const db = await getDb();
     if (!db) return res.json([]);
     try {
-    const isAdmin = user.role === "admin";
+    // Usuário "limitado" (ADM Limitado / Funcionário Limitado) enxerga tudo DENTRO das
+    // empresas dele — como um admin, mas restrito. Sem empresa vinculada = não vê nada.
+    const scope = await waScopeIds(user);
+    if (scope && scope.length === 0) return res.json([]);
+    const isAdmin = user.role === "admin" || !!scope; // limitado vê todos os status (das empresas dele)
     const filter = (req.query.filter as string) || "queue";
 
     let where: any;
@@ -153,6 +187,9 @@ export function registerWaRoutes(app: Express) {
         ? sql`${waConversations.status} in ('queue','active')`
         : sql`${waConversations.status} = 'queue' or ${waConversations.assignedAgentId} = ${user.id}`;
     }
+
+    // Recorte por empresa: só as conversas de contatos vinculados às empresas do usuário.
+    if (scope) where = and(where, inArray(waContacts.clientId, scope));
 
     const rows = await db
       .select({
@@ -186,10 +223,17 @@ export function registerWaRoutes(app: Express) {
 
   // Total de não lidas (para o badge do card no Hub)
   app.get("/api/wa/unread", async (req, res) => {
-    if (!(await auth(req, res))) return;
+    const user = await auth(req, res);
+    if (!user) return;
     const db = await getDb();
     if (!db) return res.json({ count: 0 });
-    const r = await db.select({ total: sql<number>`coalesce(sum(unreadCount),0)` }).from(waConversations);
+    const scope = await waScopeIds(user);
+    if (scope && scope.length === 0) return res.json({ count: 0 });
+    const r = scope
+      ? await db.select({ total: sql<number>`coalesce(sum(${waConversations.unreadCount}),0)` })
+          .from(waConversations).innerJoin(waContacts, eq(waConversations.contactId, waContacts.id))
+          .where(inArray(waContacts.clientId, scope))
+      : await db.select({ total: sql<number>`coalesce(sum(${waConversations.unreadCount}),0)` }).from(waConversations);
     res.json({ count: Number(r[0]?.total || 0) });
   });
 
@@ -217,6 +261,7 @@ export function registerWaRoutes(app: Express) {
     const db = await getDb();
     if (!db) return res.status(500).json({ error: "sem banco" });
     const id = parseInt(req.params.id);
+    if (!(await guardConvScope(db, user, id, res))) return;
     const title = (req.body?.title || "").toString().trim();
     const taskType = (req.body?.taskType || "OUTROS").toString();
     const competencia = (req.body?.competencia || "").toString().trim();
@@ -313,7 +358,8 @@ export function registerWaRoutes(app: Express) {
   app.get("/api/wa/reports", async (req, res) => {
     const user = await auth(req, res);
     if (!user) return;
-    if (user.role !== "admin") return res.status(403).json({ error: "apenas administradores" });
+    // Relatórios são visão do escritório inteiro → só ADM total (não o ADM Limitado).
+    if (user.role !== "admin" || user.limitedAccess) return res.status(403).json({ error: "apenas administradores" });
     const db = await getDb();
     if (!db) return res.json({});
     try {
@@ -371,10 +417,12 @@ export function registerWaRoutes(app: Express) {
 
   // Histórico de uma conversa
   app.get("/api/wa/conversations/:id/messages", async (req, res) => {
-    if (!(await auth(req, res))) return;
+    const user = await auth(req, res);
+    if (!user) return;
     const db = await getDb();
     if (!db) return res.json([]);
     const id = parseInt(req.params.id);
+    if (!(await guardConvScope(db, user, id, res))) return;
     // Mostra o HISTÓRICO COMPLETO do contato (todas as conversas dele), não só a conversa
     // atual — assim, quando uma conversa é concluída e o cliente escreve de novo (abrindo
     // uma nova conversa para fins de fila/metricas), o atendente continua vendo as mensagens
@@ -416,6 +464,7 @@ export function registerWaRoutes(app: Express) {
     const id = parseInt(req.params.id);
     const text = (req.body?.text || "").toString().trim();
     if (!text) return res.status(400).json({ error: "mensagem vazia" });
+    if (!(await guardConvScope(db, user, id, res))) return;
 
     const conv = (await db.select().from(waConversations).where(eq(waConversations.id, id)).limit(1))[0];
     if (!conv) return res.status(404).json({ error: "conversa não encontrada" });
@@ -481,6 +530,7 @@ export function registerWaRoutes(app: Express) {
     const id = parseInt(req.params.id);
     const { type, dataBase64, mimetype, fileName, caption } = req.body || {};
     if (!dataBase64) return res.status(400).json({ error: "arquivo vazio" });
+    if (!(await guardConvScope(db, user, id, res))) return;
     const { jid, conv, contact } = await convJid(db, id);
     if (!jid || !conv || !contact) return res.status(404).json({ error: "conversa não encontrada" });
     try {
@@ -748,9 +798,12 @@ export function registerWaRoutes(app: Express) {
 
   // Contatos salvos (com o cliente vinculado, se houver)
   app.get("/api/wa/contacts", async (req, res) => {
-    if (!(await auth(req, res))) return;
+    const user = await auth(req, res);
+    if (!user) return;
     const db = await getDb();
     if (!db) return res.json([]);
+    const scope = await waScopeIds(user);
+    if (scope && scope.length === 0) return res.json([]);
     const rows = await db
       .select({
         id: waContacts.id, waNumber: waContacts.waNumber, name: waContacts.name,
@@ -758,6 +811,7 @@ export function registerWaRoutes(app: Express) {
         clientName: sql<string | null>`(select name from clients where id = ${waContacts.clientId})`,
       })
       .from(waContacts)
+      .where(scope ? inArray(waContacts.clientId, scope) : sql`1=1`)
       .orderBy(waContacts.name)
       .limit(500);
     res.json(rows);
@@ -765,13 +819,16 @@ export function registerWaRoutes(app: Express) {
 
   // Clientes cadastrados com telefone (para iniciar conversa)
   app.get("/api/wa/clients", async (req, res) => {
-    if (!(await auth(req, res))) return;
+    const user = await auth(req, res);
+    if (!user) return;
     const db = await getDb();
     if (!db) return res.json([]);
+    const scope = await waScopeIds(user);
+    if (scope && scope.length === 0) return res.json([]);
     const rows = await db
       .select({ id: clients.id, name: clients.name, phone: clients.phone })
       .from(clients)
-      .where(sql`${clients.active} = 1`)
+      .where(scope ? and(sql`${clients.active} = 1`, inArray(clients.id, scope)) : sql`${clients.active} = 1`)
       .orderBy(clients.name)
       .limit(2000);
     res.json(rows);

@@ -58,6 +58,14 @@ export default function Hub() {
   const { user, logout } = useAuth();
   const { data: myModules = [] } = trpc.modules.mine.useQuery();
 
+  // Fila de empresas pendentes (cadastradas por um ADM Limitado) — só o ADM total aprova.
+  const fullAdmin = (user as any)?.role === "admin" && !(user as any)?.limitedAccess;
+  const { data: pendingClients = [], refetch: refetchPending } = trpc.clients.pendingApprovals.useQuery(undefined, { enabled: fullAdmin });
+  const approveMut = trpc.clients.approve.useMutation();
+  const decide = async (id: number, decision: "approve" | "reject") => {
+    try { await approveMut.mutateAsync({ id, decision }); refetchPending(); } catch {}
+  };
+
   const [waUnread, setWaUnread] = useState(0);
   const [finPend, setFinPend] = useState(0);
   useEffect(() => {
@@ -115,6 +123,25 @@ export default function Hub() {
           <h1 style={{ fontSize: 28, fontWeight: 700, color: "#f4f4f5", marginBottom: 8 }}>Selecione um módulo</h1>
           <p style={{ fontSize: 14, color: "#71717a" }}>Cada módulo abre em uma nova aba. Você pode fechar a aba do módulo sem sair da plataforma.</p>
         </div>
+
+        {fullAdmin && pendingClients.length > 0 && (
+          <div style={{ marginBottom: 32, border: "1px solid #e0a45855", background: "rgba(224,164,88,.08)", borderRadius: 14, padding: 18 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#e0a458", marginBottom: 4 }}>Empresas aguardando aprovação</div>
+            <div style={{ fontSize: 12.5, color: "#a1a1aa", marginBottom: 12 }}>Cadastradas por um administrador limitado. Aprove para entrarem oficialmente no sistema, ou rejeite.</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(pendingClients as any[]).map((c) => (
+                <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "#111", border: "1px solid #1e4f5c", borderRadius: 10, padding: "10px 14px" }}>
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#f4f4f5" }}>{c.name}</div>
+                    <div style={{ fontSize: 12, color: "#71717a" }}>{c.cnpj}</div>
+                  </div>
+                  <button onClick={() => decide(c.id, "approve")} disabled={approveMut.isPending} style={{ background: "#34d399", color: "#04211f", border: "none", borderRadius: 8, padding: "7px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Aprovar</button>
+                  <button onClick={() => decide(c.id, "reject")} disabled={approveMut.isPending} style={{ background: "none", color: "#f87171", border: "1px solid #f8717155", borderRadius: 8, padding: "7px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Rejeitar</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {visibleModules.length === 0 ? (
           <div style={{ textAlign: "center", padding: "60px 20px", border: "1px dashed #1e4f5c", borderRadius: 16 }}>

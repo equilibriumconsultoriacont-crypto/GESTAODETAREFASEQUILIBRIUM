@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { adminProcedure, router } from "./_core/trpc";
+import { isFullAdmin, getScopeClientIds, assertClientInScope } from "./_core/scope";
 import { getDb } from "./db";
 import { signCobranca } from "./cobrancaToken";
 import {
@@ -11,7 +13,7 @@ import {
   clients,
   tasks,
 } from "../drizzle/schema";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { sendEmail } from "./email";
 import { buildPixBRCode } from "./pix";
 
@@ -20,6 +22,34 @@ const APP_URL = process.env.APP_URL || "https://gestaodetarefasequilibrium.onren
 const money = z.string().regex(/^\d+([.,]\d{1,2})?$/, "valor inválido").transform((v) => v.replace(",", "."));
 
 const brl = (v: any) => "R$ " + Number(String(v ?? 0).replace(",", ".")).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// ── Escopo por empresa (ADM Limitado) ────────────────────────────────────────
+// ADM total enxerga tudo. ADM Limitado só as empresas vinculadas a ele: as listagens
+// ganham um filtro por clientId; as escritas passam por assertFinClient.
+// Retorna null (sem restrição) para ADM total, ou o array de clientIds permitidos.
+async function scopeClientIds(ctx: any): Promise<number[] | null> {
+  if (isFullAdmin(ctx.user)) return null;
+  return [...(await getScopeClientIds(ctx.user.id))];
+}
+// Garante que o usuário pode agir sobre um lançamento daquela empresa. Despesas gerais do
+// escritório (clientId nulo) só o ADM total pode mexer.
+async function assertFinClient(user: any, clientId: number | null): Promise<void> {
+  if (isFullAdmin(user)) return;
+  if (clientId == null) throw new TRPCError({ code: "FORBIDDEN", message: "Lançamento fora do seu acesso." });
+  await assertClientInScope(user, clientId);
+}
+async function tituloClientId(db: any, id: number): Promise<number | null> {
+  const r = (await db.select({ c: financialTitulos.clientId }).from(financialTitulos).where(eq(financialTitulos.id, id)).limit(1))[0];
+  return r?.c ?? null;
+}
+async function payableClientId(db: any, id: number): Promise<number | null> {
+  const r = (await db.select({ c: financialPayables.clientId }).from(financialPayables).where(eq(financialPayables.id, id)).limit(1))[0];
+  return r?.c ?? null;
+}
+// Guarda comum para ADM Limitado sem nenhuma empresa vinculada: não vê nada.
+function scopeBlocksAll(scope: number[] | null): boolean {
+  return scope !== null && scope.length === 0;
+}
 
 // Ajusta o vencimento se cair em fim de semana (regra do cliente, inspirado no OMIE).
 function adjustWeekend(d: Date, rule: string | null): Date {
@@ -155,28 +185,33 @@ export async function sincronizarTituloTarefa(db: any, taskId: number): Promise<
 
 export const financeiroRouter = router({
   // ── Painel: resumo ──────────────────────────────────────────────────────────
-  dashboard: adminProcedure.query(async () => {
+  dashboard: adminProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     const empty = { aReceber: "0.00", recebido: "0.00", aPagar: "0.00", pago: "0.00", saldo: "0.00", vencidos: 0, emConferencia: 0, honorariosAtivos: 0 };
     if (!db) return empty;
     try {
+      const scope = await scopeClientIds(ctx);
+      if (scopeBlocksAll(scope)) return empty; // ADM Limitado sem empresas vinculadas
+      const tCond = scope ? inArray(financialTitulos.clientId, scope) : undefined;
+      const pCond = scope ? inArray(financialPayables.clientId, scope) : undefined;
+      const cfgCond = scope ? inArray(financialClientConfig.clientId, scope) : undefined;
       const sum = (whereStatus: string[]) =>
         db
           .select({ total: sql<string>`coalesce(sum(cast(${financialTitulos.amount} as decimal(12,2))), 0)` })
           .from(financialTitulos)
-          .where(sql`${financialTitulos.status} in (${sql.join(whereStatus.map((s) => sql`${s}`), sql`, `)})`);
+          .where(and(sql`${financialTitulos.status} in (${sql.join(whereStatus.map((s) => sql`${s}`), sql`, `)})`, tCond));
       const sumPay = (whereStatus: string[]) =>
         db
           .select({ total: sql<string>`coalesce(sum(cast(${financialPayables.amount} as decimal(12,2))), 0)` })
           .from(financialPayables)
-          .where(sql`${financialPayables.status} in (${sql.join(whereStatus.map((s) => sql`${s}`), sql`, `)})`);
+          .where(and(sql`${financialPayables.status} in (${sql.join(whereStatus.map((s) => sql`${s}`), sql`, `)})`, pCond));
       const [aReceber] = await sum(["aberto", "enviado", "em_conferencia", "vencido"]);
       const [recebido] = await sum(["pago"]);
       const [aPagar] = await sumPay(["aberto", "vencido"]);
       const [pago] = await sumPay(["pago"]);
-      const [venc] = await db.select({ n: sql<number>`count(*)` }).from(financialTitulos).where(eq(financialTitulos.status, "vencido"));
-      const [conf] = await db.select({ n: sql<number>`count(*)` }).from(financialTitulos).where(eq(financialTitulos.status, "em_conferencia"));
-      const [hon] = await db.select({ n: sql<number>`count(*)` }).from(financialClientConfig).where(and(eq(financialClientConfig.hasHonorario, true), eq(financialClientConfig.active, true)));
+      const [venc] = await db.select({ n: sql<number>`count(*)` }).from(financialTitulos).where(and(eq(financialTitulos.status, "vencido"), tCond));
+      const [conf] = await db.select({ n: sql<number>`count(*)` }).from(financialTitulos).where(and(eq(financialTitulos.status, "em_conferencia"), tCond));
+      const [hon] = await db.select({ n: sql<number>`count(*)` }).from(financialClientConfig).where(and(eq(financialClientConfig.hasHonorario, true), eq(financialClientConfig.active, true), cfgCond));
       const recebidoN = Number(recebido?.total ?? 0);
       const pagoN = Number(pago?.total ?? 0);
       return {
@@ -198,24 +233,30 @@ export const financeiroRouter = router({
   // ── Dados para os gráficos do dashboard ──────────────────────────────────────
   // Fluxo projetado (a receber x a pagar por mês futuro), recebido x pago por mês (histórico),
   // e quebra por categoria. Retorna arrays crus; o frontend monta os eixos.
-  dashboardCharts: adminProcedure.query(async () => {
+  dashboardCharts: adminProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     const empty = { recFuturo: [] as any[], pagFuturo: [] as any[], recebidoMensal: [] as any[], pagoMensal: [] as any[], catReceita: [] as any[], catDespesa: [] as any[] };
     if (!db) return empty;
     const num = (v: any) => Number(v ?? 0);
     try {
+      const scope = await scopeClientIds(ctx);
+      if (scopeBlocksAll(scope)) return empty;
+      const tCond = scope ? inArray(financialTitulos.clientId, scope) : undefined;
+      const pCond = scope ? inArray(financialPayables.clientId, scope) : undefined;
+      // Comprovantes (fin_payments) ligam à empresa via o título — filtra pelo título da empresa.
+      const payCond = scope ? sql`${financialPayments.tituloId} in (select id from fin_titulos where clientId in (${sql.join(scope.map((s) => sql`${s}`), sql`, `)}))` : undefined;
       const recFuturo = await db.select({ mes: sql<string>`DATE_FORMAT(${financialTitulos.dueDate}, '%Y-%m')`, total: sql<string>`coalesce(sum(cast(${financialTitulos.amount} as decimal(12,2))),0)` })
-        .from(financialTitulos).where(sql`${financialTitulos.status} in ('aberto','enviado','em_conferencia','vencido')`).groupBy(sql`DATE_FORMAT(${financialTitulos.dueDate}, '%Y-%m')`);
+        .from(financialTitulos).where(and(sql`${financialTitulos.status} in ('aberto','enviado','em_conferencia','vencido')`, tCond)).groupBy(sql`DATE_FORMAT(${financialTitulos.dueDate}, '%Y-%m')`);
       const pagFuturo = await db.select({ mes: sql<string>`DATE_FORMAT(${financialPayables.dueDate}, '%Y-%m')`, total: sql<string>`coalesce(sum(cast(${financialPayables.amount} as decimal(12,2))),0)` })
-        .from(financialPayables).where(sql`${financialPayables.status} in ('aberto','vencido')`).groupBy(sql`DATE_FORMAT(${financialPayables.dueDate}, '%Y-%m')`);
+        .from(financialPayables).where(and(sql`${financialPayables.status} in ('aberto','vencido')`, pCond)).groupBy(sql`DATE_FORMAT(${financialPayables.dueDate}, '%Y-%m')`);
       const recebidoMensal = await db.select({ mes: sql<string>`DATE_FORMAT(${financialPayments.paidDate}, '%Y-%m')`, total: sql<string>`coalesce(sum(cast(${financialPayments.amount} as decimal(12,2))),0)` })
-        .from(financialPayments).where(sql`${financialPayments.status}='confirmado' and ${financialPayments.paidDate} is not null`).groupBy(sql`DATE_FORMAT(${financialPayments.paidDate}, '%Y-%m')`);
+        .from(financialPayments).where(and(sql`${financialPayments.status}='confirmado' and ${financialPayments.paidDate} is not null`, payCond)).groupBy(sql`DATE_FORMAT(${financialPayments.paidDate}, '%Y-%m')`);
       const pagoMensal = await db.select({ mes: sql<string>`DATE_FORMAT(${financialPayables.paidDate}, '%Y-%m')`, total: sql<string>`coalesce(sum(cast(${financialPayables.amount} as decimal(12,2))),0)` })
-        .from(financialPayables).where(sql`${financialPayables.status}='pago' and ${financialPayables.paidDate} is not null`).groupBy(sql`DATE_FORMAT(${financialPayables.paidDate}, '%Y-%m')`);
+        .from(financialPayables).where(and(sql`${financialPayables.status}='pago' and ${financialPayables.paidDate} is not null`, pCond)).groupBy(sql`DATE_FORMAT(${financialPayables.paidDate}, '%Y-%m')`);
       const catReceita = await db.select({ categoria: financialTitulos.category, total: sql<string>`coalesce(sum(cast(${financialTitulos.amount} as decimal(12,2))),0)` })
-        .from(financialTitulos).where(sql`${financialTitulos.status} <> 'cancelado'`).groupBy(financialTitulos.category);
+        .from(financialTitulos).where(and(sql`${financialTitulos.status} <> 'cancelado'`, tCond)).groupBy(financialTitulos.category);
       const catDespesa = await db.select({ categoria: financialPayables.category, total: sql<string>`coalesce(sum(cast(${financialPayables.amount} as decimal(12,2))),0)` })
-        .from(financialPayables).where(sql`${financialPayables.status} <> 'cancelado'`).groupBy(financialPayables.category);
+        .from(financialPayables).where(and(sql`${financialPayables.status} <> 'cancelado'`, pCond)).groupBy(financialPayables.category);
       return {
         recFuturo: recFuturo.map((r) => ({ mes: r.mes, total: num(r.total) })),
         pagFuturo: pagFuturo.map((r) => ({ mes: r.mes, total: num(r.total) })),
@@ -231,9 +272,11 @@ export const financeiroRouter = router({
   }),
 
   // ── Clientes + configuração de honorário (aba Honorários) ────────────────────
-  clientsWithConfig: adminProcedure.query(async () => {
+  clientsWithConfig: adminProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) return [];
+    const scope = await scopeClientIds(ctx);
+    if (scopeBlocksAll(scope)) return [];
     return db
       .select({
         clientId: clients.id,
@@ -247,12 +290,13 @@ export const financeiroRouter = router({
         weekendRule: financialClientConfig.weekendRule,
         billingEmail: financialClientConfig.billingEmail,
         recurring: financialClientConfig.recurring,
+        autoSend: financialClientConfig.autoSend,
         activated: financialClientConfig.activated,
         configId: financialClientConfig.id,
       })
       .from(clients)
       .leftJoin(financialClientConfig, eq(financialClientConfig.clientId, clients.id))
-      .where(eq(clients.active, true))
+      .where(and(eq(clients.active, true), scope ? inArray(clients.id, scope) : undefined))
       .orderBy(clients.name);
   }),
 
@@ -266,10 +310,12 @@ export const financeiroRouter = router({
         sendDay: z.number().min(1).max(28).optional(),
         weekendRule: z.enum(["mantem", "antecipa", "posterga"]).default("mantem"),
         recurring: z.boolean().default(true),
+        autoSend: z.boolean().default(true),
         billingEmail: z.string().email().optional().or(z.literal("")),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await assertFinClient(ctx.user, input.clientId);
       const db = await getDb();
       if (!db) throw new Error("sem banco");
       const values = {
@@ -280,6 +326,7 @@ export const financeiroRouter = router({
         sendDay: input.sendDay ?? null,
         weekendRule: input.weekendRule,
         recurring: input.recurring,
+        autoSend: input.autoSend,
         billingEmail: input.billingEmail || null,
         updatedAt: new Date(),
       };
@@ -292,10 +339,13 @@ export const financeiroRouter = router({
   // ── Títulos (contas a receber) ───────────────────────────────────────────────
   listTitulos: adminProcedure
     .input(z.object({ status: z.string().optional(), clientId: z.number().optional(), kind: z.string().optional() }).optional())
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) return [];
+      const scope = await scopeClientIds(ctx);
+      if (scopeBlocksAll(scope)) return [];
       const conds: any[] = [];
+      if (scope) conds.push(inArray(financialTitulos.clientId, scope)); // ADM Limitado: só as empresas dele
       if (input?.status && input.status !== "todos") conds.push(eq(financialTitulos.status, input.status as any));
       if (input?.clientId) conds.push(eq(financialTitulos.clientId, input.clientId));
       if (input?.kind && input.kind !== "todos") conds.push(eq(financialTitulos.kind, input.kind as any));
@@ -337,7 +387,8 @@ export const financeiroRouter = router({
         status: z.enum(["rascunho", "aberto"]).default("aberto"),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await assertFinClient(ctx.user, input.clientId);
       const db = await getDb();
       if (!db) throw new Error("sem banco");
       const result = await db.insert(financialTitulos).values({
@@ -368,9 +419,10 @@ export const financeiroRouter = router({
         status: z.enum(["rascunho", "aberto", "enviado", "vencido"]).optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("sem banco");
+      await assertFinClient(ctx.user, await tituloClientId(db, input.id));
       const patch: any = { updatedAt: new Date() };
       if (input.description !== undefined) patch.description = input.description;
       if (input.category !== undefined) patch.category = input.category;
@@ -383,18 +435,20 @@ export const financeiroRouter = router({
       return { ok: true };
     }),
 
-  cancelTitulo: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+  cancelTitulo: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
     const db = await getDb();
     if (!db) throw new Error("sem banco");
+    await assertFinClient(ctx.user, await tituloClientId(db, input.id));
     await db.update(financialTitulos).set({ status: "cancelado", updatedAt: new Date() }).where(eq(financialTitulos.id, input.id));
     return { ok: true };
   }),
 
   // Exclui de vez o título (para erros de teste ou lançamentos que não deveriam existir).
   // Remove também eventuais comprovantes/baixas ligados a ele.
-  deleteTitulo: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+  deleteTitulo: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
     const db = await getDb();
     if (!db) throw new Error("sem banco");
+    await assertFinClient(ctx.user, await tituloClientId(db, input.id));
     await db.delete(financialPayments).where(eq(financialPayments.tituloId, input.id));
     await db.delete(financialTitulos).where(eq(financialTitulos.id, input.id));
     return { ok: true };
@@ -408,6 +462,7 @@ export const financeiroRouter = router({
       if (!db) throw new Error("sem banco");
       const titulo = (await db.select().from(financialTitulos).where(eq(financialTitulos.id, input.tituloId)).limit(1))[0];
       if (!titulo) throw new Error("título não encontrado");
+      await assertFinClient(ctx.user, titulo.clientId);
       await db.insert(financialPayments).values({
         tituloId: input.tituloId,
         amount: input.amount ?? titulo.amount,
@@ -423,9 +478,10 @@ export const financeiroRouter = router({
       return { ok: true };
     }),
 
-  reverterBaixa: adminProcedure.input(z.object({ tituloId: z.number() })).mutation(async ({ input }) => {
+  reverterBaixa: adminProcedure.input(z.object({ tituloId: z.number() })).mutation(async ({ input, ctx }) => {
     const db = await getDb();
     if (!db) throw new Error("sem banco");
+    await assertFinClient(ctx.user, await tituloClientId(db, input.tituloId));
     // Remove baixas confirmadas e reabre o título
     await db.update(financialPayments).set({ status: "rejeitado", note: sql`concat(coalesce(note,''), ' (revertida)')` }).where(and(eq(financialPayments.tituloId, input.tituloId), eq(financialPayments.status, "confirmado")));
     await db.update(financialTitulos).set({ status: "aberto", updatedAt: new Date() }).where(eq(financialTitulos.id, input.tituloId));
@@ -433,9 +489,10 @@ export const financeiroRouter = router({
   }),
 
   // Comprovantes de um título (para conferência)
-  listPayments: adminProcedure.input(z.object({ tituloId: z.number() })).query(async ({ input }) => {
+  listPayments: adminProcedure.input(z.object({ tituloId: z.number() })).query(async ({ input, ctx }) => {
     const db = await getDb();
     if (!db) return [];
+    await assertFinClient(ctx.user, await tituloClientId(db, input.tituloId));
     return db.select().from(financialPayments).where(eq(financialPayments.tituloId, input.tituloId)).orderBy(desc(financialPayments.createdAt));
   }),
 
@@ -447,6 +504,7 @@ export const financeiroRouter = router({
       if (!db) throw new Error("sem banco");
       const pay = (await db.select().from(financialPayments).where(eq(financialPayments.id, input.paymentId)).limit(1))[0];
       if (!pay) throw new Error("comprovante não encontrado");
+      await assertFinClient(ctx.user, await tituloClientId(db, pay.tituloId));
       await db.update(financialPayments).set({
         status: input.decisao === "confirmar" ? "confirmado" : "rejeitado",
         confirmedBy: ctx.user!.id, confirmedAt: new Date(), note: input.note || pay.note,
@@ -459,19 +517,26 @@ export const financeiroRouter = router({
   // ── Ativar ("play"), pausar e gerar honorário ────────────────────────────────
   // "Play": marca como ativo e já gera a cobrança do mês atual. Se for recorrente, o job mensal
   // gera os próximos meses sozinho. Se for mês único, gera só este e não repete.
-  ativarHonorario: adminProcedure.input(z.object({ clientId: z.number() })).mutation(async ({ input }) => {
-    const db = await getDb();
-    if (!db) throw new Error("sem banco");
-    const cfg = (await db.select().from(financialClientConfig).where(eq(financialClientConfig.clientId, input.clientId)).limit(1))[0];
-    if (!cfg || !cfg.hasHonorario) throw new Error("Cliente sem honorário configurado");
-    if (!cfg.honorarioValue || !cfg.dueDay) throw new Error("Configure valor e dia de vencimento antes de ativar");
-    const comp = compAtual();
-    const { created } = await gerarTituloHonorario(db, cfg, comp);
-    await db.update(financialClientConfig).set({ activated: true, lastGenComp: comp, updatedAt: new Date() }).where(eq(financialClientConfig.id, cfg.id));
-    return { ok: true, competencia: comp, created, recurring: cfg.recurring };
-  }),
+  // "Play": ativa o honorário e gera o PRIMEIRO título. Aceita a competência do primeiro mês
+  // (ex.: cadastrei hoje mas o 1º honorário é mês que vem) — senão usa o mês atual. A régua
+  // só ENVIA cobrança se o cliente estiver com autoSend ligado (e o interruptor global ligado).
+  ativarHonorario: adminProcedure
+    .input(z.object({ clientId: z.number(), competencia: z.string().regex(/^\d{2}\/\d{4}$/).optional() }))
+    .mutation(async ({ input, ctx }) => {
+      await assertFinClient(ctx.user, input.clientId);
+      const db = await getDb();
+      if (!db) throw new Error("sem banco");
+      const cfg = (await db.select().from(financialClientConfig).where(eq(financialClientConfig.clientId, input.clientId)).limit(1))[0];
+      if (!cfg || !cfg.hasHonorario) throw new Error("Cliente sem honorário configurado");
+      if (!cfg.honorarioValue || !cfg.dueDay) throw new Error("Configure valor e dia de vencimento antes de ativar");
+      const comp = input.competencia || compAtual();
+      const { created } = await gerarTituloHonorario(db, cfg, comp);
+      await db.update(financialClientConfig).set({ activated: true, lastGenComp: comp, updatedAt: new Date() }).where(eq(financialClientConfig.id, cfg.id));
+      return { ok: true, competencia: comp, created, recurring: cfg.recurring };
+    }),
 
-  pausarHonorario: adminProcedure.input(z.object({ clientId: z.number() })).mutation(async ({ input }) => {
+  pausarHonorario: adminProcedure.input(z.object({ clientId: z.number() })).mutation(async ({ input, ctx }) => {
+    await assertFinClient(ctx.user, input.clientId);
     const db = await getDb();
     if (!db) throw new Error("sem banco");
     await db.update(financialClientConfig).set({ activated: false, updatedAt: new Date() }).where(eq(financialClientConfig.clientId, input.clientId));
@@ -481,7 +546,8 @@ export const financeiroRouter = router({
   // Geração manual avulsa de um mês específico (sem mexer no play/recorrência)
   gerarCobrancaMes: adminProcedure
     .input(z.object({ clientId: z.number(), competencia: z.string().regex(/^\d{2}\/\d{4}$/).optional() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await assertFinClient(ctx.user, input.clientId);
       const db = await getDb();
       if (!db) throw new Error("sem banco");
       const cfg = (await db.select().from(financialClientConfig).where(eq(financialClientConfig.clientId, input.clientId)).limit(1))[0];
@@ -494,24 +560,30 @@ export const financeiroRouter = router({
     }),
 
   // ── Enviar a cobrança por e-mail (manual, disponível já na fase de teste) ─────
-  enviarCobranca: adminProcedure.input(z.object({ tituloId: z.number() })).mutation(async ({ input }) => {
+  enviarCobranca: adminProcedure.input(z.object({ tituloId: z.number() })).mutation(async ({ input, ctx }) => {
     const db = await getDb();
     if (!db) throw new Error("sem banco");
+    await assertFinClient(ctx.user, await tituloClientId(db, input.tituloId));
     const r = await enviarCobrancaPorId(db, input.tituloId);
     if (!r.ok) throw new Error(r.reason === "sem e-mail" ? "Cliente sem e-mail cadastrado" : "Título não encontrado");
     return { ok: true, to: r.to };
   }),
 
   // Envia a cobrança pelo WhatsApp (usa o telefone do cliente + o módulo de Atendimento)
-  enviarCobrancaWhatsApp: adminProcedure.input(z.object({ tituloId: z.number() })).mutation(async ({ input }) => {
+  enviarCobrancaWhatsApp: adminProcedure.input(z.object({ tituloId: z.number() })).mutation(async ({ input, ctx }) => {
     const db = await getDb();
     if (!db) throw new Error("sem banco");
+    await assertFinClient(ctx.user, await tituloClientId(db, input.tituloId));
     const row = (await db
       .select({ id: financialTitulos.id, status: financialTitulos.status, description: financialTitulos.description, amount: financialTitulos.amount, competencia: financialTitulos.competencia, dueDate: financialTitulos.dueDate, clientName: clients.name, phone: clients.phone })
       .from(financialTitulos).leftJoin(clients, eq(clients.id, financialTitulos.clientId)).where(eq(financialTitulos.id, input.tituloId)).limit(1))[0];
     if (!row) throw new Error("título não encontrado");
-    const phone = (row.phone || "").replace(/\D/g, "");
-    if (!phone || phone.length < 10) throw new Error("Cliente sem telefone válido cadastrado");
+    // Normaliza para o padrão do WhatsApp COM DDI do Brasil (55). Sem isso o número ia como
+    // "1999999999@s.whatsapp.net" (JID inválido) e o Baileys "enviava" para o vazio — nada
+    // chegava e nenhum erro aparecia. (Mesma normalização do módulo de Atendimento.)
+    let phone = (row.phone || "").replace(/\D/g, "");
+    if (!(phone.length >= 12 && phone.startsWith("55")) && (phone.length === 10 || phone.length === 11)) phone = "55" + phone;
+    if (!phone || phone.length < 12) throw new Error("Cliente sem telefone válido cadastrado (informe com DDD)");
     const pix = (await db.select().from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
     const venc = new Date(row.dueDate as any).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
     const link = `${APP_URL}/cobranca/${row.id}?t=${signCobranca(row.id)}`;
@@ -532,21 +604,53 @@ export const financeiroRouter = router({
   // ── Contas a PAGAR (despesas do escritório) ──────────────────────────────────
   listPayables: adminProcedure
     .input(z.object({ status: z.string().optional() }).optional())
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) return [];
+      const scope = await scopeClientIds(ctx);
+      if (scopeBlocksAll(scope)) return [];
       const conds: any[] = [];
+      // ADM Limitado só vê contas a pagar das empresas dele (despesas gerais do escritório,
+      // com clientId nulo, ficam só para o ADM total).
+      if (scope) conds.push(inArray(financialPayables.clientId, scope));
       if (input?.status && input.status !== "todos") conds.push(eq(financialPayables.status, input.status as any));
-      return db.select().from(financialPayables).where(conds.length ? and(...conds) : sql`1=1`).orderBy(desc(financialPayables.dueDate)).limit(500);
+      return db
+        .select({
+          id: financialPayables.id,
+          description: financialPayables.description,
+          supplier: financialPayables.supplier,
+          clientId: financialPayables.clientId,
+          clientName: clients.name,
+          category: financialPayables.category,
+          amount: financialPayables.amount,
+          dueDate: financialPayables.dueDate,
+          status: financialPayables.status,
+          recurring: financialPayables.recurring,
+          paidDate: financialPayables.paidDate,
+          note: financialPayables.note,
+          createdAt: financialPayables.createdAt,
+        })
+        .from(financialPayables)
+        .leftJoin(clients, eq(clients.id, financialPayables.clientId))
+        .where(conds.length ? and(...conds) : sql`1=1`)
+        .orderBy(desc(financialPayables.dueDate))
+        .limit(500);
     }),
 
   createPayable: adminProcedure
-    .input(z.object({ description: z.string().min(1), supplier: z.string().optional(), category: z.string().optional(), amount: money, dueDate: z.string(), recurring: z.boolean().default(false), note: z.string().optional() }))
-    .mutation(async ({ input }) => {
+    .input(z.object({ description: z.string().min(1), supplier: z.string().optional(), category: z.string().optional(), clientId: z.number().optional(), amount: money, dueDate: z.string(), recurring: z.boolean().default(false), note: z.string().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      // ADM Limitado: obrigatório escolher uma empresa dele. ADM total pode deixar sem empresa
+      // (despesa geral do escritório).
+      if (!isFullAdmin(ctx.user)) {
+        if (input.clientId == null) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione a empresa da conta a pagar." });
+        await assertClientInScope(ctx.user, input.clientId);
+      }
       const db = await getDb();
       if (!db) throw new Error("sem banco");
       const r = await db.insert(financialPayables).values({
         description: input.description, supplier: input.supplier || null, category: input.category || null,
+        clientId: input.clientId ?? null,
         amount: input.amount, dueDate: new Date(input.dueDate), recurring: input.recurring, note: input.note || null, status: "aberto",
       } as any);
       return { ok: true, id: (r as any)[0]?.insertId };
@@ -554,9 +658,10 @@ export const financeiroRouter = router({
 
   updatePayable: adminProcedure
     .input(z.object({ id: z.number(), description: z.string().optional(), supplier: z.string().optional(), category: z.string().optional(), amount: money.optional(), dueDate: z.string().optional(), recurring: z.boolean().optional() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("sem banco");
+      await assertFinClient(ctx.user, await payableClientId(db, input.id));
       const patch: any = { updatedAt: new Date() };
       for (const k of ["description", "supplier", "category", "amount", "recurring"] as const) if (input[k] !== undefined) patch[k] = input[k];
       if (input.dueDate !== undefined) patch.dueDate = new Date(input.dueDate);
@@ -567,26 +672,30 @@ export const financeiroRouter = router({
   baixaPayable: adminProcedure.input(z.object({ id: z.number(), paidDate: z.string().optional() })).mutation(async ({ input, ctx }) => {
     const db = await getDb();
     if (!db) throw new Error("sem banco");
+    await assertFinClient(ctx.user, await payableClientId(db, input.id));
     await db.update(financialPayables).set({ status: "pago", paidDate: input.paidDate ? new Date(input.paidDate) : new Date(), paidBy: ctx.user!.id, updatedAt: new Date() }).where(eq(financialPayables.id, input.id));
     return { ok: true };
   }),
 
-  reverterPayable: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+  reverterPayable: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
     const db = await getDb();
     if (!db) throw new Error("sem banco");
+    await assertFinClient(ctx.user, await payableClientId(db, input.id));
     await db.update(financialPayables).set({ status: "aberto", paidDate: null, updatedAt: new Date() }).where(eq(financialPayables.id, input.id));
     return { ok: true };
   }),
 
-  deletePayable: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+  deletePayable: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
     const db = await getDb();
     if (!db) throw new Error("sem banco");
+    await assertFinClient(ctx.user, await payableClientId(db, input.id));
     await db.delete(financialPayables).where(eq(financialPayables.id, input.id));
     return { ok: true };
   }),
 
-  // ── Configuração global de recebimento (PIX / QR) ────────────────────────────
-  getConfig: adminProcedure.query(async () => {
+  // ── Configuração global de recebimento (PIX / QR) — exclusiva do ADM total ────
+  getConfig: adminProcedure.query(async ({ ctx }) => {
+    if (!isFullAdmin(ctx.user)) return null; // ADM Limitado não gerencia o PIX global do escritório
     const db = await getDb();
     if (!db) return null;
     const row = (await db.select().from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
@@ -607,7 +716,8 @@ export const financeiroRouter = router({
         lembreteDias: z.number().min(0).max(60).optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      if (!isFullAdmin(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Só o administrador geral configura o recebimento do escritório." });
       const db = await getDb();
       if (!db) throw new Error("sem banco");
       const values = {

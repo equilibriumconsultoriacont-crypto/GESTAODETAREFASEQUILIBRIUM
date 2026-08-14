@@ -718,6 +718,7 @@ async function ensureSchema() {
         for (const [col, ddl] of [
           ["recurring", "ADD COLUMN `recurring` boolean NOT NULL DEFAULT true"],
           ["activated", "ADD COLUMN `activated` boolean NOT NULL DEFAULT false"],
+          ["autoSend", "ADD COLUMN `autoSend` boolean NOT NULL DEFAULT true"],
           ["lastGenComp", "ADD COLUMN `lastGenComp` varchar(7)"],
         ] as [string, string][]) {
           const [c]: any = await conn.query(`SELECT COUNT(*) cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fin_client_config' AND COLUMN_NAME = '${col}'`);
@@ -733,6 +734,49 @@ async function ensureSchema() {
           if (Number(c?.[0]?.cnt ?? 0) === 0) await conn.query("ALTER TABLE `fin_config` " + ddl);
         }
       } catch (e: any) { console.warn("[Migração Financeiro fin_config]:", e?.message?.slice(0, 140)); }
+
+      // Migração ADM Limitado / RBAC por empresa (todas aditivas e idempotentes):
+      //  - users.limitedAccess  → marca ADM Limitado (admin) e Funcionário Limitado (user)
+      //  - users.createdByUserId → quem cadastrou o usuário (escopo do gerenciamento de usuários)
+      //  - clients.approvalStatus/createdByUserId → fila de aprovação de empresas criadas por ADM Limitado
+      //  - fin_payables.clientId → conta a pagar por empresa (nulo = despesa geral do escritório)
+      try {
+        for (const [tbl, col, ddl] of [
+          ["users", "limitedAccess", "ADD COLUMN `limitedAccess` boolean NOT NULL DEFAULT false"],
+          ["users", "createdByUserId", "ADD COLUMN `createdByUserId` int NULL"],
+          ["clients", "approvalStatus", "ADD COLUMN `approvalStatus` varchar(20) NOT NULL DEFAULT 'approved'"],
+          ["clients", "createdByUserId", "ADD COLUMN `createdByUserId` int NULL"],
+          ["fin_payables", "clientId", "ADD COLUMN `clientId` int NULL"],
+        ] as [string, string, string][]) {
+          const [c]: any = await conn.query(`SELECT COUNT(*) cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${tbl}' AND COLUMN_NAME = '${col}'`);
+          if (Number(c?.[0]?.cnt ?? 0) === 0) await conn.query("ALTER TABLE `" + tbl + "` " + ddl);
+        }
+      } catch (e: any) { console.warn("[Migração ADM Limitado]:", e?.message?.slice(0, 140)); }
+
+      // Colunas de `tasks` que o schema Drizzle tem mas que podem FALTAR em bancos antigos:
+      // o antigo /admin/migrate usava `ADD COLUMN IF NOT EXISTS`, sintaxe que o MySQL 8.4
+      // rejeita — então essas colunas podem nunca ter sido criadas. Sem elas o `SELECT *` do
+      // Drizzle quebra e o getTaskById devolvia "tarefa não encontrada". Guarda por
+      // information_schema (idempotente).
+      try {
+        for (const [col, ddl] of [
+          ["priority", "ADD COLUMN `priority` enum('BAIXA','NORMAL','ALTA','URGENTE') NOT NULL DEFAULT 'NORMAL'"],
+          ["department", "ADD COLUMN `department` varchar(100) NOT NULL DEFAULT 'Geral'"],
+          ["assignedTo", "ADD COLUMN `assignedTo` int"],
+          ["completedAt", "ADD COLUMN `completedAt` timestamp NULL"],
+          ["internalDeadline", "ADD COLUMN `internalDeadline` timestamp NULL"],
+          ["waitingSince", "ADD COLUMN `waitingSince` timestamp NULL"],
+          ["startedAt", "ADD COLUMN `startedAt` timestamp NULL"],
+          ["valor", "ADD COLUMN `valor` varchar(20)"],
+          ["clientPaid", "ADD COLUMN `clientPaid` boolean DEFAULT false"],
+          ["movimentaFinanceiro", "ADD COLUMN `movimentaFinanceiro` boolean DEFAULT false"],
+          ["finValor", "ADD COLUMN `finValor` varchar(20)"],
+          ["finVencimento", "ADD COLUMN `finVencimento` timestamp NULL"],
+        ] as [string, string][]) {
+          const [c]: any = await conn.query(`SELECT COUNT(*) cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = '${col}'`);
+          if (Number(c?.[0]?.cnt ?? 0) === 0) await conn.query("ALTER TABLE `tasks` " + ddl);
+        }
+      } catch (e: any) { console.warn("[Migração tasks colunas]:", e?.message?.slice(0, 140)); }
 
       const [rows]: any = await conn.query(
         "SELECT COUNT(*) as cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'task_templates' AND COLUMN_NAME = 'dueDateAdjust'"
@@ -1065,6 +1109,10 @@ async function rodarRecorrenciaHonorarios() {
     } catch (e: any) { console.warn("[Vencidos]", e?.message); }
 
     const comp = compAtual();
+    // Valor comparável de uma competência "MM/AAAA" (para não gerar meses ANTERIORES ao já
+    // gerado — ex.: honorário que começa mês que vem: lastGenComp fica no futuro e a
+    // recorrência só age quando aquele mês realmente chega).
+    const compVal = (c?: string | null) => { if (!c) return 0; const [m, y] = String(c).split("/").map(Number); return (y || 0) * 12 + (m || 0); };
     const configs = await db.select().from(financialClientConfig).where(
       and(
         eq(financialClientConfig.hasHonorario, true),
@@ -1076,6 +1124,7 @@ async function rodarRecorrenciaHonorarios() {
     );
     for (const cfg of configs) {
       try {
+        if (cfg.lastGenComp && compVal(cfg.lastGenComp) >= compVal(comp)) continue; // início no futuro → espera
         await gerarTituloHonorario(db, cfg, comp);
         await db.update(financialClientConfig).set({ lastGenComp: comp, updatedAt: new Date() }).where(eq(financialClientConfig.id, cfg.id));
       } catch (e: any) {
@@ -1108,9 +1157,13 @@ async function rodarReguaCobranca() {
 
     const agora = new Date();
 
+    // Clientes marcados para NÃO enviar cobrança (autoSend desligado): entram no "a receber"
+    // mas a régua nunca dispara — nem envio no dia, nem lembrete.
+    const semEnvio = dsql`${financialTitulos.clientId} not in (select clientId from fin_client_config where autoSend = 0)`;
+
     // 1) Envio no dia: status 'aberto', com sendDate <= agora e ainda não enviado
     const paraEnviar = await db.select({ id: financialTitulos.id }).from(financialTitulos)
-      .where(and(eq(financialTitulos.status, "aberto"), isNull(financialTitulos.sentAt), dsql`${financialTitulos.sendDate} is not null`, lte(financialTitulos.sendDate, agora)))
+      .where(and(eq(financialTitulos.status, "aberto"), isNull(financialTitulos.sentAt), dsql`${financialTitulos.sendDate} is not null`, lte(financialTitulos.sendDate, agora), semEnvio))
       .limit(50);
     for (const t of paraEnviar) {
       try { const r = await enviarCobrancaPorId(db, t.id); if (r.ok) console.log("[Régua] cobrança enviada título", t.id, "->", r.to); }
@@ -1120,7 +1173,7 @@ async function rodarReguaCobranca() {
     // 2) Lembrete pós-vencimento: status 'enviado'/'vencido', sem lembrete, vencido há >= lembreteDias
     const limite = new Date(agora.getTime() - (Number(cfg.lembreteDias ?? 2)) * 24 * 60 * 60 * 1000);
     const paraLembrar = await db.select({ id: financialTitulos.id }).from(financialTitulos)
-      .where(and(dsql`${financialTitulos.status} in ('enviado','vencido')`, isNull(financialTitulos.reminderSentAt), lt(financialTitulos.dueDate, limite)))
+      .where(and(dsql`${financialTitulos.status} in ('enviado','vencido')`, isNull(financialTitulos.reminderSentAt), lt(financialTitulos.dueDate, limite), semEnvio))
       .limit(50);
     for (const t of paraLembrar) {
       try { const r = await enviarCobrancaPorId(db, t.id, { reminder: true }); if (r.ok) console.log("[Régua] lembrete enviado título", t.id, "->", r.to); }

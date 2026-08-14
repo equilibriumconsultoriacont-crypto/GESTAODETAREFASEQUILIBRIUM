@@ -182,10 +182,11 @@ const labelStyle: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, color
 
 type StaffForm = {
   name: string; email: string; password: string; role: "admin" | "user";
+  limitedAccess: boolean;
   departmentIds: number[]; clientIds: number[];
   modules: { module: string; level: string }[];
 };
-const emptyStaff: StaffForm = { name: "", email: "", password: "", role: "user", departmentIds: [], clientIds: [], modules: [] };
+const emptyStaff: StaffForm = { name: "", email: "", password: "", role: "user", limitedAccess: false, departmentIds: [], clientIds: [], modules: [] };
 
 function StaffTab() {
   const { data: users = [], refetch, isLoading } = trpc.usersAdmin.list.useQuery();
@@ -211,6 +212,7 @@ function StaffTab() {
     setForm({
       name: u.name ?? "", email: u.email ?? "", password: "",
       role: u.role === "admin" ? "admin" : "user",
+      limitedAccess: !!u.limitedAccess,
       departmentIds: u.departmentIds ?? [], clientIds: u.clientIds ?? [],
       modules: u.modules ?? [],
     });
@@ -231,9 +233,10 @@ function StaffTab() {
     if (!form.name.trim()) { toast.error("Informe o nome"); return; }
     if (!form.email.trim()) { toast.error("Informe o e-mail"); return; }
     if (!editing && form.password.length < 6) { toast.error("Senha de no mínimo 6 caracteres"); return; }
+    if (form.role === "admin" && form.limitedAccess && form.clientIds.length === 0) { toast.error("Selecione ao menos uma empresa para o administrador limitado"); return; }
     try {
       if (editing) {
-        const payload: any = { id: editing.id, name: form.name, email: form.email, role: form.role, departmentIds: form.departmentIds, clientIds: form.clientIds, modules: form.modules };
+        const payload: any = { id: editing.id, name: form.name, email: form.email, role: form.role, limitedAccess: form.limitedAccess, departmentIds: form.departmentIds, clientIds: form.clientIds, modules: form.modules };
         if (form.password) payload.password = form.password;
         await updateMut.mutateAsync(payload);
         toast.success("Usuário atualizado");
@@ -274,7 +277,12 @@ function StaffTab() {
                     <span style={{ fontWeight: 650, fontSize: 14.5 }}>{u.name || "(sem nome)"}</span>
                     {u.role === "admin" && (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: C.brandText, background: C.brandSoft, padding: "2px 8px", borderRadius: 6 }}>
-                        <Shield size={11} /> Admin
+                        <Shield size={11} /> {u.limitedAccess ? "Admin limitado" : "Admin"}
+                      </span>
+                    )}
+                    {u.role === "user" && u.limitedAccess && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: "#e0a458", background: "rgba(224,164,88,.14)", padding: "2px 8px", borderRadius: 6 }}>
+                        Limitado
                       </span>
                     )}
                   </div>
@@ -320,6 +328,19 @@ function StaffTab() {
                 </select>
               </div>
             </div>
+
+            {form.role === "admin" && (
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 12px", background: C.panelHi, border: `1px solid ${form.limitedAccess ? C.brand : C.border}`, borderRadius: 10, cursor: "pointer" }}>
+                <input type="checkbox" checked={form.limitedAccess} onChange={(e) => setForm({ ...form, limitedAccess: e.target.checked })} style={{ accentColor: C.brand, marginTop: 2 }} />
+                <span style={{ fontSize: 13 }}>
+                  <strong style={{ color: C.text }}>Administrador limitado</strong>
+                  <span style={{ display: "block", color: C.textMuted, marginTop: 2, fontSize: 12.5 }}>
+                    Todos os poderes de admin, mas só nas empresas selecionadas abaixo — em Tarefas, Atendimento e Financeiro. O Gerador de Documentos fica liberado por completo.
+                  </span>
+                </span>
+              </label>
+            )}
+
             <div>
               <label style={labelStyle}>E-mail</label>
               <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={fieldStyle} placeholder="email@empresa.com" />
@@ -329,7 +350,8 @@ function StaffTab() {
               <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={fieldStyle} placeholder="Mínimo 6 caracteres" />
             </div>
 
-            {/* Módulos e permissões */}
+            {/* Módulos e permissões — só o funcionário escolhe módulos; o admin já tem tudo */}
+            {form.role === "user" ? (
             <div>
               <label style={labelStyle}>Módulos e nível de acesso</label>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -354,9 +376,16 @@ function StaffTab() {
                 })}
               </div>
             </div>
+            ) : (
+              <div style={{ fontSize: 12.5, color: C.textMuted, background: C.panelHi, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 12px" }}>
+                {form.limitedAccess
+                  ? "Administrador limitado: acesso total às empresas selecionadas, em todos os módulos."
+                  : "Administrador: acesso total a todos os módulos e a todas as empresas."}
+              </div>
+            )}
 
             {/* Departamentos */}
-            {depts.length > 0 && (
+            {form.role === "user" && depts.length > 0 && (
               <div>
                 <label style={labelStyle}>Departamentos (limita o que vê nas Tarefas)</label>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -374,10 +403,14 @@ function StaffTab() {
               </div>
             )}
 
-            {/* Empresas */}
-            {clients.length > 0 && (
+            {/* Empresas — funcionário limita o que vê; ADM limitado usa isto como escopo */}
+            {(form.role === "user" || form.limitedAccess) && clients.length > 0 && (
               <div>
-                <label style={labelStyle}>Empresas específicas (opcional — vazio = conforme departamento)</label>
+                <label style={labelStyle}>
+                  {form.limitedAccess
+                    ? "Empresas liberadas para este administrador (obrigatório)"
+                    : "Empresas específicas (opcional — vazio = conforme departamento)"}
+                </label>
                 <div style={{ maxHeight: 130, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4, border: `1px solid ${C.border}`, borderRadius: 10, padding: 8 }}>
                   {(clients as any[]).map((c) => {
                     const on = form.clientIds.includes(c.id);
