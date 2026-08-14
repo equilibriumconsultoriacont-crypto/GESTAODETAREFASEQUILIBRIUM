@@ -88,9 +88,12 @@ export default function Hub() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
 
-  // Módulos que o usuário tem acesso
+  // Módulos que o usuário tem acesso. Admin (inclusive ADM Limitado) enxerga TODOS os cards —
+  // o recorte do ADM Limitado é nos DADOS (empresas), não nos módulos. Funcionário vê só os
+  // módulos liberados; os adminOnly (Usuários/Financeiro) continuam exclusivos de admin.
+  const isAdmin = (user as any)?.role === "admin";
   const allowedIds = new Set(myModules.map((m: any) => m.module));
-  const visibleModules = MODULES.filter((m) => allowedIds.has(m.id) || ((m as any).adminOnly && (user as any)?.role === "admin"));
+  const visibleModules = MODULES.filter((m) => ((m as any).adminOnly ? isAdmin : (isAdmin || allowedIds.has(m.id))));
 
   const openModule = (mod: typeof MODULES[0]) => {
     if (!mod.available) return;

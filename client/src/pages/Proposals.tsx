@@ -14,8 +14,9 @@ export default function Proposals() {
   const utils = trpc.useUtils();
   const { data: myModules = [], isLoading: modulesLoading } = trpc.modules.mine.useQuery();
 
-  // Guard: só acessa quem tem o módulo "propostas"
-  const hasAccess = myModules.some((m: any) => m.module === "propostas");
+  // Guard: admin (inclusive ADM Limitado) tem liberação INTEGRAL ao Gerador de Documentos;
+  // funcionário depende do módulo "propostas" liberado.
+  const hasAccess = (user as any)?.role === "admin" || myModules.some((m: any) => m.module === "propostas");
 
   // Mutations/queries para persistência
   const createMutation = trpc.proposals.create.useMutation();

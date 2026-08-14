@@ -1939,10 +1939,13 @@ const modulesRouter = router({
 const proposalsRouter = router({
   list: staffProcedure.query(async ({ ctx }) => {
     const { getUserModules, listProposals } = await import("./db");
+    // Gerador de Documentos é liberação INTEGRAL para admin (inclusive ADM Limitado): não
+    // depende de user_modules. Funcionário depende do módulo liberado e do nível.
+    const isPlatformAdmin = ctx.user!.role === "admin";
     const mods = await getUserModules(ctx.user!.id);
     const propMod = mods.find((m) => m.module === "propostas");
-    if (!propMod) throw new TRPCError({ code: "FORBIDDEN", message: "Sem acesso ao módulo Propostas" });
-    const isAdmin = propMod.level === "admin";
+    if (!propMod && !isPlatformAdmin) throw new TRPCError({ code: "FORBIDDEN", message: "Sem acesso ao módulo Propostas" });
+    const isAdmin = isPlatformAdmin || propMod?.level === "admin";
     return listProposals(ctx.user!.id, isAdmin);
   }),
 
@@ -1950,13 +1953,15 @@ const proposalsRouter = router({
     .input(z.object({ id: z.number() }))
     .query(async ({ input, ctx }) => {
       const { getProposal, getUserModules } = await import("./db");
+      const isPlatformAdmin = ctx.user!.role === "admin";
       const mods = await getUserModules(ctx.user!.id);
       const propMod = mods.find((m) => m.module === "propostas");
-      if (!propMod) throw new TRPCError({ code: "FORBIDDEN" });
+      if (!propMod && !isPlatformAdmin) throw new TRPCError({ code: "FORBIDDEN" });
       const p = await getProposal(input.id);
       if (!p) throw new TRPCError({ code: "NOT_FOUND" });
       // Leitor/editor só acessa as próprias; admin acessa todas
-      if (propMod.level !== "admin" && p.ownerId !== ctx.user!.id) {
+      const isAdmin = isPlatformAdmin || propMod?.level === "admin";
+      if (!isAdmin && p.ownerId !== ctx.user!.id) {
         throw new TRPCError({ code: "FORBIDDEN" });
       }
       return p;
@@ -1971,9 +1976,10 @@ const proposalsRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const { getUserModules, createProposal } = await import("./db");
+      const isPlatformAdmin = ctx.user!.role === "admin";
       const mods = await getUserModules(ctx.user!.id);
       const propMod = mods.find((m) => m.module === "propostas");
-      if (!propMod || propMod.level === "leitor") {
+      if (!isPlatformAdmin && (!propMod || propMod.level === "leitor")) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Sem permissão para criar propostas" });
       }
       const id = await createProposal({ ownerId: ctx.user!.id, ...input });
@@ -1990,12 +1996,14 @@ const proposalsRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const { getUserModules, getProposal, updateProposal } = await import("./db");
+      const isPlatformAdmin = ctx.user!.role === "admin";
       const mods = await getUserModules(ctx.user!.id);
       const propMod = mods.find((m) => m.module === "propostas");
-      if (!propMod || propMod.level === "leitor") throw new TRPCError({ code: "FORBIDDEN" });
+      if (!isPlatformAdmin && (!propMod || propMod.level === "leitor")) throw new TRPCError({ code: "FORBIDDEN" });
       const p = await getProposal(input.id);
       if (!p) throw new TRPCError({ code: "NOT_FOUND" });
-      if (propMod.level !== "admin" && p.ownerId !== ctx.user!.id) throw new TRPCError({ code: "FORBIDDEN" });
+      const isAdmin = isPlatformAdmin || propMod?.level === "admin";
+      if (!isAdmin && p.ownerId !== ctx.user!.id) throw new TRPCError({ code: "FORBIDDEN" });
       const { id, ...data } = input;
       await updateProposal(id, data);
       return { success: true };
@@ -2005,12 +2013,14 @@ const proposalsRouter = router({
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
       const { getUserModules, getProposal, deleteProposal } = await import("./db");
+      const isPlatformAdmin = ctx.user!.role === "admin";
       const mods = await getUserModules(ctx.user!.id);
       const propMod = mods.find((m) => m.module === "propostas");
-      if (!propMod || propMod.level === "leitor") throw new TRPCError({ code: "FORBIDDEN" });
+      if (!isPlatformAdmin && (!propMod || propMod.level === "leitor")) throw new TRPCError({ code: "FORBIDDEN" });
       const p = await getProposal(input.id);
       if (!p) throw new TRPCError({ code: "NOT_FOUND" });
-      if (propMod.level !== "admin" && p.ownerId !== ctx.user!.id) throw new TRPCError({ code: "FORBIDDEN" });
+      const isAdmin = isPlatformAdmin || propMod?.level === "admin";
+      if (!isAdmin && p.ownerId !== ctx.user!.id) throw new TRPCError({ code: "FORBIDDEN" });
       await deleteProposal(input.id);
       return { success: true };
     }),
