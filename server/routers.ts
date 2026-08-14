@@ -174,7 +174,12 @@ const clientsRouter = router({
 const recurringTasksRouter = router({
   list: staffProcedure
     .input(z.object({ clientId: z.number().optional() }))
-    .query(({ input }) => listRecurringTasks(input.clientId)),
+    .query(async ({ input, ctx }) => {
+      if (input.clientId != null) { await assertClientInScope(ctx.user, input.clientId); return listRecurringTasks(input.clientId); }
+      const all = await listRecurringTasks();
+      const scope = await scopeIdsOrNull(ctx.user);
+      return scope ? all.filter((r) => scope.includes(r.clientId)) : all;
+    }),
 
   create: adminProcedure
     .input(
@@ -186,7 +191,8 @@ const recurringTasksRouter = router({
         dueDayOfMonth: z.number().min(1).max(31),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await assertClientInScope(ctx.user, input.clientId);
       const id = await createRecurringTask({ ...input, active: true });
       return { id };
     }),
@@ -222,6 +228,21 @@ const recurringTasksRouter = router({
 async function assertTaskScope(user: any, taskId: number) {
   const t = await getTaskById(taskId);
   if (t) await assertClientInScope(user, t.clientId);
+}
+// Escopo de empresas para filtros de agregação/dashboard: null = ADM total (sem recorte),
+// array = só essas empresas (ADM Limitado / funcionário).
+async function scopeIdsOrNull(user: any): Promise<number[] | null> {
+  if (isFullAdmin(user)) return null;
+  return [...await getScopeClientIds(user.id)];
+}
+// Garante que um LOGIN de cliente (portal) pertence a uma empresa do escopo do usuário.
+async function assertClientLoginScope(user: any, loginId: number) {
+  if (isFullAdmin(user)) return;
+  const { clientLoginInScope } = await import("./db");
+  const scope = [...await getScopeClientIds(user.id)];
+  if (!(await clientLoginInScope(loginId, scope))) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Cliente fora do seu acesso." });
+  }
 }
 const tasksRouter = router({
   list: staffProcedure
@@ -402,17 +423,18 @@ const tasksRouter = router({
 
   dueSoon: staffProcedure
     .input(z.object({ days: z.number().default(3) }))
-    .query(({ input }) => getTasksDueSoon(input.days)),
+    .query(async ({ input, ctx }) => getTasksDueSoon(input.days, await scopeIdsOrNull(ctx.user))),
 
-  dashboard: staffProcedure.query(() => getDashboardStats()),
+  dashboard: staffProcedure.query(async ({ ctx }) => getDashboardStats(await scopeIdsOrNull(ctx.user))),
 
-  // Dashboard gerencial: admin vê visão do escritório + equipe; colaborador vê o dele
+  // Dashboard gerencial: ADM total vê a visão do escritório + equipe; ADM Limitado e
+  // colaborador veem a visão recortada às empresas deles (getCollaboratorDashboard usa userClients).
   managerialDashboard: staffProcedure
     .input(z.object({ competencia: z.string().optional() }).optional())
     .query(async ({ input, ctx }) => {
       const { getAdminDashboard, getCollaboratorDashboard } = await import("./db");
       const competencia = input?.competencia;
-      if (ctx.user?.role === "admin") {
+      if (isFullAdmin(ctx.user)) {
         return { role: "admin" as const, ...(await getAdminDashboard(competencia)) };
       }
       return { role: "collaborator" as const, ...(await getCollaboratorDashboard(ctx.user!.id, competencia)) };
@@ -437,7 +459,7 @@ const tasksRouter = router({
 const filesRouter = router({
   listByTask: staffProcedure
     .input(z.object({ taskId: z.number() }))
-    .query(({ input }) => listTaskFiles(input.taskId)),
+    .query(async ({ input, ctx }) => { await assertTaskScope(ctx.user, input.taskId); return listTaskFiles(input.taskId); }),
 
   delete: staffProcedure
     .input(z.object({ fileId: z.number() }))
@@ -465,6 +487,7 @@ const filesRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      await assertClientInScope(ctx.user, input.clientId);
       // Upload manual — o arquivo já está sendo colocado na tarefa certa
       // NÃO precisa de OCR (OCR é só para o Upload Inteligente)
       const buffer = Buffer.from(input.base64, "base64");
@@ -502,6 +525,7 @@ const emailRouter = router({
     .mutation(async ({ input, ctx }) => {
       const task = await getTaskById(input.taskId);
       if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Tarefa não encontrada" });
+      await assertClientInScope(ctx.user, task.clientId); // ADM Limitado só envia guia das empresas dele
 
       const subject =
         input.subject ||
@@ -670,7 +694,13 @@ const emailRouter = router({
 
   logs: staffProcedure
     .input(z.object({ taskId: z.number().optional(), clientId: z.number().optional() }))
-    .query(({ input }) => listEmailLogs(input.taskId, input.clientId)),
+    .query(async ({ input, ctx }) => {
+      if (input.taskId != null) await assertTaskScope(ctx.user, input.taskId);
+      if (input.clientId != null) await assertClientInScope(ctx.user, input.clientId);
+      // Sem filtro + usuário limitado: não expõe os logs de todas as empresas.
+      if (input.taskId == null && input.clientId == null && !isFullAdmin(ctx.user)) return [];
+      return listEmailLogs(input.taskId, input.clientId);
+    }),
 });
 
 // ─── App Router ───────────────────────────────────────────────────────────────
@@ -793,6 +823,19 @@ const smartUploadRouter = router({
           error: `Cliente não encontrado para o documento ${recognition.cnpj || recognition.cpf || "sem CNPJ/CPF"}. Verifique se o cliente está cadastrado.`,
           recognition,
         };
+      }
+
+      // ADM Limitado / funcionário só processa guia de empresa liberada a ele.
+      if (!isFullAdmin(ctx.user)) {
+        const scope = await getScopeClientIds(ctx.user!.id);
+        if (!scope.has(matchedClient.id)) {
+          return {
+            success: false,
+            error: `A empresa ${matchedClient.name} não está entre as empresas liberadas para você.`,
+            recognition,
+            clientFound: { id: matchedClient.id, name: matchedClient.name },
+          };
+        }
       }
 
       if (!recognition.competencia) {
@@ -1060,9 +1103,9 @@ const operationalRouter = router({
       status: z.enum(["PENDENTE","EM_ANDAMENTO","AGUARDANDO_CLIENTE","EM_REVISAO","CONCLUIDA","CANCELADA","VENCIDA"]).optional(),
       urgent: z.boolean().optional(),
     }).optional())
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const { getOperationalQueue } = await import("./db");
-      return getOperationalQueue(input ?? {});
+      return getOperationalQueue(input ?? {}, await scopeIdsOrNull(ctx.user));
     }),
 
   activityLog: staffProcedure
@@ -1071,8 +1114,10 @@ const operationalRouter = router({
       return getActivityLogs(input.entityType, input.entityId);
     }),
 
-  stats: staffProcedure.query(async () => {
-    const all = await listTasks();
+  stats: staffProcedure.query(async ({ ctx }) => {
+    const scope = await scopeIdsOrNull(ctx.user);
+    let all = await listTasks();
+    if (scope) all = all.filter((t) => scope.includes(t.clientId));
     const today = new Date();
     const todayStr = today.toDateString();
     return {
@@ -1148,11 +1193,12 @@ const taskTemplatesRouter = router({
 const clientTemplatesRouter = router({
   listByClient: staffProcedure
     .input(z.object({ clientId: z.number() }))
-    .query(({ input }) => listClientTaskTemplates(input.clientId)),
+    .query(async ({ input, ctx }) => { await assertClientInScope(ctx.user, input.clientId); return listClientTaskTemplates(input.clientId); }),
 
   add: adminProcedure
     .input(z.object({ clientId: z.number(), taskTemplateId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await assertClientInScope(ctx.user, input.clientId);
       // Verificar se já existe
       const existing = await listClientTaskTemplates(input.clientId);
       const alreadyLinked = existing.find((e) => e.taskTemplateId === input.taskTemplateId);
@@ -1202,7 +1248,7 @@ const clientTemplatesRouter = router({
 const monthlyPanelRouter = router({
   get: staffProcedure
     .input(z.object({ month: z.number().min(1).max(12), year: z.number().min(2020) }))
-    .query(({ input }) => getMonthlyPanel(input.month, input.year)),
+    .query(async ({ input, ctx }) => getMonthlyPanel(input.month, input.year, await scopeIdsOrNull(ctx.user))),
 });
 
 
@@ -1279,9 +1325,10 @@ async function provisionClientAccess(email: string, clientId: number, name?: str
 
 async function resolvePortalClientId(ctx: any, previewClientId?: number): Promise<number> {
   const role = ctx.user?.role;
-  // Equipe: pode ver qualquer empresa (pré-visualização)
+  // Equipe: pré-visualiza a empresa informada. ADM total vê qualquer uma; ADM Limitado e
+  // funcionário só as empresas vinculadas a eles.
   if (role === "admin" || role === "user") {
-    if (previewClientId) return previewClientId;
+    if (previewClientId) { await assertClientInScope(ctx.user, previewClientId); return previewClientId; }
     throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito" });
   }
   // Cliente: pode ver as empresas às quais tem acesso
@@ -1480,7 +1527,8 @@ const clientAccessRouter = router({
       email: z.string().email(),
       password: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await assertClientInScope(ctx.user, input.clientId); // ADM Limitado só nas empresas dele
       const email = input.email.trim().toLowerCase();
       const existing = await getUserByEmailAndRole(email, "client");
       if (existing) {
@@ -1502,14 +1550,15 @@ const clientAccessRouter = router({
       return { success: true, action: "created" };
     }),
 
-  // Listar acessos de clientes existentes
-  listLogins: staffProcedure.query(async () => {
+  // Listar acessos de clientes existentes. ADM Limitado só vê os logins das empresas dele.
+  listLogins: staffProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) return [];
     const { users: usersTable } = await import("../drizzle/schema");
     const { eq } = await import("drizzle-orm");
+    let rows: any[];
     try {
-      return await db.select({
+      rows = await db.select({
         id: usersTable.id,
         email: usersTable.email,
         clientId: usersTable.clientId,
@@ -1517,19 +1566,26 @@ const clientAccessRouter = router({
         mustChangePassword: usersTable.mustChangePassword,
       }).from(usersTable).where(eq(usersTable.role, "client"));
     } catch {
-      const rows = await db.select({
+      rows = (await db.select({
         id: usersTable.id,
         email: usersTable.email,
         clientId: usersTable.clientId,
         lastSignedIn: usersTable.lastSignedIn,
-      }).from(usersTable).where(eq(usersTable.role, "client"));
-      return rows.map((r) => ({ ...r, mustChangePassword: false }));
+      }).from(usersTable).where(eq(usersTable.role, "client"))).map((r) => ({ ...r, mustChangePassword: false }));
     }
+    if (!isFullAdmin(ctx.user)) {
+      const scope = [...await getScopeClientIds(ctx.user!.id)];
+      const { clientLoginIdsForCompanies } = await import("./db");
+      const allowed = await clientLoginIdsForCompanies(scope);
+      rows = rows.filter((r) => allowed.has(r.id));
+    }
+    return rows;
   }),
 
   deleteLogin: staffProcedure
     .input(z.object({ id: z.number().positive() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await assertClientLoginScope(ctx.user, input.id);
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       const { users: usersTable } = await import("../drizzle/schema");
@@ -1543,7 +1599,8 @@ const clientAccessRouter = router({
       id: z.number().positive(),
       newPassword: z.string().min(6).max(100),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await assertClientLoginScope(ctx.user, input.id);
       const passwordHash = await bcryptjs.hash(input.newPassword, 10);
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
@@ -1557,13 +1614,14 @@ const clientAccessRouter = router({
   // troca no próximo login e manda o e-mail de boas-vindas (senha + tutorial).
   resendClientAccess: staffProcedure
     .input(z.object({ email: z.string().email(), clientId: z.number().optional() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       // Usa o e-mail DO ACESSO (login), nunca o e-mail da empresa — eles podem diferir.
       const email = input.email.trim().toLowerCase();
       const existing = await getUserByEmailAndRole(email, "client");
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Acesso não encontrado para esse e-mail." });
       }
+      await assertClientLoginScope(ctx.user, existing.id); // ADM Limitado só nos clientes dele
       const tempPassword = generateTempPassword();
       const passwordHash = await bcryptjs.hash(tempPassword, 10);
       const db = await getDb();
@@ -1813,8 +1871,9 @@ const calendarRouter = router({
     .query(async ({ input, ctx }) => {
       const { getCalendarEvents } = await import("./db");
       const eventos: any[] = await getCalendarEvents(ctx.user!.id, input.startISO, input.endISO);
-      // Sobrepõe os vencimentos financeiros (contas a receber e a pagar) como eventos read-only
-      if ((ctx.user as any)?.role === "admin") {
+      // Sobrepõe os vencimentos financeiros do escritório (a receber + a pagar) como eventos
+      // read-only. Visão global → só ADM total (o ADM Limitado usa o Financeiro recortado).
+      if (isFullAdmin(ctx.user)) {
         try {
           const db = await getDb();
           if (db) {

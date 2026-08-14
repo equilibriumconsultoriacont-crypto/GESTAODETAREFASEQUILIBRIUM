@@ -461,13 +461,23 @@ export async function taskExistsByRecurringAndCompetencia(
   }
 }
 
-export async function getTasksDueSoon(daysAhead = 7): Promise<Task[]> {
+// allowedClientIds: null/undefined = sem recorte (ADM total); array = só essas empresas.
+function scopeInClause(allowedClientIds?: number[] | null): string | null {
+  if (!allowedClientIds) return null;
+  const ids = allowedClientIds.map(Number).filter(Number.isFinite);
+  return ids.length ? ids.join(",") : "__none__";
+}
+
+export async function getTasksDueSoon(daysAhead = 7, allowedClientIds?: number[] | null): Promise<Task[]> {
   try {
+    const inIds = scopeInClause(allowedClientIds);
+    if (inIds === "__none__") return [];
     const pool = getPool();
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() + daysAhead);
+    const scopeWhere = inIds ? ` AND clientId IN (${inIds})` : "";
     const [rows] = await pool.query(
-      `SELECT * FROM tasks WHERE status = 'PENDENTE' AND dueDate <= ? ORDER BY dueDate ASC`,
+      `SELECT * FROM tasks WHERE status = 'PENDENTE' AND dueDate <= ?${scopeWhere} ORDER BY dueDate ASC`,
       [cutoff]
     ) as [any[], any];
     return rows as Task[];
@@ -572,10 +582,12 @@ export async function getOperationalQueue(filters?: {
   status?: string;
   assignedTo?: number;
   urgent?: boolean;
-}): Promise<Task[]> {
+}, allowedClientIds?: number[] | null): Promise<Task[]> {
   const db = await getDb();
   if (!db) return [];
+  if (allowedClientIds && allowedClientIds.length === 0) return [];
   const conditions: any[] = [];
+  if (allowedClientIds) conditions.push(inArray(tasks.clientId, allowedClientIds));
   if (filters?.department) conditions.push(eq(tasks.department as any, filters.department));
   if (filters?.status) conditions.push(eq(tasks.status, filters.status as any));
   if (filters?.assignedTo) conditions.push(eq(tasks.assignedTo as any, filters.assignedTo));
@@ -587,13 +599,17 @@ export async function getOperationalQueue(filters?: {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-export async function getDashboardStats() {
+export async function getDashboardStats(allowedClientIds?: number[] | null) {
   const empty = { total: 0, pendentes: 0, emAndamento: 0, aguardandoCliente: 0, emRevisao: 0, concluidas: 0, vencidas: 0, clientesAtivos: 0 };
   try {
+    const inIds = scopeInClause(allowedClientIds);
+    if (inIds === "__none__") return empty;
     const pool = getPool();
+    const taskWhere = inIds ? ` WHERE clientId IN (${inIds})` : "";
+    const clientWhere = inIds ? ` AND id IN (${inIds})` : "";
     const [[taskRows], [clientRows]] = await Promise.all([
-      pool.query("SELECT status FROM tasks") as Promise<[any[], any]>,
-      pool.query("SELECT id FROM clients WHERE active = 1") as Promise<[any[], any]>,
+      pool.query("SELECT status FROM tasks" + taskWhere) as Promise<[any[], any]>,
+      pool.query("SELECT id FROM clients WHERE active = 1" + clientWhere) as Promise<[any[], any]>,
     ]);
     const allTasks = taskRows as { status: string }[];
     return {
@@ -791,17 +807,21 @@ export async function applyCatalogToClient(clientId: number, catalogId: number):
 }
 
 // ─── Monthly Panel ────────────────────────────────────────────────────────────
-export async function getMonthlyPanel(month: number, year: number) {
+export async function getMonthlyPanel(month: number, year: number, allowedClientIds?: number[] | null) {
   try {
+    const inIds = scopeInClause(allowedClientIds);
+    if (inIds === "__none__") return [];
     const pool = getPool();
+    const clientWhere = inIds ? ` AND id IN (${inIds})` : "";
+    const taskWhere = inIds ? ` AND clientId IN (${inIds})` : "";
     // O Painel Mensal é um CALENDÁRIO DE VENCIMENTOS: os dias marcados são
     // os dias em que guias vencem. Por isso filtramos por MÊS DE VENCIMENTO
     // (dueDate), não por competência — uma guia de competência 06 pode vencer
     // em 07 (defasagem), e deve aparecer no calendário de julho.
     const [[clientRows], [taskRows]] = await Promise.all([
-      pool.query("SELECT id, name FROM clients WHERE active = 1 ORDER BY name") as Promise<[any[], any]>,
+      pool.query("SELECT id, name FROM clients WHERE active = 1" + clientWhere + " ORDER BY name") as Promise<[any[], any]>,
       pool.query(
-        "SELECT id, clientId, title, taskType, status, dueDate, competencia FROM tasks WHERE MONTH(dueDate) = ? AND YEAR(dueDate) = ?",
+        "SELECT id, clientId, title, taskType, status, dueDate, competencia FROM tasks WHERE MONTH(dueDate) = ? AND YEAR(dueDate) = ?" + taskWhere,
         [month, year]
       ) as Promise<[any[], any]>,
     ]);
@@ -1507,6 +1527,34 @@ export async function getUserCompanies(userId: number): Promise<Array<{ id: numb
     const cs = await db.select().from(clients).where(inArray(clients.id, ids));
     return cs.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name })).sort((a, b) => a.name.localeCompare(b.name));
   } catch { return []; }
+}
+
+// Acessos de cliente (role=client) cujas empresas (primária OU vínculos) caem no escopo.
+// Usado para o ADM Limitado só ver os logins de portal das empresas liberadas a ele.
+export async function clientLoginIdsForCompanies(clientIds: number[]): Promise<Set<number>> {
+  const db = await getDb();
+  const set = new Set<number>();
+  if (!db || clientIds.length === 0) return set;
+  try {
+    const acc = await db.select({ userId: clientUserAccess.userId }).from(clientUserAccess).where(inArray(clientUserAccess.clientId, clientIds));
+    acc.forEach((a) => set.add(a.userId));
+    const prim = await db.select({ id: users.id }).from(users).where(and(eq(users.role, "client"), inArray(users.clientId, clientIds)));
+    prim.forEach((u) => set.add(u.id));
+  } catch { /* */ }
+  return set;
+}
+
+// Um login de cliente está no escopo se a empresa primária OU algum vínculo estiver liberado.
+export async function clientLoginInScope(loginId: number, clientIds: number[]): Promise<boolean> {
+  const db = await getDb();
+  if (!db || clientIds.length === 0) return false;
+  try {
+    const u = (await db.select({ clientId: users.clientId }).from(users).where(eq(users.id, loginId)).limit(1))[0];
+    if (u && u.clientId != null && clientIds.includes(u.clientId)) return true;
+    const acc = await db.select().from(clientUserAccess)
+      .where(and(eq(clientUserAccess.userId, loginId), inArray(clientUserAccess.clientId, clientIds))).limit(1);
+    return acc.length > 0;
+  } catch { return false; }
 }
 
 export async function userHasCompanyAccess(userId: number, clientId: number): Promise<boolean> {
