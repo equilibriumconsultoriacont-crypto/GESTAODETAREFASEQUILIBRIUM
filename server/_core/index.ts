@@ -206,6 +206,24 @@ async function startServer() {
     }
   });
 
+  // ── Diagnóstico de criptografia (LGPD) ────────────────────────────────────
+  // Testa a chave DATA_ENC_KEY AO VIVO: cifra/decifra uma string de teste em memória.
+  // NÃO toca no banco, NÃO expõe a chave nem dado de cliente — só devolve booleans.
+  //   enabled       = a chave está carregada e válida.
+  //   storedEncrypted = um valor gravado agora seria armazenado cifrado (prefixo enc:1:).
+  //   roundTrip     = decifra de volta corretamente.
+  app.get("/health/encryption", async (_req, res) => {
+    try {
+      const { encryptionEnabled, encField, decField } = await import("../crypto");
+      const probe = "probe-" + Date.now();
+      const enc = encField(probe);
+      const storedEncrypted = typeof enc === "string" && enc.startsWith("enc:1:");
+      res.json({ enabled: encryptionEnabled(), storedEncrypted, roundTrip: decField(enc) === probe });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message });
+    }
+  });
+
   // ── Migration endpoint ────────────────────────────────────────────────────
   app.post("/admin/migrate", async (req, res) => {
     if (!checkAdminSecret(req)) return res.status(403).json(ADMIN_FORBIDDEN);
