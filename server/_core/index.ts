@@ -6,6 +6,8 @@ if (!globalThis.crypto) {
 
 import "dotenv/config";
 import express from "express";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { createServer } from "http";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
@@ -22,6 +24,19 @@ process.on("uncaughtException", (err: any) => {
   console.error("[uncaughtException] erro capturado, serviço segue de pé:", err?.message || err);
 });
 
+// Valida o segredo dos endpoints /admin/*. Em PRODUÇÃO, recusa o segredo padrão público
+// (que está no repositório) — obriga a configurar MIGRATE_SECRET no ambiente. Aceita via
+// header x-migrate-secret, ?secret= ou body.secret (mantém o fluxo manual do dono).
+function checkAdminSecret(req: any): boolean {
+  const DEFAULT = "equilibrium-migrate-2024";
+  const envSecret = process.env.MIGRATE_SECRET;
+  if (process.env.NODE_ENV === "production" && !envSecret) return false; // sem segredo real em prod → bloqueia
+  const secret = envSecret || DEFAULT;
+  const provided = req.headers?.["x-migrate-secret"] || req.query?.secret || (req.body && req.body.secret);
+  return !!provided && provided === secret;
+}
+const ADMIN_FORBIDDEN = { error: "Forbidden — configure a variável MIGRATE_SECRET no Render e envie o segredo em x-migrate-secret." };
+
 async function startServer() {
   // ── Aviso de segurança: segredos padrão em produção ───────────────────────
   // Se JWT_SECRET/MIGRATE_SECRET não estiverem setados, o código cai para valores
@@ -32,24 +47,32 @@ async function startServer() {
     const semJwt = !process.env.JWT_SECRET && !process.env.SESSION_SECRET;
     const semMigrate = !process.env.MIGRATE_SECRET;
     if (semJwt) console.error("[SEGURANÇA] JWT_SECRET/SESSION_SECRET não definido — usando segredo padrão PÚBLICO. Configure no Render AGORA (risco de forja de sessão).");
-    if (semMigrate) console.error("[SEGURANÇA] MIGRATE_SECRET não definido — endpoints /admin/* usam segredo padrão PÚBLICO. Configure no Render AGORA.");
+    if (semMigrate) console.error("[SEGURANÇA] MIGRATE_SECRET não definido — os endpoints /admin/* estão BLOQUEADOS (403) até você configurar essa variável no Render. As migrações de schema continuam rodando no boot (ensureSchema).");
   }
 
   const app = express();
 
   app.set("trust proxy", 1);
 
-  // ── Security headers ──────────────────────────────────────────────────────
-  app.use((req, res, next) => {
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    // SAMEORIGIN permite embutir páginas do próprio site em iframe (ex: módulo
-    // de Propostas carrega /tools/gerador-propostas.html), mas continua
-    // bloqueando que sites externos embutam o nosso (proteção anti-clickjacking).
-    res.setHeader("X-Frame-Options", "SAMEORIGIN");
-    res.setHeader("X-XSS-Protection", "1; mode=block");
-    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    next();
-  });
+  // ── Security headers (helmet) + rate limiting ─────────────────────────────
+  // CSP e COEP/CORP desligados de propósito: o app usa scripts inline, PWA e iframes
+  // do PRÓPRIO domínio (gerador de documentos). Uma CSP padrão quebraria tudo. Mantém
+  // HSTS, nosniff, frameguard SAMEORIGIN (permite iframe próprio, bloqueia externo —
+  // anti-clickjacking), referrer-policy e remove o X-Powered-By.
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: false,
+    frameguard: { action: "sameorigin" },
+    hsts: { maxAge: 15552000 }, // 180 dias (Render sempre serve HTTPS)
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  }));
+
+  // Rate limit global generoso — corta flood/força-bruta/DoS sem atrapalhar o polling do
+  // app nem um escritório inteiro atrás do mesmo IP (trust proxy já está setado acima).
+  app.use(rateLimit({ windowMs: 60_000, max: 1500, standardHeaders: true, legacyHeaders: false, message: { error: "Muitas requisições — tente novamente em instantes." } }));
+  // Rate limit ESTRITO nos endpoints administrativos (setup/migração).
+  app.use("/admin", rateLimit({ windowMs: 60_000, max: 15, standardHeaders: true, legacyHeaders: false, message: { error: "Muitas tentativas administrativas." } }));
 
   // ── Upload ANTES do body parser (busboy precisa do stream raw) ────────────
   app.post("/api/upload", async (req, res) => {
@@ -185,8 +208,7 @@ async function startServer() {
 
   // ── Migration endpoint ────────────────────────────────────────────────────
   app.post("/admin/migrate", async (req, res) => {
-    const secret = process.env.MIGRATE_SECRET || "equilibrium-migrate-2024";
-    if (req.headers["x-migrate-secret"] !== secret) return res.status(403).json({ error: "Forbidden" });
+    if (!checkAdminSecret(req)) return res.status(403).json(ADMIN_FORBIDDEN);
     try {
       const mysql = await import("mysql2/promise");
       const conn = await mysql.default.createConnection({ uri: process.env.DATABASE_URL! });
@@ -229,9 +251,7 @@ async function startServer() {
   // Usar quando o banco está vazio (ex: migração para novo provedor)
   // POST /admin/setup?secret=XXX&email=...&password=...&name=...
   app.post("/admin/setup", async (req, res) => {
-    const secret = process.env.MIGRATE_SECRET || "equilibrium-migrate-2024";
-    const provided = req.headers["x-migrate-secret"] || req.query.secret;
-    if (provided !== secret) return res.status(403).json({ error: "Forbidden" });
+    if (!checkAdminSecret(req)) return res.status(403).json(ADMIN_FORBIDDEN);
 
     try {
       const mysql = await import("mysql2/promise");
@@ -403,9 +423,7 @@ async function startServer() {
   // Recebe SQL (INSERTs) no corpo e executa no banco. Limpa as tabelas antes.
   // POST /admin/restore  body: { secret, sql, truncate: true }
   app.post("/admin/restore", async (req, res) => {
-    const secret = process.env.MIGRATE_SECRET || "equilibrium-migrate-2024";
-    const provided = req.headers["x-migrate-secret"] || req.query.secret || (req.body && req.body.secret);
-    if (provided !== secret) return res.status(403).json({ error: "Forbidden" });
+    if (!checkAdminSecret(req)) return res.status(403).json(ADMIN_FORBIDDEN);
 
     const sql: string = req.body && req.body.sql;
     if (!sql || typeof sql !== "string") {
@@ -463,10 +481,7 @@ async function startServer() {
 
   // ── Teste de SMTP ────────────────────────────────────────────────────────
   app.get("/admin/test-email", async (req, res) => {
-    const secret = process.env.MIGRATE_SECRET || "equilibrium-migrate-2024";
-    if (req.headers["x-migrate-secret"] !== secret && req.query.secret !== secret) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
+    if (!checkAdminSecret(req)) return res.status(403).json(ADMIN_FORBIDDEN);
     // Testa Resend se configurado
     const resendKey = process.env.RESEND_API_KEY;
     const resendFrom = process.env.RESEND_FROM || "contato@equilibriumcont.com";

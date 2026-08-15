@@ -2085,6 +2085,54 @@ const proposalsRouter = router({
     }),
 });
 
+// ─── LGPD: direitos do titular (art. 18) ──────────────────────────────────────
+const lgpdRouter = router({
+  // Direito de ACESSO/PORTABILIDADE: exporta todos os dados de um cliente (JSON).
+  // ADM total ou ADM Limitado (só nas empresas dele). Registrado em auditoria.
+  exportClient: adminProcedure
+    .input(z.object({ clientId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await assertClientInScope(ctx.user, input.clientId);
+      const client = await getClientById(input.clientId);
+      if (!client) throw new TRPCError({ code: "NOT_FOUND" });
+      const clientTasks = await listTasks({ clientId: input.clientId });
+      const db = await getDb();
+      let files: any[] = [], titulos: any[] = [], contatosWa: any[] = [], acessos: any[] = [];
+      if (db) {
+        const s = await import("../drizzle/schema");
+        const { eq: e2, and: a2 } = await import("drizzle-orm");
+        files = await db.select({ id: s.taskFiles.id, filename: s.taskFiles.filename, uploadedAt: s.taskFiles.uploadedAt }).from(s.taskFiles).where(e2(s.taskFiles.clientId, input.clientId));
+        titulos = await db.select().from(s.financialTitulos).where(e2(s.financialTitulos.clientId, input.clientId));
+        contatosWa = await db.select({ id: s.waContacts.id, waNumber: s.waContacts.waNumber, name: s.waContacts.name }).from(s.waContacts).where(e2(s.waContacts.clientId, input.clientId));
+        acessos = await db.select({ id: s.users.id, email: s.users.email, lastSignedIn: s.users.lastSignedIn }).from(s.users).where(a2(e2(s.users.role, "client"), e2(s.users.clientId, input.clientId)));
+      }
+      try { const { logActivity } = await import("./db"); await logActivity({ entityType: "client", entityId: input.clientId, action: "lgpd_export", userId: ctx.user!.id }); } catch {}
+      return { geradoEm: new Date().toISOString(), titular: client, tarefas: clientTasks, arquivos: files, contasReceber: titulos, contatosWhatsApp: contatosWa, acessosPortal: acessos };
+    }),
+
+  // Direito ao ESQUECIMENTO: anonimiza os DADOS PESSOAIS do cliente e remove os acessos
+  // de portal. Mantém os registros FISCAIS/FINANCEIROS (retenção legal obrigatória — não
+  // podem ser apagados). Exclusivo do ADM total. Registrado em auditoria.
+  anonymizeClient: adminProcedure
+    .input(z.object({ clientId: z.number(), confirm: z.literal(true) }))
+    .mutation(async ({ input, ctx }) => {
+      if (!isFullAdmin(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Apenas o administrador geral pode anonimizar um titular." });
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const s = await import("../drizzle/schema");
+      const { eq: e2, and: a2 } = await import("drizzle-orm");
+      const tag = `[anonimizado #${input.clientId}]`;
+      // Cliente: remove contato/PII, inativa. Mantém CNPJ (identificador fiscal / NOT NULL) e
+      // os títulos financeiros (retenção legal).
+      await db.update(s.clients).set({ name: tag, email: `anon-${input.clientId}@anonimizado.local`, phone: null, cpf: null, notes: null, active: false } as any).where(e2(s.clients.id, input.clientId));
+      try { await db.update(s.waContacts).set({ name: tag, avatarUrl: null } as any).where(e2(s.waContacts.clientId, input.clientId)); } catch {}
+      try { await db.delete(s.users).where(a2(e2(s.users.role, "client"), e2(s.users.clientId, input.clientId))); } catch {}
+      try { await db.delete(s.clientUserAccess).where(e2(s.clientUserAccess.clientId, input.clientId)); } catch {}
+      try { const { logActivity } = await import("./db"); await logActivity({ entityType: "client", entityId: input.clientId, action: "lgpd_anonymize", userId: ctx.user!.id }); } catch {}
+      return { ok: true };
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -2216,6 +2264,7 @@ export const appRouter = router({
   proposals: proposalsRouter,
   clientPortal: clientPortalRouter,
   clientAccess: clientAccessRouter,
+  lgpd: lgpdRouter,
 });
 
 export type AppRouter = typeof appRouter;

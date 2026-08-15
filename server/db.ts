@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
+import { encField, decField } from "./crypto";
 import {
   ActivityLog,
   CatalogTemplate,
@@ -215,7 +216,7 @@ export async function getUserByOpenId(openId: string) {
 export async function createClient(data: InsertClient): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const normalized = { ...data, email: data.email.trim().toLowerCase() };
+  const normalized = { ...data, email: data.email.trim().toLowerCase(), notes: encField(data.notes) };
   const result = await db.insert(clients).values(normalized);
   return result[0].insertId;
 }
@@ -223,21 +224,26 @@ export async function createClient(data: InsertClient): Promise<number> {
 export async function listClients(includeInactive = false): Promise<Client[]> {
   const db = await getDb();
   if (!db) return [];
-  if (includeInactive) return db.select().from(clients).orderBy(clients.name);
-  return db.select().from(clients).where(eq(clients.active, true)).orderBy(clients.name);
+  const rows = includeInactive
+    ? await db.select().from(clients).orderBy(clients.name)
+    : await db.select().from(clients).where(eq(clients.active, true)).orderBy(clients.name);
+  for (const r of rows as any[]) r.notes = decField(r.notes);
+  return rows;
 }
 
 export async function getClientById(id: number): Promise<Client | undefined> {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(clients).where(eq(clients.id, id)).limit(1);
+  if (result[0]) (result[0] as any).notes = decField((result[0] as any).notes);
   return result[0];
 }
 
 export async function updateClient(id: number, data: Partial<InsertClient>): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  const normalized = data.email ? { ...data, email: data.email.trim().toLowerCase() } : data;
+  const normalized: any = data.email ? { ...data, email: data.email.trim().toLowerCase() } : { ...data };
+  if (normalized.notes !== undefined) normalized.notes = encField(normalized.notes);
   await db.update(clients).set(normalized).where(eq(clients.id, id));
 }
 
@@ -335,9 +341,13 @@ export async function listTasks(filters?: {
     if (filters?.taskType) conditions.push(eq(tasks.taskType, filters.taskType as any));
     if (filters?.competencia) conditions.push(eq(tasks.competencia, filters.competencia));
     if (conditions.length > 0) {
-      return await (query as any).where(conditions.length === 1 ? conditions[0] : and(...conditions)).orderBy(desc(tasks.dueDate));
+      const rows = await (query as any).where(conditions.length === 1 ? conditions[0] : and(...conditions)).orderBy(desc(tasks.dueDate));
+      for (const r of rows as any[]) r.notes = decField(r.notes);
+      return rows;
     }
-    return await (query as any).orderBy(desc(tasks.dueDate));
+    const rows = await (query as any).orderBy(desc(tasks.dueDate));
+    for (const r of rows as any[]) r.notes = decField(r.notes);
+    return rows;
   } catch (err: any) {
     // Fallback: raw SQL usando o pool diretamente (não depende do schema Drizzle)
     console.error("[DB] listTasks drizzle failed, using raw SQL:", err?.message);
@@ -358,6 +368,7 @@ export async function listTasks(filters?: {
       if (wheres.length > 0) rawSql += " WHERE " + wheres.join(" AND ");
       rawSql += " ORDER BY dueDate DESC";
       const [rows] = await pool.query(rawSql, params);
+      for (const r of rows as any[]) r.notes = decField(r.notes);
       return rows as Task[];
     } catch (fallbackErr: any) {
       console.error("[DB] listTasks raw SQL also failed:", fallbackErr?.message);
@@ -371,6 +382,7 @@ export async function getTaskById(id: number): Promise<Task | undefined> {
   if (!db) return undefined;
   try {
     const result = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
+    if (result[0]) (result[0] as any).notes = decField((result[0] as any).notes);
     return result[0];
   } catch (err: any) {
     // Mesma resiliência do listTasks: se o schema Drizzle tiver uma coluna que o banco
@@ -390,6 +402,7 @@ export async function getTaskById(id: number): Promise<Task | undefined> {
           FROM tasks WHERE id = ? LIMIT 1`,
         [id]
       ) as [any[], any];
+      if (rows[0]) (rows[0] as any).notes = decField((rows[0] as any).notes);
       return rows[0] as Task | undefined;
     } catch (fallbackErr: any) {
       console.error("[DB] getTaskById raw SQL also failed:", fallbackErr?.message);
@@ -401,6 +414,7 @@ export async function getTaskById(id: number): Promise<Task | undefined> {
 export async function createTask(data: InsertTask): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  if ((data as any).notes != null) (data as any).notes = encField((data as any).notes);
   try {
     const result = await db.insert(tasks).values(data);
     return result[0].insertId;
@@ -419,6 +433,7 @@ export async function createTask(data: InsertTask): Promise<number> {
 export async function updateTask(id: number, data: Partial<InsertTask>): Promise<void> {
   const db = await getDb();
   if (!db) return;
+  if ((data as any).notes !== undefined) (data as any).notes = encField((data as any).notes);
   try {
     await db.update(tasks).set(data).where(eq(tasks.id, id));
   } catch (err: any) {
