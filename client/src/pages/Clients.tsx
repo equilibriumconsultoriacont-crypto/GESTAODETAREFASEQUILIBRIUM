@@ -27,7 +27,7 @@ function formatCPF(v: string) {
     .slice(0, 14);
 }
 
-const emptyForm = { name: "", cnpj: "", cpf: "", documentType: "CNPJ" as "CNPJ" | "CPF", email: "", phone: "", notes: "" };
+const emptyForm = { name: "", cnpj: "", cpf: "", documentType: "CNPJ" as "CNPJ" | "CPF", email: "", phone: "", ccEmails: "", ccPhones: "", notes: "" };
 
 export default function Clients() {
   const isAdmin = useIsAdmin();
@@ -64,6 +64,8 @@ export default function Clients() {
       documentType: ((c as any).documentType as "CNPJ" | "CPF") ?? "CNPJ",
       email: c.email,
       phone: c.phone ?? "",
+      ccEmails: (c as any).ccEmails ?? "",
+      ccPhones: (c as any).ccPhones ?? "",
       notes: c.notes ?? "",
     });
     setDialogOpen(true);
@@ -79,6 +81,8 @@ export default function Clients() {
         documentType: form.documentType,
         email: form.email,
         phone: form.phone || undefined,
+        ccEmails: form.ccEmails || undefined,
+        ccPhones: form.ccPhones || undefined,
         notes: form.notes || undefined,
       };
       if (editClient) {
@@ -298,6 +302,30 @@ export default function Clients() {
             <div className="space-y-1.5">
               <Label style={{ color: "#a1a1aa" }}>Telefone / WhatsApp</Label>
               <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="(19) 99999-0000" style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5" }} />
+            </div>
+            <div className="space-y-1.5">
+              <Label style={{ color: "#a1a1aa" }}>E-mails adicionais (guias e avisos vão pra estes também)</Label>
+              <textarea
+                value={form.ccEmails}
+                onChange={(e) => setForm({ ...form, ccEmails: e.target.value })}
+                rows={2}
+                placeholder="parceiro@escritorio.com, contato2@cliente.com"
+                className="w-full rounded-md px-3 py-2 text-sm resize-none"
+                style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5", border: "1px solid #1e4f5c", outline: "none" }}
+              />
+              <p className="text-xs" style={{ color: "#5c716d" }}>Separe por vírgula. Ex.: o e-mail do contador parceiro.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label style={{ color: "#a1a1aa" }}>Telefones / WhatsApp adicionais</Label>
+              <textarea
+                value={form.ccPhones}
+                onChange={(e) => setForm({ ...form, ccPhones: e.target.value })}
+                rows={2}
+                placeholder="(19) 98888-0000, (11) 97777-0000"
+                className="w-full rounded-md px-3 py-2 text-sm resize-none"
+                style={{ background: "#0d1f22", borderColor: "#1e4f5c", color: "#e5e5e5", border: "1px solid #1e4f5c", outline: "none" }}
+              />
+              <p className="text-xs" style={{ color: "#5c716d" }}>Separe por vírgula. O aviso de guia no WhatsApp vai pra todos.</p>
             </div>
             <div className="space-y-1.5">
               <Label style={{ color: "#a1a1aa" }}>Observações</Label>

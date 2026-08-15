@@ -1,6 +1,7 @@
 import { getPool } from "./db";
 import { sendEmail, buildGuiaEmailHtml } from "./email";
 import { storageGetBuffer } from "./storage";
+import { allEmails, allPhones } from "./recipients";
 
 /**
  * Envia automaticamente arquivos de guia que ainda não foram enviados por e-mail.
@@ -32,7 +33,8 @@ export async function autoSendPendingGuias(): Promise<{
         f.id as fileId, f.filename, f.fileKey, f.fileUrl, f.mimeType,
         t.id as taskId, t.title, t.taskType, t.competencia, t.dueDate, t.status, t.notes,
         t.clientId,
-        c.name as clientName, c.email as clientEmail, c.phone as clientPhone
+        c.name as clientName, c.email as clientEmail, c.phone as clientPhone,
+        c.ccEmails as clientCcEmails, c.ccPhones as clientCcPhones
       FROM task_files f
       INNER JOIN tasks t ON t.id = f.taskId
       INNER JOIN clients c ON c.id = t.clientId
@@ -69,10 +71,14 @@ export async function autoSendPendingGuias(): Promise<{
           notes: row.notes ?? undefined,
         });
 
+        // Destinatários extras (parceiros / vários contatos) entram como cc.
+        const ccExtras = allEmails(row.clientEmail, row.clientCcEmails)
+          .filter((e) => e.toLowerCase() !== String(row.clientEmail).toLowerCase());
         await sendEmail({
           to: row.clientEmail,
           subject,
           html,
+          cc: ccExtras.length ? ccExtras.join(",") : undefined,
           attachments: [{
             filename: row.filename,
             content: buf,
@@ -94,17 +100,22 @@ export async function autoSendPendingGuias(): Promise<{
           [row.taskId]
         );
 
-        // Aviso pelo WhatsApp (mensagem, não o PDF — reduz risco de bloqueio).
-        // Não bloqueia nem falha o envio por e-mail se o WhatsApp estiver fora.
-        if (row.clientPhone) {
+        // Aviso pelo WhatsApp (mensagem, não o PDF — reduz risco de bloqueio) para o telefone
+        // do cliente + os adicionais. Não bloqueia nem falha o e-mail se o WhatsApp estiver fora.
+        const phones = allPhones(row.clientPhone, row.clientCcPhones);
+        if (phones.length) {
           try {
             const { notifyGuiaSent } = await import("./wa/notify");
-            const r = await notifyGuiaSent({
-              clientId: row.clientId, phone: row.clientPhone, name: row.clientName,
-              taskType: row.taskType, competencia: row.competencia,
-            });
-            if (r.ok) console.log(`[AutoSend] ✓ WhatsApp avisado: ${row.clientName}`);
-          } catch (e: any) { console.warn("[AutoSend] WhatsApp aviso:", e?.message); }
+            for (const phone of phones) {
+              try {
+                const r = await notifyGuiaSent({
+                  clientId: row.clientId, phone, name: row.clientName,
+                  taskType: row.taskType, competencia: row.competencia,
+                });
+                if (r.ok) console.log(`[AutoSend] ✓ WhatsApp avisado (${phone}): ${row.clientName}`);
+              } catch (e: any) { console.warn(`[AutoSend] WhatsApp aviso (${phone}):`, e?.message); }
+            }
+          } catch (e: any) { console.warn("[AutoSend] WhatsApp:", e?.message); }
         }
 
         console.log(`[AutoSend] ✓ Arquivo ${row.fileId} (${row.filename}) → ${row.clientEmail}`);

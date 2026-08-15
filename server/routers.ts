@@ -69,8 +69,8 @@ import {
   getUserByEmailAndRole,
 } from "./db";
 import { buildAlertEmailHtml, buildGuiaEmailHtml, sendEmail } from "./email";
+import { allEmails, allPhones } from "./recipients";
 import { storagePut, storageDelete, storageGetBuffer } from "./storage";
-import { sendGuiaConfirmationWhatsApp } from "./whatsapp";
 // getUserByEmail, upsertUser already imported above
 import bcryptjs from "bcryptjs";
 import { financeiroRouter } from "./financeiroRouter";
@@ -104,6 +104,8 @@ const clientsRouter = router({
         documentType: z.enum(["CNPJ", "CPF"]).default("CNPJ"),
         email: z.string().email(),
         phone: z.string().optional(),
+        ccEmails: z.string().max(2000).optional(),
+        ccPhones: z.string().max(2000).optional(),
         notes: z.string().optional(),
       })
     )
@@ -140,6 +142,8 @@ const clientsRouter = router({
         documentType: z.enum(["CNPJ", "CPF"]).optional(),
         email: z.string().email().optional(),
         phone: z.string().max(20).optional(),
+        ccEmails: z.string().max(2000).optional(),
+        ccPhones: z.string().max(2000).optional(),
         notes: z.string().max(2000).optional(),
         active: z.boolean().optional(),
       })
@@ -526,6 +530,10 @@ const emailRouter = router({
       const task = await getTaskById(input.taskId);
       if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Tarefa não encontrada" });
       await assertClientInScope(ctx.user, task.clientId); // ADM Limitado só envia guia das empresas dele
+      const clientData = await getClientById(task.clientId);
+      // Destinatários extras (parceiros / vários contatos): entram como cc no e-mail.
+      const ccExtras = allEmails(input.recipientEmail, clientData?.ccEmails)
+        .filter((e) => e.toLowerCase() !== input.recipientEmail.toLowerCase());
 
       const subject =
         input.subject ||
@@ -574,8 +582,8 @@ const emailRouter = router({
       let errorMessage: string | undefined;
 
       try {
-        await sendEmail({ to: input.recipientEmail, subject, html, attachments });
-        console.log(`[Email] Enviado para ${input.recipientEmail} — tarefa ${input.taskId}`);
+        await sendEmail({ to: input.recipientEmail, subject, html, attachments, cc: ccExtras.length ? ccExtras.join(",") : undefined });
+        console.log(`[Email] Enviado para ${input.recipientEmail}${ccExtras.length ? " (cc: " + ccExtras.join(", ") + ")" : ""} — tarefa ${input.taskId}`);
       } catch (err) {
         status = "FALHOU";
         errorMessage = err instanceof Error ? err.message : String(err);
@@ -603,19 +611,19 @@ const emailRouter = router({
         await updateTask(task.id, { status: "CONCLUIDA", completedAt: new Date() });
       }
 
-      // ── Notificação WhatsApp (não bloqueia o retorno) ────────────────────────
+      // ── Aviso pelo WhatsApp (Baileys — o mesmo do envio automático). Dispara para o
+      // telefone do cliente + os adicionais (parceiros/vários contatos). Não bloqueia. ──
       let whatsappSent = false;
       try {
-        const clientData = await getClientById(task.clientId);
-        if (clientData?.phone) {
-          const wppResult = await sendGuiaConfirmationWhatsApp(
-            clientData.phone,
-            task.title,
-            input.clientName
-          );
-          whatsappSent = wppResult.success;
-          if (!wppResult.success) {
-            console.warn("[sendGuia] WhatsApp não entregue:", wppResult.error);
+        const phones = allPhones(clientData?.phone, clientData?.ccPhones);
+        if (phones.length) {
+          const { notifyGuiaSent } = await import("./wa/notify");
+          for (const phone of phones) {
+            try {
+              const r = await notifyGuiaSent({ clientId: task.clientId, phone, name: input.clientName, taskType: task.taskType, competencia: task.competencia });
+              if (r.ok) whatsappSent = true;
+              else console.warn(`[sendGuia] WhatsApp não entregue (${phone}):`, r.reason);
+            } catch (e: any) { console.warn(`[sendGuia] WhatsApp erro (${phone}):`, e?.message); }
           }
         }
       } catch (wppErr) {

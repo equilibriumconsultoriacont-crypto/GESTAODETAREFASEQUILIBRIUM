@@ -47,6 +47,10 @@ export const clients = mysqlTable("clients", {
   documentType: mysqlEnum("documentType", ["CNPJ", "CPF"]).default("CNPJ").notNull(),
   email: varchar("email", { length: 320 }).notNull(),
   phone: varchar("phone", { length: 20 }),
+  // Destinatários ADICIONAIS de guias/avisos (parceiros contadores, ou vários contatos do
+  // cliente). Vários e-mails/telefones separados por vírgula, ";" ou quebra de linha.
+  ccEmails: text("ccEmails"),
+  ccPhones: text("ccPhones"),
   notes: text("notes"),
   active: boolean("active").default(true).notNull(),
   // Empresas cadastradas por um ADM Limitado entram como "pending" e precisam da aprovação

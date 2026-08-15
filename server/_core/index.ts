@@ -779,6 +779,8 @@ async function ensureSchema() {
           ["users", "createdByUserId", "ADD COLUMN `createdByUserId` int NULL"],
           ["clients", "approvalStatus", "ADD COLUMN `approvalStatus` varchar(20) NOT NULL DEFAULT 'approved'"],
           ["clients", "createdByUserId", "ADD COLUMN `createdByUserId` int NULL"],
+          ["clients", "ccEmails", "ADD COLUMN `ccEmails` text"],
+          ["clients", "ccPhones", "ADD COLUMN `ccPhones` text"],
           ["fin_payables", "clientId", "ADD COLUMN `clientId` int NULL"],
         ] as [string, string, string][]) {
           const [c]: any = await conn.query(`SELECT COUNT(*) cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${tbl}' AND COLUMN_NAME = '${col}'`);

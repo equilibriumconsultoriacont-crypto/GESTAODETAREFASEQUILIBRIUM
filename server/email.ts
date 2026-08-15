@@ -22,7 +22,11 @@ async function sendViaResend(options: SendEmailOptions): Promise<void> {
     html: options.html,
   };
 
-  if (ccEmail && ccEmail !== options.to) body.cc = [ccEmail];
+  // cc pode trazer VÁRIOS endereços (parceiros / contatos extras), separados por vírgula/;.
+  if (ccEmail) {
+    const ccList = ccEmail.split(/[,;]+/).map((s) => s.trim()).filter((e) => e && e !== options.to);
+    if (ccList.length) body.cc = ccList;
+  }
 
   // Anexos em base64
   if (options.attachments?.length) {
