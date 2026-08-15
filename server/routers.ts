@@ -988,6 +988,11 @@ const smartUploadRouter = router({
 
       // 7. Atualizar dueDate com a data real da guia + status para EM_ANDAMENTO
       const taskUpdates: Record<string, any> = {};
+      // GARANTE que a guia entre em "Pendentes de Envio": o upload inteligente é o fluxo de
+      // ENVIAR a guia ao cliente. A lista/disparo exige sendToClient = 1 — tarefas antigas
+      // podiam estar com esse flag nulo/0, o que fazia a guia "reconhecer mas não ir para
+      // pendentes nem disparar", em silêncio. Forçamos aqui para o intuito do upload.
+      taskUpdates.sendToClient = true;
       if (matchedTask.status === "PENDENTE") {
         taskUpdates.status = "EM_ANDAMENTO";
       }
@@ -1031,6 +1036,11 @@ const smartUploadRouter = router({
         });
       } catch {}
 
+      // Único bloqueio restante para entrar em Pendentes de Envio é o cliente sem e-mail.
+      const semEmail = !(matchedClient.email && String(matchedClient.email).trim());
+      if (semEmail) console.warn(`[SmartUpload] Cliente ${matchedClient.name} SEM e-mail — guia anexada, mas não entra em Pendentes até cadastrar um e-mail.`);
+      const foraDoAr = !semEmail && !(matchedClient as any).active; // teoricamente não ocorre (listClients ativos)
+
       return {
         success: true,
         recognition,
@@ -1038,10 +1048,12 @@ const smartUploadRouter = router({
         task: { id: matchedTask.id, title: matchedTask.title, competencia: matchedTask.competencia },
         fileId,
         emailSent: false,
-        pendingEmail: true,
-        message: recognition.recalculado
-          ? `Guia recalculada anexada na tarefa de ${matchedTask.competencia} (reaberta) — será reenviada ao cliente no próximo ciclo automático.`
-          : "Guia anexada com sucesso! Será enviada ao cliente no próximo ciclo automático.",
+        pendingEmail: !semEmail && !foraDoAr,
+        message: semEmail
+          ? `Guia anexada na tarefa de ${matchedTask.competencia}, MAS o cliente "${matchedClient.name}" está SEM e-mail cadastrado — cadastre um e-mail no cliente para a guia entrar em "Pendentes de Envio" e disparar.`
+          : recognition.recalculado
+            ? `Guia recalculada anexada na tarefa de ${matchedTask.competencia} (reaberta) — vai para "Pendentes de Envio" e será reenviada no próximo ciclo (ou clique em "Enviar agora").`
+            : `Guia anexada! Vai para "Pendentes de Envio" e será enviada no próximo ciclo automático (ou clique em "Enviar agora").`,
       };
     }),
 });
