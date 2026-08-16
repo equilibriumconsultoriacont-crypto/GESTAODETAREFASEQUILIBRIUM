@@ -258,6 +258,33 @@ async function startServer() {
     }
   });
 
+  // ── Diagnóstico: estado da ENTREGA (e-mail + WhatsApp) ────────────────────
+  // Mostra qual provedor de e-mail está ativo, o remetente, o status do WhatsApp e o
+  // resultado dos últimos envios (status + domínio do destino + erro). Sem segredos/e-mails.
+  app.get("/health/delivery-debug", async (_req, res) => {
+    try {
+      const emailProvider = process.env.RESEND_API_KEY ? "resend" : (process.env.SMTP_USER ? "smtp" : "nenhum");
+      const emailFrom = process.env.RESEND_FROM || process.env.SMTP_USER || "contato@equilibriumcont.com";
+      let whatsapp = "desconhecido";
+      try { const { getWAStatus } = await import("../wa/connection"); whatsapp = getWAStatus().status; } catch {}
+      let recentLogs: any[] = [];
+      try {
+        const { getPool } = await import("../db");
+        const pool = getPool();
+        const [rows]: any = await pool.query(`SELECT status, recipientEmail, errorMessage, sentAt FROM email_logs ORDER BY id DESC LIMIT 6`);
+        recentLogs = (rows as any[]).map((r) => ({
+          status: r.status,
+          destino: String(r.recipientEmail || "").replace(/^[^@]+/, "***"), // mascara o local-part
+          erro: r.errorMessage ? String(r.errorMessage).slice(0, 160) : null,
+          sentAt: r.sentAt,
+        }));
+      } catch {}
+      res.json({ emailProvider, emailFrom, resendKeySet: !!process.env.RESEND_API_KEY, smtpSet: !!process.env.SMTP_USER, whatsapp, recentLogs });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
   // ── Migration endpoint ────────────────────────────────────────────────────
   app.post("/admin/migrate", async (req, res) => {
     if (!checkAdminSecret(req)) return res.status(403).json(ADMIN_FORBIDDEN);
