@@ -218,7 +218,9 @@ async function startServer() {
       const probe = "probe-" + Date.now();
       const enc = encField(probe);
       const storedEncrypted = typeof enc === "string" && enc.startsWith("enc:1:");
-      res.json({ enabled: encryptionEnabled(), storedEncrypted, roundTrip: decField(enc) === probe });
+      let notesPlaintext = -1;
+      try { const { countPlaintextNotes } = await import("../db"); notesPlaintext = await countPlaintextNotes(); } catch {}
+      res.json({ enabled: encryptionEnabled(), storedEncrypted, roundTrip: decField(enc) === probe, notesPlaintext });
     } catch (err: any) {
       res.status(500).json({ error: err?.message });
     }
@@ -1069,6 +1071,10 @@ async function runBootJobs() {
     const { ensureUpcomingTasksGenerated } = await import("../taskGenerator");
     await ensureUpcomingTasksGenerated(3);
   } catch (err) { console.warn("[Boot] autoGen error:", err); }
+  try {
+    const { encryptExistingNotes } = await import("../db");
+    await encryptExistingNotes(); // cifra observações antigas (idempotente, no-op sem chave)
+  } catch (err) { console.warn("[Boot] cripto backfill error:", err); }
 }
 runBootJobs();
 

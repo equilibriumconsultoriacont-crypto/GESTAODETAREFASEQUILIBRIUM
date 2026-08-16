@@ -231,6 +231,45 @@ export async function listClients(includeInactive = false): Promise<Client[]> {
   return rows;
 }
 
+// Backfill LGPD: cifra as observações (clients.notes / tasks.notes) que ainda estão em texto.
+// Idempotente (pula o que já é 'enc:1:%'), no-op sem DATA_ENC_KEY. Roda no boot.
+export async function encryptExistingNotes(): Promise<{ clients: number; tasks: number }> {
+  const { encryptionEnabled } = await import("./crypto");
+  if (!encryptionEnabled()) return { clients: 0, tasks: 0 };
+  const pool = getPool();
+  const out = { clients: 0, tasks: 0 };
+  for (const table of ["clients", "tasks"] as const) {
+    let guard = 0;
+    while (guard++ < 100) {
+      const [rows]: any = await pool.query(
+        `SELECT id, notes FROM ${table} WHERE notes IS NOT NULL AND notes <> '' AND notes NOT LIKE 'enc:1:%' LIMIT 200`
+      );
+      if (!rows.length) break;
+      for (const r of rows as any[]) {
+        const enc = encField(r.notes);
+        if (enc === r.notes) continue; // não conseguiu cifrar (sem chave/erro) — evita loop
+        await pool.query(`UPDATE ${table} SET notes = ? WHERE id = ?`, [enc, r.id]);
+        out[table]++;
+      }
+      if (rows.length < 200) break;
+    }
+  }
+  if (out.clients || out.tasks) console.log(`[Cripto backfill] observações cifradas — clientes: ${out.clients}, tarefas: ${out.tasks}`);
+  return out;
+}
+
+// Contagem de observações ainda em texto (para o diagnóstico /health/encryption).
+export async function countPlaintextNotes(): Promise<number> {
+  try {
+    const pool = getPool();
+    const [rows]: any = await pool.query(
+      `SELECT (SELECT COUNT(*) FROM clients WHERE notes IS NOT NULL AND notes <> '' AND notes NOT LIKE 'enc:1:%')
+            + (SELECT COUNT(*) FROM tasks   WHERE notes IS NOT NULL AND notes <> '' AND notes NOT LIKE 'enc:1:%') AS n`
+    );
+    return Number(rows?.[0]?.n ?? 0);
+  } catch { return -1; }
+}
+
 export async function getClientById(id: number): Promise<Client | undefined> {
   const db = await getDb();
   if (!db) return undefined;
