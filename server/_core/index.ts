@@ -1115,10 +1115,25 @@ function scheduleNextHour() {
   }, msUntilNextHour);
 }
 
-// Roda imediatamente ao iniciar (marca vencidas sem esperar)
-runScheduledJobs();
+// Roda imediatamente ao iniciar APENAS o que é seguro repetir a cada boot/deploy: marcar
+// tarefas vencidas e manter as tarefas futuras geradas. NÃO dispara guias no boot — o envio
+// acontece SÓ no ciclo de hora cheia (ou no botão "Disparar agora"), para as guias ficarem
+// em "Pendentes de Envio" e poderem ser conferidas/canceladas. (Antes isto chamava o ciclo
+// inteiro, então cada restart disparava tudo na hora — furando a janela de cancelamento.)
+async function runBootJobs() {
+  try {
+    const { markOverdueTasks } = await import("../db");
+    const count = await markOverdueTasks();
+    if (count > 0) console.log(`[Boot] ${count} tarefa(s) marcada(s) como VENCIDA`);
+  } catch (err) { console.warn("[Boot] markOverdue error:", err); }
+  try {
+    const { ensureUpcomingTasksGenerated } = await import("../taskGenerator");
+    await ensureUpcomingTasksGenerated(3);
+  } catch (err) { console.warn("[Boot] autoGen error:", err); }
+}
+runBootJobs();
 
-// Agenda o ciclo em horário fixo (próxima hora cheia)
+// Agenda o ciclo em horário fixo (próxima hora cheia) — é aqui que as guias pendentes disparam.
 scheduleNextHour();
 
 // ── Keep-alive do banco ───────────────────────────────────────────────────────
