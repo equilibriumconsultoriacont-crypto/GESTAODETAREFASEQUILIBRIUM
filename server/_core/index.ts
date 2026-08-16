@@ -224,67 +224,6 @@ async function startServer() {
     }
   });
 
-  // ── Diagnóstico: por que uma guia (arquivo) não entra em "Pendentes de Envio" ──
-  // Analisa os últimos arquivos anexados contra as MESMAS condições da lista de pendentes.
-  // Retorna só sinais (sem nome/e-mail): sendToClient, cliente ativo/tem e-mail, já enviado.
-  app.get("/health/pending-debug", async (_req, res) => {
-    try {
-      const { getPool } = await import("../db");
-      const pool = getPool();
-      const [rows]: any = await pool.query(`
-        SELECT f.id AS fileId, f.taskId, t.clientId,
-               t.status AS taskStatus, t.sendToClient AS sendToClient,
-               c.active AS clientActive,
-               (c.email IS NOT NULL AND c.email <> '') AS clientHasEmail,
-               EXISTS(SELECT 1 FROM email_logs el WHERE el.taskFileId=f.id AND el.status='ENVIADO') AS alreadySent
-        FROM task_files f
-        LEFT JOIN tasks t ON t.id=f.taskId
-        LEFT JOIN clients c ON c.id=t.clientId
-        ORDER BY f.id DESC LIMIT 8
-      `);
-      const files = (rows as any[]).map((r) => {
-        const blockers: string[] = [];
-        if (r.taskId == null || r.taskStatus == null) blockers.push("tarefa não encontrada");
-        if (r.taskStatus === "CANCELADA") blockers.push("tarefa cancelada");
-        if (Number(r.sendToClient) !== 1) blockers.push(`sendToClient=${r.sendToClient} (precisa 1)`);
-        if (Number(r.clientActive) !== 1) blockers.push("cliente inativo");
-        if (Number(r.clientHasEmail) !== 1) blockers.push("cliente sem e-mail");
-        if (Number(r.alreadySent) === 1) blockers.push("já enviado");
-        return { fileId: r.fileId, taskId: r.taskId, taskStatus: r.taskStatus, sendToClient: r.sendToClient, clientActive: r.clientActive, clientHasEmail: r.clientHasEmail, alreadySent: r.alreadySent, inPending: blockers.length === 0, blockers };
-      });
-      res.json({ files });
-    } catch (e: any) {
-      res.status(500).json({ error: e?.message });
-    }
-  });
-
-  // ── Diagnóstico: estado da ENTREGA (e-mail + WhatsApp) ────────────────────
-  // Mostra qual provedor de e-mail está ativo, o remetente, o status do WhatsApp e o
-  // resultado dos últimos envios (status + domínio do destino + erro). Sem segredos/e-mails.
-  app.get("/health/delivery-debug", async (_req, res) => {
-    try {
-      const emailProvider = process.env.RESEND_API_KEY ? "resend" : (process.env.SMTP_USER ? "smtp" : "nenhum");
-      const emailFrom = process.env.RESEND_FROM || process.env.SMTP_USER || "contato@equilibriumcont.com";
-      let whatsapp = "desconhecido";
-      try { const { getWAStatus } = await import("../wa/connection"); whatsapp = getWAStatus().status; } catch {}
-      let recentLogs: any[] = [];
-      try {
-        const { getPool } = await import("../db");
-        const pool = getPool();
-        const [rows]: any = await pool.query(`SELECT status, recipientEmail, errorMessage, sentAt FROM email_logs ORDER BY id DESC LIMIT 6`);
-        recentLogs = (rows as any[]).map((r) => ({
-          status: r.status,
-          destino: String(r.recipientEmail || "").replace(/^[^@]+/, "***"), // mascara o local-part
-          erro: r.errorMessage ? String(r.errorMessage).slice(0, 160) : null,
-          sentAt: r.sentAt,
-        }));
-      } catch {}
-      res.json({ emailProvider, emailFrom, resendKeySet: !!process.env.RESEND_API_KEY, smtpSet: !!process.env.SMTP_USER, whatsapp, recentLogs });
-    } catch (e: any) {
-      res.status(500).json({ error: e?.message });
-    }
-  });
-
   // ── Migration endpoint ────────────────────────────────────────────────────
   app.post("/admin/migrate", async (req, res) => {
     if (!checkAdminSecret(req)) return res.status(403).json(ADMIN_FORBIDDEN);
