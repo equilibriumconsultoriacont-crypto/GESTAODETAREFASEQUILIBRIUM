@@ -12,10 +12,24 @@ import {
   financialPayables,
   clients,
   tasks,
+  users,
 } from "../drizzle/schema";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { sendEmail } from "./email";
+import { allEmails, allPhones } from "./recipients";
 import { buildPixBRCode } from "./pix";
+
+// PIX que uma cobrança deve usar: repasse (partner) → PIX da Equilibrium (global); cobrança do
+// CLIENTE numa empresa de parceiro → PIX do parceiro (se ele tiver); senão, o global.
+export async function getTituloPix(db: any, titulo: { audience?: string | null; partnerUserId?: number | null }): Promise<any> {
+  const globalPix = (await db.select().from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
+  if (titulo.audience === "partner") return globalPix;
+  if (titulo.partnerUserId) {
+    const p = (await db.select({ name: users.name, pixKey: users.pixKey, pixKeyType: users.pixKeyType }).from(users).where(eq(users.id, titulo.partnerUserId)).limit(1))[0];
+    if (p?.pixKey) return { active: true, pixKey: p.pixKey, pixKeyType: p.pixKeyType, beneficiaryName: p.name || "Parceiro", instructions: null };
+  }
+  return globalPix;
+}
 
 const APP_URL = process.env.APP_URL || "https://gestaodetarefasequilibrium.onrender.com";
 
@@ -115,33 +129,106 @@ export async function gerarTituloHonorario(db: any, cfg: any, comp: string): Pro
   const [mm, yyyy] = comp.split("/").map(Number);
   const due = adjustWeekend(new Date(yyyy, mm - 1, cfg.dueDay), cfg.weekendRule);
   const sendDate = cfg.sendDay ? new Date(yyyy, mm - 1, cfg.sendDay) : null;
-  const existing = (await db.select({ id: financialTitulos.id }).from(financialTitulos)
-    .where(and(eq(financialTitulos.clientId, cfg.clientId), eq(financialTitulos.kind, "honorario"), eq(financialTitulos.competencia, comp), sql`${financialTitulos.status} <> 'cancelado'`)).limit(1))[0];
-  if (existing) return { created: false };
-  await db.insert(financialTitulos).values({
-    clientId: cfg.clientId, kind: "honorario", description: `Honorário ${comp}`, category: "Honorário",
-    amount: cfg.honorarioValue, competencia: comp, dueDate: due, sendDate, status: "aberto", origin: "recorrencia", recurringConfigId: cfg.id,
-  });
-  return { created: true };
+  const existsFor = async (audience: string) =>
+    (await db.select({ id: financialTitulos.id }).from(financialTitulos)
+      .where(and(eq(financialTitulos.clientId, cfg.clientId), eq(financialTitulos.kind, "honorario"), eq(financialTitulos.competencia, comp), eq(financialTitulos.audience, audience), sql`${financialTitulos.status} <> 'cancelado'`)).limit(1))[0];
+  let createdAny = false;
+
+  // 1) Honorário do CLIENTE (valor cheio). Numa empresa de parceiro, a cobrança usa o PIX do parceiro.
+  if (!(await existsFor("client"))) {
+    await db.insert(financialTitulos).values({
+      clientId: cfg.clientId, kind: "honorario", description: `Honorário ${comp}`, category: "Honorário",
+      amount: cfg.honorarioValue, competencia: comp, dueDate: due, sendDate, status: "aberto",
+      origin: "recorrencia", recurringConfigId: cfg.id, audience: "client", partnerUserId: cfg.partnerUserId ?? null,
+    });
+    createdAny = true;
+  }
+
+  // 2) Honorário da NOSSA PARTE (cobrado do parceiro) — só em empresa de parceiro com valor definido.
+  if (cfg.partnerUserId && cfg.partnerHonorarioValue && !(await existsFor("partner"))) {
+    await db.insert(financialTitulos).values({
+      clientId: cfg.clientId, kind: "honorario", description: `Repasse Equilibrium — ${comp}`, category: "Repasse parceiro",
+      amount: cfg.partnerHonorarioValue, competencia: comp, dueDate: due, sendDate, status: "aberto",
+      origin: "recorrencia", recurringConfigId: cfg.id, audience: "partner", partnerUserId: cfg.partnerUserId,
+    });
+    createdAny = true;
+  }
+  return { created: createdAny };
 }
 export function compAtual(d = new Date()): string {
   return `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+}
+
+// Sincroniza o vínculo Parceiro↔empresas: cada empresa do parceiro fica com
+// fin_client_config.partnerUserId = ele (criando a config se faltar); empresas removidas dele
+// têm o vínculo limpo. É isso que "puxa" o 2º honorário (repasse) ao vincular a empresa ao parceiro.
+export async function syncPartnerCompanies(db: any, partnerUserId: number, clientIds: number[]): Promise<void> {
+  try {
+    if (clientIds.length) {
+      await db.update(financialClientConfig).set({ partnerUserId: null, updatedAt: new Date() })
+        .where(and(eq(financialClientConfig.partnerUserId, partnerUserId), notInArray(financialClientConfig.clientId, clientIds)));
+    } else {
+      await db.update(financialClientConfig).set({ partnerUserId: null, updatedAt: new Date() })
+        .where(eq(financialClientConfig.partnerUserId, partnerUserId));
+    }
+    for (const cid of clientIds) {
+      const ex = (await db.select({ id: financialClientConfig.id }).from(financialClientConfig).where(eq(financialClientConfig.clientId, cid)).limit(1))[0];
+      if (ex) await db.update(financialClientConfig).set({ partnerUserId, updatedAt: new Date() }).where(eq(financialClientConfig.id, ex.id));
+      else await db.insert(financialClientConfig).values({ clientId: cid, partnerUserId, updatedAt: new Date() } as any);
+    }
+  } catch (e: any) { console.warn("[syncPartnerCompanies]", e?.message); }
 }
 
 // Envia (ou reenvia como lembrete) a cobrança de um título por e-mail. Reutilizado pela procedure
 // manual e pela régua automática. Retorna { ok, to } ou { ok:false, reason }.
 export async function enviarCobrancaPorId(db: any, tituloId: number, opts?: { reminder?: boolean }): Promise<{ ok: boolean; to?: string; reason?: string }> {
   const row = (await db
-    .select({ id: financialTitulos.id, status: financialTitulos.status, description: financialTitulos.description, amount: financialTitulos.amount, competencia: financialTitulos.competencia, dueDate: financialTitulos.dueDate, clientName: clients.name, clientEmail: clients.email, billingEmail: financialClientConfig.billingEmail })
+    .select({ id: financialTitulos.id, status: financialTitulos.status, description: financialTitulos.description, amount: financialTitulos.amount, competencia: financialTitulos.competencia, dueDate: financialTitulos.dueDate, audience: financialTitulos.audience, partnerUserId: financialTitulos.partnerUserId, clientName: clients.name, clientEmail: clients.email, clientCcEmails: clients.ccEmails, clientPhone: clients.phone, clientCcPhones: clients.ccPhones, billingEmail: financialClientConfig.billingEmail })
     .from(financialTitulos).leftJoin(clients, eq(clients.id, financialTitulos.clientId)).leftJoin(financialClientConfig, eq(financialClientConfig.clientId, financialTitulos.clientId))
     .where(eq(financialTitulos.id, tituloId)).limit(1))[0];
   if (!row) return { ok: false, reason: "não encontrado" };
-  const to = row.billingEmail || row.clientEmail;
-  if (!to) return { ok: false, reason: "sem e-mail" };
-  const pix = (await db.select().from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
-  const html = buildCobrancaEmail({ tituloId: row.id, baseUrl: APP_URL, clientName: row.clientName || "", description: row.description, amount: row.amount, dueDate: new Date(row.dueDate as any), competencia: row.competencia, pix, reminder: opts?.reminder });
+  // Destinatários e nome exibido dependem da AUDIÊNCIA: repasse vai para o PARCEIRO; senão, cliente + extras.
+  let toList: string[]; let displayName: string;
+  if (row.audience === "partner" && row.partnerUserId) {
+    const p = (await db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, row.partnerUserId)).limit(1))[0];
+    toList = allEmails(p?.email, null);
+    displayName = p?.name || "Parceiro";
+  } else {
+    toList = allEmails(row.billingEmail || row.clientEmail, row.clientCcEmails);
+    displayName = row.clientName || "";
+  }
+  if (!toList.length) return { ok: false, reason: "sem e-mail" };
+  const pix = await getTituloPix(db, row);
+  const html = buildCobrancaEmail({ tituloId: row.id, baseUrl: APP_URL, clientName: displayName, description: row.description, amount: row.amount, dueDate: new Date(row.dueDate as any), competencia: row.competencia, pix, reminder: opts?.reminder });
   const subject = opts?.reminder ? `Lembrete de cobrança - ${row.description}` : `Cobrança - ${row.description}`;
-  await sendEmail({ to, subject, html });
+  await sendEmail({ to: toList[0], cc: toList.slice(1).join(",") || undefined, subject, html });
+  const to = toList.join(", ");
+
+  // Cobrança também pelo WhatsApp (não bloqueia). Repasse → telefone do parceiro; senão → cliente + extras.
+  try {
+    let phones: string[];
+    if (row.audience === "partner" && row.partnerUserId) {
+      const pp = (await db.select({ phone: users.phone }).from(users).where(eq(users.id, row.partnerUserId)).limit(1))[0];
+      phones = allPhones(pp?.phone, null);
+    } else {
+      phones = allPhones(row.clientPhone, row.clientCcPhones);
+    }
+    if (phones.length) {
+      const { sendText, getWAStatus } = await import("./wa/connection");
+      if (getWAStatus().status === "open") {
+        const venc = new Date(row.dueDate as any).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+        const link = `${APP_URL}/cobranca/${row.id}?t=${signCobranca(row.id)}`;
+        let msg = `*Equilibrium Consultoria Contábil*\n\nOlá, ${displayName || "cliente"}! Segue a cobrança de *${row.description}*${row.competencia ? ` (${row.competencia})` : ""}.\n\n💰 Valor: *${brl(row.amount)}*\n📅 Vencimento: ${venc}`;
+        if (pix?.active && pix?.pixKey) {
+          let copiaCola = "";
+          try { copiaCola = buildPixBRCode({ key: pix.pixKey, keyType: pix.pixKeyType || undefined, name: pix.beneficiaryName || "Equilibrium", city: "Rio Claro", amount: row.amount, txid: `T${row.id}` }); } catch { copiaCola = ""; }
+          if (copiaCola) msg += `\n\n*PIX copia e cola:*\n${copiaCola}`;
+        }
+        msg += `\n\nPara pagar e enviar o comprovante:\n${link}`;
+        for (const ph of phones) { try { await sendText(ph, msg); } catch (e: any) { console.warn(`[Cobrança WhatsApp ${ph}]`, e?.message); } }
+      }
+    }
+  } catch (e: any) { console.warn("[Cobrança WhatsApp]", e?.message); }
   if (opts?.reminder) {
     await db.update(financialTitulos).set({ reminderSentAt: new Date(), updatedAt: new Date() }).where(eq(financialTitulos.id, tituloId));
   } else {
@@ -292,6 +379,9 @@ export const financeiroRouter = router({
         recurring: financialClientConfig.recurring,
         autoSend: financialClientConfig.autoSend,
         activated: financialClientConfig.activated,
+        partnerUserId: financialClientConfig.partnerUserId,
+        partnerHonorarioValue: financialClientConfig.partnerHonorarioValue,
+        partnerName: sql<string | null>`(select name from users where id = ${financialClientConfig.partnerUserId})`,
         configId: financialClientConfig.id,
       })
       .from(clients)
@@ -311,6 +401,7 @@ export const financeiroRouter = router({
         weekendRule: z.enum(["mantem", "antecipa", "posterga"]).default("mantem"),
         recurring: z.boolean().default(true),
         autoSend: z.boolean().default(true),
+        partnerHonorarioValue: money.optional(), // "nossa parte" cobrada do parceiro (empresa de parceiro)
         billingEmail: z.string().email().optional().or(z.literal("")),
       })
     )
@@ -327,6 +418,7 @@ export const financeiroRouter = router({
         weekendRule: input.weekendRule,
         recurring: input.recurring,
         autoSend: input.autoSend,
+        partnerHonorarioValue: input.partnerHonorarioValue ?? null,
         billingEmail: input.billingEmail || null,
         updatedAt: new Date(),
       };

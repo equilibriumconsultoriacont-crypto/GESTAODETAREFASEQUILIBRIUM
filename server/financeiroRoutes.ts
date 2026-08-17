@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "./db";
-import { financialTitulos, financialPayments, financialConfig, clients } from "../drizzle/schema";
+import { financialTitulos, financialPayments, clients } from "../drizzle/schema";
 import { buildPixBRCode, pixQrPngBuffer } from "./pix";
 import { verifyCobranca } from "./cobrancaToken";
 
@@ -28,10 +28,11 @@ export function registerFinanceiroRoutes(app: Express) {
     const id = parseInt(req.params.id);
     if (!verifyCobranca(id, req.query.t as string)) return res.status(403).json({ error: "link inválido" });
     const row = (await db
-      .select({ id: financialTitulos.id, description: financialTitulos.description, amount: financialTitulos.amount, competencia: financialTitulos.competencia, dueDate: financialTitulos.dueDate, status: financialTitulos.status, clientName: clients.name })
+      .select({ id: financialTitulos.id, description: financialTitulos.description, amount: financialTitulos.amount, competencia: financialTitulos.competencia, dueDate: financialTitulos.dueDate, status: financialTitulos.status, audience: financialTitulos.audience, partnerUserId: financialTitulos.partnerUserId, clientName: clients.name })
       .from(financialTitulos).leftJoin(clients, eq(clients.id, financialTitulos.clientId)).where(eq(financialTitulos.id, id)).limit(1))[0];
     if (!row) return res.status(404).json({ error: "cobrança não encontrada" });
-    const cfg = (await db.select().from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
+    const { getTituloPix } = await import("./financeiroRouter");
+    const cfg = await getTituloPix(db, row); // PIX do parceiro ou da Equilibrium, conforme o título
     let pixCopiaCola: string | null = null;
     if (cfg?.active && cfg?.pixKey) {
       try {
@@ -47,8 +48,9 @@ export function registerFinanceiroRoutes(app: Express) {
     if (!db) return res.status(500).end();
     const id = parseInt((req.params as any).id);
     if (!verifyCobranca(id, req.query.t as string)) return res.status(403).end();
-    const row = (await db.select({ amount: financialTitulos.amount }).from(financialTitulos).where(eq(financialTitulos.id, id)).limit(1))[0];
-    const cfg = (await db.select().from(financialConfig).where(eq(financialConfig.id, 1)).limit(1))[0];
+    const row = (await db.select({ amount: financialTitulos.amount, audience: financialTitulos.audience, partnerUserId: financialTitulos.partnerUserId }).from(financialTitulos).where(eq(financialTitulos.id, id)).limit(1))[0];
+    const { getTituloPix } = await import("./financeiroRouter");
+    const cfg = row ? await getTituloPix(db, row) : null;
     if (!row || !cfg?.active || !cfg?.pixKey) return res.status(404).end();
     try {
       const brcode = buildPixBRCode({ key: cfg.pixKey, keyType: cfg.pixKeyType || undefined, name: cfg.beneficiaryName || "Equilibrium", city: "Rio Claro", amount: row.amount, txid: `T${id}` });

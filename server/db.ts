@@ -987,7 +987,7 @@ export async function linkUserClient(userId: number, clientId: number) {
   if (existing.length === 0) await db.insert(userClients).values({ userId, clientId });
 }
 
-export async function createLocalUser(data: { name: string; email: string; passwordHash: string; role: "admin" | "user"; limitedAccess?: boolean; createdByUserId?: number | null }): Promise<number> {
+export async function createLocalUser(data: { name: string; email: string; passwordHash: string; role: "admin" | "user"; limitedAccess?: boolean; createdByUserId?: number | null; phone?: string | null; pixKey?: string | null; pixKeyType?: string | null }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB indisponível");
   const result = await db.insert(users).values({
@@ -995,6 +995,7 @@ export async function createLocalUser(data: { name: string; email: string; passw
     role: data.role, loginMethod: "local",
     limitedAccess: data.limitedAccess ?? false,
     createdByUserId: data.createdByUserId ?? null,
+    phone: data.phone ?? null, pixKey: data.pixKey ?? null, pixKeyType: data.pixKeyType ?? null,
   });
   return result[0].insertId;
 }
@@ -1007,7 +1008,7 @@ export async function deleteUser(userId: number) {
   await db.delete(users).where(eq(users.id, userId));
 }
 
-export async function updateUserBasic(userId: number, data: { name?: string; email?: string; role?: "admin" | "user"; passwordHash?: string; limitedAccess?: boolean }) {
+export async function updateUserBasic(userId: number, data: { name?: string; email?: string; role?: "admin" | "user"; passwordHash?: string; limitedAccess?: boolean; phone?: string | null; pixKey?: string | null; pixKeyType?: string | null }) {
   const db = await getDb();
   if (!db) return;
   await db.update(users).set(data).where(eq(users.id, userId));

@@ -1777,6 +1777,9 @@ const usersRouter = router({
       password: z.string().min(6),
       role: z.enum(["admin", "user"]).default("user"),
       limitedAccess: z.boolean().default(false), // ADM/Funcionário Limitado (restrito às empresas)
+      phone: z.string().max(20).optional(),       // Parceiro: WhatsApp p/ a cobrança de repasse
+      pixKey: z.string().max(200).optional(),     // Parceiro: chave PIX (o cliente paga o parceiro)
+      pixKeyType: z.string().max(20).optional(),
       departmentIds: z.array(z.number()).default([]),
       clientIds: z.array(z.number()).default([]),
       modules: z.array(z.object({ module: z.string(), level: z.string() })).default([]),
@@ -1807,10 +1810,16 @@ const usersRouter = router({
       const userId = await createLocalUser({
         name: input.name, email: input.email, passwordHash, role,
         limitedAccess, createdByUserId: ctx.user!.id,
+        phone: input.phone ?? null, pixKey: input.pixKey ?? null, pixKeyType: input.pixKeyType ?? null,
       });
       await setUserDepartments(userId, input.departmentIds);
       await setUserClients(userId, clientIds);
       await setUserModules(userId, input.modules);
+      // Parceiro (ADM Limitado): vincula as empresas a ele no Financeiro (puxa o 2º honorário/repasse).
+      if (role === "admin" && limitedAccess) {
+        const db = await getDb();
+        if (db) { const { syncPartnerCompanies } = await import("./financeiroRouter"); await syncPartnerCompanies(db, userId, clientIds); }
+      }
       return { id: userId };
     }),
 
@@ -1822,6 +1831,9 @@ const usersRouter = router({
       password: z.string().min(6).optional(),
       role: z.enum(["admin", "user"]).optional(),
       limitedAccess: z.boolean().optional(),
+      phone: z.string().max(20).optional(),
+      pixKey: z.string().max(200).optional(),
+      pixKeyType: z.string().max(20).optional(),
       departmentIds: z.array(z.number()).optional(),
       clientIds: z.array(z.number()).optional(),
       modules: z.array(z.object({ module: z.string(), level: z.string() })).optional(),
@@ -1845,10 +1857,13 @@ const usersRouter = router({
       if (input.name !== undefined) basic.name = input.name;
       if (input.email !== undefined) basic.email = input.email;
       if (input.password) basic.passwordHash = await bcryptjs.hash(input.password, 10);
-      // role e limitedAccess só o ADM total altera.
+      // role e limitedAccess só o ADM total altera. PIX/telefone do parceiro idem (o ADM total configura).
       if (!limitedActor) {
         if (input.role !== undefined) basic.role = input.role;
         if (input.limitedAccess !== undefined) basic.limitedAccess = input.limitedAccess;
+        if (input.phone !== undefined) basic.phone = input.phone || null;
+        if (input.pixKey !== undefined) basic.pixKey = input.pixKey || null;
+        if (input.pixKeyType !== undefined) basic.pixKeyType = input.pixKeyType || null;
       }
       if (Object.keys(basic).length > 0) await updateUserBasic(input.id, basic);
 
@@ -1860,7 +1875,16 @@ const usersRouter = router({
           cids = cids.filter((id) => allowed.has(id));
         }
         // ADM Limitado não mexe no PRÓPRIO escopo de empresas (isso é do ADM total).
-        if (!(limitedActor && target.id === ctx.user!.id)) await setUserClients(input.id, cids);
+        if (!(limitedActor && target.id === ctx.user!.id)) {
+          await setUserClients(input.id, cids);
+          // Parceiro (ADM Limitado): sincroniza o vínculo das empresas no Financeiro (2º honorário).
+          const finalLimited = basic.limitedAccess ?? (target as any).limitedAccess;
+          const finalRole = basic.role ?? target.role;
+          if (finalRole === "admin" && finalLimited) {
+            const db = await getDb();
+            if (db) { const { syncPartnerCompanies } = await import("./financeiroRouter"); await syncPartnerCompanies(db, input.id, cids); }
+          }
+        }
       }
       if (input.modules !== undefined) await setUserModules(input.id, input.modules);
       return { success: true };

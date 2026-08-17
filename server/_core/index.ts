@@ -754,6 +754,8 @@ async function ensureSchema() {
           ["recurring", "ADD COLUMN `recurring` boolean NOT NULL DEFAULT true"],
           ["activated", "ADD COLUMN `activated` boolean NOT NULL DEFAULT false"],
           ["autoSend", "ADD COLUMN `autoSend` boolean NOT NULL DEFAULT true"],
+          ["partnerUserId", "ADD COLUMN `partnerUserId` int NULL"],
+          ["partnerHonorarioValue", "ADD COLUMN `partnerHonorarioValue` varchar(20)"],
           ["lastGenComp", "ADD COLUMN `lastGenComp` varchar(7)"],
         ] as [string, string][]) {
           const [c]: any = await conn.query(`SELECT COUNT(*) cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fin_client_config' AND COLUMN_NAME = '${col}'`);
@@ -779,6 +781,11 @@ async function ensureSchema() {
         for (const [tbl, col, ddl] of [
           ["users", "limitedAccess", "ADD COLUMN `limitedAccess` boolean NOT NULL DEFAULT false"],
           ["users", "createdByUserId", "ADD COLUMN `createdByUserId` int NULL"],
+          ["users", "phone", "ADD COLUMN `phone` varchar(20)"],
+          ["users", "pixKey", "ADD COLUMN `pixKey` varchar(200)"],
+          ["users", "pixKeyType", "ADD COLUMN `pixKeyType` varchar(20)"],
+          ["fin_titulos", "audience", "ADD COLUMN `audience` varchar(20) NOT NULL DEFAULT 'client'"],
+          ["fin_titulos", "partnerUserId", "ADD COLUMN `partnerUserId` int NULL"],
           ["clients", "approvalStatus", "ADD COLUMN `approvalStatus` varchar(20) NOT NULL DEFAULT 'approved'"],
           ["clients", "createdByUserId", "ADD COLUMN `createdByUserId` int NULL"],
           ["clients", "ccEmails", "ADD COLUMN `ccEmails` text"],

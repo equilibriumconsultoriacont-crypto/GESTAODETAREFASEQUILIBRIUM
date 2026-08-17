@@ -183,10 +183,11 @@ const labelStyle: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, color
 type StaffForm = {
   name: string; email: string; password: string; role: "admin" | "user";
   limitedAccess: boolean;
+  phone: string; pixKey: string; pixKeyType: string; // Parceiro
   departmentIds: number[]; clientIds: number[];
   modules: { module: string; level: string }[];
 };
-const emptyStaff: StaffForm = { name: "", email: "", password: "", role: "user", limitedAccess: false, departmentIds: [], clientIds: [], modules: [] };
+const emptyStaff: StaffForm = { name: "", email: "", password: "", role: "user", limitedAccess: false, phone: "", pixKey: "", pixKeyType: "cnpj", departmentIds: [], clientIds: [], modules: [] };
 
 function StaffTab() {
   const { data: users = [], refetch, isLoading } = trpc.usersAdmin.list.useQuery();
@@ -213,6 +214,7 @@ function StaffTab() {
       name: u.name ?? "", email: u.email ?? "", password: "",
       role: u.role === "admin" ? "admin" : "user",
       limitedAccess: !!u.limitedAccess,
+      phone: u.phone ?? "", pixKey: u.pixKey ?? "", pixKeyType: u.pixKeyType ?? "cnpj",
       departmentIds: u.departmentIds ?? [], clientIds: u.clientIds ?? [],
       modules: u.modules ?? [],
     });
@@ -233,10 +235,10 @@ function StaffTab() {
     if (!form.name.trim()) { toast.error("Informe o nome"); return; }
     if (!form.email.trim()) { toast.error("Informe o e-mail"); return; }
     if (!editing && form.password.length < 6) { toast.error("Senha de no mínimo 6 caracteres"); return; }
-    if (form.role === "admin" && form.limitedAccess && form.clientIds.length === 0) { toast.error("Selecione ao menos uma empresa para o administrador limitado"); return; }
+    if (form.role === "admin" && form.limitedAccess && form.clientIds.length === 0) { toast.error("Selecione ao menos uma empresa para o parceiro"); return; }
     try {
       if (editing) {
-        const payload: any = { id: editing.id, name: form.name, email: form.email, role: form.role, limitedAccess: form.limitedAccess, departmentIds: form.departmentIds, clientIds: form.clientIds, modules: form.modules };
+        const payload: any = { id: editing.id, name: form.name, email: form.email, role: form.role, limitedAccess: form.limitedAccess, phone: form.phone, pixKey: form.pixKey, pixKeyType: form.pixKeyType, departmentIds: form.departmentIds, clientIds: form.clientIds, modules: form.modules };
         if (form.password) payload.password = form.password;
         await updateMut.mutateAsync(payload);
         toast.success("Usuário atualizado");
@@ -277,7 +279,7 @@ function StaffTab() {
                     <span style={{ fontWeight: 650, fontSize: 14.5 }}>{u.name || "(sem nome)"}</span>
                     {u.role === "admin" && (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: C.brandText, background: C.brandSoft, padding: "2px 8px", borderRadius: 6 }}>
-                        <Shield size={11} /> {u.limitedAccess ? "Admin limitado" : "Admin"}
+                        <Shield size={11} /> {u.limitedAccess ? "Parceiro" : "Admin"}
                       </span>
                     )}
                     {u.role === "user" && u.limitedAccess && (
@@ -333,12 +335,39 @@ function StaffTab() {
               <label style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 12px", background: C.panelHi, border: `1px solid ${form.limitedAccess ? C.brand : C.border}`, borderRadius: 10, cursor: "pointer" }}>
                 <input type="checkbox" checked={form.limitedAccess} onChange={(e) => setForm({ ...form, limitedAccess: e.target.checked })} style={{ accentColor: C.brand, marginTop: 2 }} />
                 <span style={{ fontSize: 13 }}>
-                  <strong style={{ color: C.text }}>Administrador limitado</strong>
+                  <strong style={{ color: C.text }}>Parceiro</strong>
                   <span style={{ display: "block", color: C.textMuted, marginTop: 2, fontSize: 12.5 }}>
-                    Todos os poderes de admin, mas só nas empresas selecionadas abaixo — em Tarefas, Atendimento e Financeiro. O Gerador de Documentos fica liberado por completo.
+                    Todos os poderes de admin, mas só nas empresas liberadas abaixo — em Tarefas, Atendimento e Financeiro. O Gerador de Documentos fica liberado por completo. Ao vincular uma empresa, o Financeiro passa a gerar também o honorário de repasse (a nossa parte).
                   </span>
                 </span>
               </label>
+            )}
+
+            {/* Dados do Parceiro: PIX (o cliente paga o parceiro) + WhatsApp (cobrança do repasse) */}
+            {form.role === "admin" && form.limitedAccess && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "12px 13px", background: C.panelHi, border: `1px solid ${C.border}`, borderRadius: 10 }}>
+                <div style={{ fontSize: 12.5, color: C.textMuted }}>Dados de cobrança do parceiro (opcional). Se preencher a chave PIX, ela é usada na cobrança do CLIENTE (o cliente paga o parceiro). Sem chave = usa a PIX da Equilibrium.</div>
+                <div>
+                  <label style={labelStyle}>Telefone / WhatsApp do parceiro</label>
+                  <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="(19) 99999-0000" style={fieldStyle} />
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>Chave PIX do parceiro</label>
+                    <input value={form.pixKey} onChange={(e) => setForm({ ...form, pixKey: e.target.value })} placeholder="CNPJ, e-mail, telefone ou aleatória" style={fieldStyle} />
+                  </div>
+                  <div style={{ width: 130, flex: "none" }}>
+                    <label style={labelStyle}>Tipo</label>
+                    <select value={form.pixKeyType} onChange={(e) => setForm({ ...form, pixKeyType: e.target.value })} style={{ ...fieldStyle, cursor: "pointer" }}>
+                      <option value="cnpj">CNPJ</option>
+                      <option value="cpf">CPF</option>
+                      <option value="email">E-mail</option>
+                      <option value="telefone">Telefone</option>
+                      <option value="aleatoria">Aleatória</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
             )}
 
             <div>
@@ -379,7 +408,7 @@ function StaffTab() {
             ) : (
               <div style={{ fontSize: 12.5, color: C.textMuted, background: C.panelHi, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 12px" }}>
                 {form.limitedAccess
-                  ? "Administrador limitado: acesso total às empresas selecionadas, em todos os módulos."
+                  ? "Parceiro: acesso total às empresas liberadas, em todos os módulos."
                   : "Administrador: acesso total a todos os módulos e a todas as empresas."}
               </div>
             )}
@@ -408,7 +437,7 @@ function StaffTab() {
               <div>
                 <label style={labelStyle}>
                   {form.limitedAccess
-                    ? "Empresas liberadas para este administrador (obrigatório)"
+                    ? "Empresas liberadas para este parceiro (obrigatório)"
                     : "Empresas específicas (opcional — vazio = conforme departamento)"}
                 </label>
                 <div style={{ maxHeight: 130, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4, border: `1px solid ${C.border}`, borderRadius: 10, padding: 8 }}>

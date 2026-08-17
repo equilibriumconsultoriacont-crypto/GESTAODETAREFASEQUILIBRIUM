@@ -27,6 +27,12 @@ export const users = mysqlTable("users", {
   // Quem cadastrou este usuário. Um ADM Limitado só enxerga, no gerenciamento de usuários,
   // a si mesmo + os funcionários que ele registrou (createdByUserId = id dele).
   createdByUserId: int("createdByUserId"),
+  // Parceiro (limitedAccess=true): telefone/WhatsApp e chave PIX dele. Usados na cobrança do
+  // repasse (a "nossa parte" vai para o e-mail/WhatsApp do parceiro) e no PIX que o CLIENTE
+  // recebe (quando o cliente paga o parceiro). Se pixKey vazio, usa o PIX da Equilibrium.
+  phone: varchar("phone", { length: 20 }),
+  pixKey: varchar("pixKey", { length: 200 }),
+  pixKeyType: varchar("pixKeyType", { length: 20 }),
   // Acesso do cliente criado automaticamente com senha padrão; obriga a definir
   // a própria senha no primeiro login.
   mustChangePassword: boolean("mustChangePassword").default(false).notNull(),
@@ -502,6 +508,11 @@ export const financialClientConfig = mysqlTable("fin_client_config", {
   // Se a cobrança é ENVIADA automaticamente. Desligado = o honorário entra no "a receber"
   // (para ter noção), mas nenhuma cobrança é disparada pela régua. Independe do play.
   autoSend: boolean("autoSend").default(true).notNull(),
+  // Empresa de PARCEIRO: quando a empresa é vinculada a um usuário parceiro, o sistema gera
+  // DOIS honorários por mês — o do CLIENTE (honorarioValue cheio, PIX do parceiro) e o da
+  // NOSSA PARTE (partnerHonorarioValue, cobrado do parceiro, PIX da Equilibrium).
+  partnerUserId: int("partnerUserId"),
+  partnerHonorarioValue: varchar("partnerHonorarioValue", { length: 20 }),
   lastGenComp: varchar("lastGenComp", { length: 7 }), // última competência (MM/AAAA) já gerada
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -530,6 +541,9 @@ export const financialTitulos = mysqlTable("fin_titulos", {
     "cancelado",
   ]).default("aberto").notNull(),
   origin: mysqlEnum("origin", ["manual", "recorrencia", "tarefa"]).default("manual").notNull(),
+  // Destinatário da cobrança: 'client' (padrão) ou 'partner' (repasse Equilibrium→parceiro).
+  audience: varchar("audience", { length: 20 }).default("client").notNull(),
+  partnerUserId: int("partnerUserId"), // parceiro vinculado (para PIX e destinatário)
   recurringConfigId: int("recurringConfigId"), // se veio da recorrência do honorário (fin_client_config.id)
   taskId: int("taskId"), // se veio de "Movimenta financeiro" de uma tarefa
   sentAt: timestamp("sentAt"), // quando o e-mail de cobrança foi enviado

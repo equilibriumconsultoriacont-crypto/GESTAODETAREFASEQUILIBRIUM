@@ -576,6 +576,7 @@ function HonorariosTab() {
         weekendRule: editing.weekendRule || "mantem",
         recurring: editing.recurring !== false,
         autoSend: editing.autoSend !== false,
+        partnerHonorarioValue: editing.partnerUserId && editing.partnerHonorarioValue ? String(editing.partnerHonorarioValue) : undefined,
         billingEmail: editing.billingEmail || "",
       });
       toast.success("Honorário configurado"); setEditing(null); refetch(); utils.financeiro.dashboard.invalidate();
@@ -622,7 +623,7 @@ function HonorariosTab() {
                         <Play size={13} /> Ativar
                       </button>
                 )}
-                <button onClick={() => setEditing({ ...r, honorarioValue: r.honorarioValue || "", dueDay: r.dueDay || "", sendDay: r.sendDay || "", weekendRule: r.weekendRule || "mantem", recurring: r.recurring !== false, autoSend: r.autoSend !== false, billingEmail: r.billingEmail || "" })}
+                <button onClick={() => setEditing({ ...r, honorarioValue: r.honorarioValue || "", dueDay: r.dueDay || "", sendDay: r.sendDay || "", weekendRule: r.weekendRule || "mantem", recurring: r.recurring !== false, autoSend: r.autoSend !== false, partnerHonorarioValue: r.partnerHonorarioValue || "", billingEmail: r.billingEmail || "" })}
                   style={{ ...iconBtn }} title="Configurar"><Pencil size={15} /></button>
               </div>
             ))}
@@ -694,6 +695,14 @@ function HonorariosTab() {
                       <option value="posterga">Posterga (próximo dia útil)</option>
                     </select>
                   </div>
+                  {editing.partnerUserId && (
+                    <div style={{ background: C.panelHi, border: `1px solid ${C.amber}55`, borderRadius: 10, padding: "11px 13px" }}>
+                      <div style={{ fontSize: 12.5, color: C.amber, fontWeight: 700, marginBottom: 2 }}>Empresa do parceiro {editing.partnerName || ""}</div>
+                      <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>O honorário acima ({brl(editing.honorarioValue || "0")}) vai para o cliente com a PIX do parceiro. Abaixo, a NOSSA PARTE — cobrada do parceiro, com a PIX da Equilibrium, todo mês.</div>
+                      <label style={labelStyle}>Nossa parte — repasse do parceiro (R$)</label>
+                      <input value={editing.partnerHonorarioValue || ""} onChange={(e) => setEditing({ ...editing, partnerHonorarioValue: e.target.value })} placeholder="0,00" style={fieldStyle} />
+                    </div>
+                  )}
                   <div>
                     <label style={labelStyle}>E-mail de cobrança (opcional — vazio usa o do cadastro)</label>
                     <input value={editing.billingEmail} onChange={(e) => setEditing({ ...editing, billingEmail: e.target.value })} placeholder={editing.email || "email@cliente.com"} style={fieldStyle} />
